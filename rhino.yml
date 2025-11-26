@@ -3,19 +3,5 @@
 # Theme: kwizresearch.com (Teal: #1B6B5F, Coral: #F49B7A)
 
 # Sass configuration using kwizresearch.com theme
+# Options: "node" (Dart Sass via Node.js) or "r" (R sass package)
 sass: node
-
-# JavaScript bundling
-js: none
-
-# Linting
-linters:
-  - lintr
-  - styler
-
-# Test configuration
-test:
-  framework: testthat
-
-# Legacy mode disabled for cleaner architecture
-legacy: false
