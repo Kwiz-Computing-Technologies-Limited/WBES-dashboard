@@ -2,8 +2,6 @@
 # Rhino Framework Configuration
 # Theme: kwizresearch.com (Teal: #1B6B5F, Coral: #F49B7A)
 
-rhino: 1.9.0
-
 # Sass configuration using kwizresearch.com theme
 sass: node
 
