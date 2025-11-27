@@ -1,0 +1,6 @@
+rhino: "1.9.0"
+sass: node
+test:
+  r: testthat
+  e2e: cypress
+legacy_entrypoint: box_top_level
