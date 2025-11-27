@@ -62,24 +62,14 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(3, class = "filter-column",
+              column(6, class = "filter-column",
                 selectInput(ns("region_filter"), "Region",
                   choices = c("All Regions" = "all"))
               ),
-              column(3, class = "filter-column",
-                selectInput(ns("firm_size"), "Firm Size",
-                  choices = c("All Sizes" = "all", "Small (5-19)" = "small",
-                              "Medium (20-99)" = "medium", "Large (100+)" = "large"))
-              ),
-              column(3, class = "filter-column",
-                selectInput(ns("sector"), "Sector",
-                  choices = c("All Sectors" = "all", "Manufacturing" = "mfg",
-                              "Services" = "svc", "Retail" = "retail"))
-              ),
-              column(3, class = "filter-column",
+              column(6, class = "filter-column",
                 selectInput(ns("gender"), "Ownership",
-                  choices = c("All" = "all", "Female-Owned" = "female",
-                              "Male-Owned" = "male"))
+                  choices = c("All" = "all", "Female-Majority (≥50%)" = "female",
+                              "Male-Majority (<50%)" = "male"))
               )
             )
           )
@@ -208,18 +198,30 @@ server <- function(id, wbes_data) {
     # Update filters
     observeEvent(wbes_data(), {
       req(wbes_data())
-      regions <- unique(wbes_data()$latest$region)
+      regions <- base::unique(wbes_data()$latest$region)
       shiny::updateSelectInput(session, "region_filter",
-        choices = c("All Regions" = "all", setNames(regions, regions)))
+        choices = base::c("All Regions" = "all", setNames(regions, regions)))
     })
-    
+
     # Filtered data
     filtered_data <- reactive({
       req(wbes_data())
       data <- wbes_data()$latest
+
+      # Apply region filter
       if (input$region_filter != "all") {
         data <- filter(data, region == input$region_filter)
       }
+
+      # Apply gender/ownership filter
+      if (input$gender != "all") {
+        if (input$gender == "female") {
+          data <- filter(data, female_ownership_pct >= 50)
+        } else if (input$gender == "male") {
+          data <- filter(data, female_ownership_pct < 50)
+        }
+      }
+
       data
     })
     
