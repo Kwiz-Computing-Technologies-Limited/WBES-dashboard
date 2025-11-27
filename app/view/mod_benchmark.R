@@ -18,7 +18,24 @@ ui <- function(id) {
   
   tags$div(
     class = "benchmark-container",
-    
+
+    # CSS for independent dropdown scrolling
+    tags$style(HTML("
+      .filter-column {
+        position: relative;
+        padding: 0 10px;
+      }
+      .filter-column .selectize-dropdown {
+        position: absolute !important;
+        z-index: 9999 !important;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .filter-column .selectize-input {
+        z-index: 1;
+      }
+    ")),
+
     fluidRow(
       column(12,
         tags$div(
@@ -29,7 +46,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Selection Panel
     fluidRow(
       class = "mb-4",
@@ -38,7 +55,7 @@ ui <- function(id) {
           card_header(icon("sliders-h"), "Comparison Settings"),
           card_body(
             fluidRow(
-              column(5,
+              column(5, class = "filter-column",
                 selectizeInput(
                   ns("countries_compare"),
                   "Select Countries (max 10)",
@@ -47,7 +64,7 @@ ui <- function(id) {
                   options = list(maxItems = 10, placeholder = "Choose countries...")
                 )
               ),
-              column(3,
+              column(3, class = "filter-column",
                 selectInput(
                   ns("indicator_select"),
                   "Primary Indicator",
@@ -61,7 +78,7 @@ ui <- function(id) {
                   )
                 )
               ),
-              column(2,
+              column(2, class = "filter-column",
                 selectInput(
                   ns("sort_order"),
                   "Sort By",
@@ -111,14 +128,14 @@ ui <- function(id) {
           card_header(icon("chart-scatter"), "Correlation Analysis"),
           card_body(
             fluidRow(
-              column(6,
+              column(6, class = "filter-column",
                 selectInput(ns("scatter_x"), "X-Axis",
                   choices = c(
                     "Power Outages" = "power_outages_per_month",
                     "Credit Access" = "firms_with_credit_line_pct"
                   ), selected = "power_outages_per_month")
               ),
-              column(6,
+              column(6, class = "filter-column",
                 selectInput(ns("scatter_y"), "Y-Axis",
                   choices = c(
                     "Capacity Utilization" = "capacity_utilization_pct",

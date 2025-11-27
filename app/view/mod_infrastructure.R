@@ -16,7 +16,24 @@ ui <- function(id) {
   
   tags$div(
     class = "infrastructure-container",
-    
+
+    # CSS for independent dropdown scrolling
+    tags$style(HTML("
+      .filter-column {
+        position: relative;
+        padding: 0 10px;
+      }
+      .filter-column .selectize-dropdown {
+        position: absolute !important;
+        z-index: 9999 !important;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .filter-column .selectize-input {
+        z-index: 1;
+      }
+    ")),
+
     fluidRow(
       column(12,
         tags$div(
@@ -27,7 +44,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # KPI Row
     fluidRow(
       class = "mb-4",
@@ -45,13 +62,13 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(4,
+              column(4, class = "filter-column",
                 selectInput(ns("region_filter"), "Region",
                   choices = c("All Regions" = "all"),
                   selected = "all"
                 )
               ),
-              column(4,
+              column(4, class = "filter-column",
                 selectInput(ns("infra_indicator"), "Indicator",
                   choices = c(
                     "Power Outages" = "power_outages_per_month",
@@ -61,7 +78,7 @@ ui <- function(id) {
                   )
                 )
               ),
-              column(4,
+              column(4, class = "filter-column",
                 selectInput(ns("year_filter"), "Year", choices = c("2023"))
               )
             )

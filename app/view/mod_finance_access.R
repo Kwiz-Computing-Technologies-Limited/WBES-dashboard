@@ -16,7 +16,24 @@ ui <- function(id) {
   
   tags$div(
     class = "finance-container",
-    
+
+    # CSS for independent dropdown scrolling
+    tags$style(HTML("
+      .filter-column {
+        position: relative;
+        padding: 0 10px;
+      }
+      .filter-column .selectize-dropdown {
+        position: absolute !important;
+        z-index: 9999 !important;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .filter-column .selectize-input {
+        z-index: 1;
+      }
+    ")),
+
     fluidRow(
       column(12,
         tags$div(
@@ -27,7 +44,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # KPI Row
     fluidRow(
       class = "mb-4",
@@ -45,21 +62,21 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(3,
+              column(3, class = "filter-column",
                 selectInput(ns("region_filter"), "Region",
                   choices = c("All Regions" = "all"))
               ),
-              column(3,
+              column(3, class = "filter-column",
                 selectInput(ns("firm_size"), "Firm Size",
                   choices = c("All Sizes" = "all", "Small (5-19)" = "small",
                               "Medium (20-99)" = "medium", "Large (100+)" = "large"))
               ),
-              column(3,
+              column(3, class = "filter-column",
                 selectInput(ns("sector"), "Sector",
                   choices = c("All Sectors" = "all", "Manufacturing" = "mfg",
                               "Services" = "svc", "Retail" = "retail"))
               ),
-              column(3,
+              column(3, class = "filter-column",
                 selectInput(ns("gender"), "Ownership",
                   choices = c("All" = "all", "Female-Owned" = "female",
                               "Male-Owned" = "male"))
