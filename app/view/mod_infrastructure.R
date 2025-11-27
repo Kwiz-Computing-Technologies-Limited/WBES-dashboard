@@ -2,11 +2,11 @@
 # Infrastructure Constraints Analysis Module
 
 box::use(
-  stats[setNames, predict],
+  stats[setNames, predict, lm],
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
-  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
+  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, add_annotations, config],
   dplyr[filter, arrange, mutate, group_by, summarise]
 )
 
