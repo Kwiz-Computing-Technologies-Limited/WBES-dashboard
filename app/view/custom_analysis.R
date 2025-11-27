@@ -13,7 +13,8 @@ box::use(
           coord_flip, theme_minimal, theme, labs, element_text, ggtitle,
           facet_wrap, scale_fill_manual, scale_color_manual],
   tidyr[pivot_longer],
-  DT[dataTableOutput, renderDataTable, datatable]
+  DT[dataTableOutput, renderDataTable, datatable],
+  stats[setNames]
 )
 
 #' @export

@@ -7,7 +7,8 @@ box::use(
         renderText, textOutput],
   bslib[card, card_header, card_body, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull]
+  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
+  stats[setNames]
 )
 
 #' @export

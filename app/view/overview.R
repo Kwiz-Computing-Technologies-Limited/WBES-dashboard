@@ -9,7 +9,8 @@ box::use(
   bslib[card, card_header, card_body, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers, setView, colorNumeric],
-  dplyr[filter, arrange, desc, mutate, n]
+  dplyr[filter, arrange, desc, mutate, n],
+  stats[setNames]
 )
 
 #' @export
