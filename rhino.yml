@@ -1,7 +1,1 @@
-# World Bank Enterprise Surveys - Business Environment Benchmarking Dashboard
-# Rhino Framework Configuration
-# Theme: kwizresearch.com (Teal: #1B6B5F, Coral: #F49B7A)
-
-# Sass configuration using kwizresearch.com theme
-# Options: "node" (Dart Sass via Node.js) or "r" (R sass package)
 sass: node
