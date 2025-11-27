@@ -1,0 +1,49 @@
+# Application Configuration
+# World Bank Enterprise Surveys - Business Environment Benchmarking Dashboard
+
+default:
+  # Application settings
+  app_name: "WBES Dashboard"
+  app_version: "1.0.0"
+
+  # Data settings
+  data_path: "data/"
+  cache_enabled: true
+
+  # Logging configuration
+  logger:
+    threshold: "INFO"
+    appenders:
+      - console
+
+  # UI settings
+  theme:
+    primary_color: "#1B6B5F"
+    secondary_color: "#F49B7A"
+
+  # Feature flags
+  features:
+    enable_export: true
+    enable_advanced_filters: true
+
+development:
+  # Inherits from default
+  logger:
+    threshold: "DEBUG"
+    appenders:
+      - console
+
+production:
+  # Inherits from default
+  logger:
+    threshold: "WARN"
+    appenders:
+      - console
+      - file
+  cache_enabled: true
+
+testing:
+  # Inherits from default
+  data_path: "tests/testdata/"
+  logger:
+    threshold: "ERROR"
