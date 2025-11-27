@@ -14,7 +14,7 @@ box::use(
           facet_wrap, scale_fill_manual, scale_color_manual],
   tidyr[pivot_longer],
   DT[dataTableOutput, renderDataTable, datatable],
-  stats[setNames],
+  stats[setNames, median],
   utils[head]
 )
 
@@ -154,7 +154,7 @@ ui <- function(id) {
                   ),
                   column(6,
                     textInput(ns("report_author"), "Author/Organization",
-                      value = "Kwiz Research",
+                      value = "Kwiz Computing Technologies",
                       placeholder = "Enter author name")
                   )
                 ),

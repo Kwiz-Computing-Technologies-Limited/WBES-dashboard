@@ -199,15 +199,27 @@ server <- function(id, wbes_data) {
     # World Map
     output$world_map <- renderLeaflet({
       req(filtered())
-      
-      # Country coordinates (sample)
+
+      # All 30 country coordinates
       coords <- data.frame(
         country = c("Kenya", "Nigeria", "South Africa", "Ghana", "Ethiopia",
-                    "India", "Bangladesh", "Brazil", "Mexico", "Poland"),
+                    "Tanzania", "Uganda", "Rwanda", "Senegal", "Cote d'Ivoire",
+                    "Egypt", "Morocco", "Tunisia", "Botswana", "Zambia",
+                    "India", "Bangladesh", "Vietnam", "Indonesia", "Philippines",
+                    "Brazil", "Mexico", "Colombia", "Peru", "Chile",
+                    "Poland", "Turkey", "Romania", "Bulgaria", "Serbia"),
         lat = c(-1.28, 9.08, -30.56, 5.55, 9.15,
-                20.59, 23.68, -14.24, 23.63, 51.92),
+                -6.37, 1.37, -1.94, 14.69, 6.83,
+                26.82, 31.79, 33.89, -22.33, -13.13,
+                20.59, 23.68, 14.06, -0.79, 12.88,
+                -14.24, 23.63, 4.57, -9.19, -35.68,
+                51.92, 38.96, 45.94, 42.73, 44.02),
         lng = c(36.82, 7.40, 22.94, -0.19, 40.49,
-                78.96, 90.36, -51.93, -102.55, 19.14)
+                34.89, 32.29, 29.87, -14.45, -5.55,
+                30.80, -7.09, 9.54, 24.68, 27.85,
+                78.96, 90.36, 108.28, 113.92, 121.77,
+                -51.93, -102.55, -74.30, -75.02, -71.54,
+                19.14, 35.24, 24.97, 25.49, 21.01)
       )
       
       d <- filtered()

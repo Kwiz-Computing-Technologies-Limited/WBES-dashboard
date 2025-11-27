@@ -8,7 +8,7 @@ box::use(
   bslib[card, card_header, card_body, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
-  stats[setNames, reorder],
+  stats[setNames, reorder, lm, predict],
   utils[head]
 )
 
@@ -302,10 +302,16 @@ server <- function(id, wbes_data) {
     # Scatter - Corruption vs Growth
     output$scatter_growth <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.CORR.ZS) & !is.na(IC.FRM.CAPU.ZS))
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CAPU.ZS,
-              type = "scatter", mode = "markers",
+      # Fit linear model for trend line
+      if (nrow(d) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.CORR.ZS, data = d)
+        d$predicted <- predict(fit, newdata = d)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CAPU.ZS,
+              type = "scatter", mode = "markers", name = "Countries",
               text = ~paste0(country, "<br>Corruption: ", round(IC.FRM.CORR.ZS, 1),
                            "%<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1), "%"),
               hoverinfo = "text",
@@ -313,7 +319,18 @@ server <- function(id, wbes_data) {
                            color = ~IC.FRM.CORR.ZS,
                            colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if we have enough data
+      if (nrow(d) > 2 && exists("fit")) {
+        p <- p |> add_trace(x = ~IC.FRM.CORR.ZS, y = ~predicted,
+                           type = "scatter", mode = "lines",
+                           name = "Trend Line",
+                           line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                           hoverinfo = "skip", showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
@@ -326,17 +343,34 @@ server <- function(id, wbes_data) {
     # Scatter - Corruption vs Investment
     output$scatter_investment <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.CORR.ZS) & !is.na(IC.FRM.FINA.ZS))
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.FINA.ZS,
-              type = "scatter", mode = "markers",
+      # Fit linear model for trend line
+      if (nrow(d) > 2) {
+        fit <- lm(IC.FRM.FINA.ZS ~ IC.FRM.CORR.ZS, data = d)
+        d$predicted <- predict(fit, newdata = d)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.FINA.ZS,
+              type = "scatter", mode = "markers", name = "Countries",
               text = ~paste0(country, "<br>Corruption: ", round(IC.FRM.CORR.ZS, 1),
                            "%<br>Finance Access: ", round(IC.FRM.FINA.ZS, 1), "%"),
               hoverinfo = "text",
               marker = list(size = 10,
                            color = ~region,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if we have enough data
+      if (nrow(d) > 2 && exists("fit")) {
+        p <- p |> add_trace(x = ~IC.FRM.CORR.ZS, y = ~predicted,
+                           type = "scatter", mode = "lines",
+                           name = "Trend Line",
+                           line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                           hoverinfo = "skip", showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Finance as Obstacle (%)"),
@@ -367,20 +401,38 @@ server <- function(id, wbes_data) {
     # Bribery scatter
     output$bribery_scatter <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.BRIB.ZS) & !is.na(IC.FRM.CORR.ZS))
 
-      plot_ly(d, x = ~IC.FRM.BRIB.ZS, y = ~IC.FRM.CORR.ZS,
-              type = "scatter", mode = "markers",
+      # Fit linear model for trend line
+      if (nrow(d) > 2) {
+        fit <- lm(IC.FRM.CORR.ZS ~ IC.FRM.BRIB.ZS, data = d)
+        d$predicted <- predict(fit, newdata = d)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.BRIB.ZS, y = ~IC.FRM.CORR.ZS,
+              type = "scatter", mode = "markers", name = "Countries",
               text = ~country,
               marker = list(size = 12,
                            color = ~income_group,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if we have enough data
+      if (nrow(d) > 2 && exists("fit")) {
+        p <- p |> add_trace(x = ~IC.FRM.BRIB.ZS, y = ~predicted,
+                           type = "scatter", mode = "lines",
+                           name = "Trend Line",
+                           line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                           hoverinfo = "skip", showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Bribery Incidence (%)"),
           yaxis = list(title = "Corruption as Obstacle (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE
         ) |>
         config(displayModeBar = FALSE)
     })

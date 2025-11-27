@@ -152,7 +152,7 @@ ui <- page_navbar(
       href = "https://kwizresearch.com",
       target = "_blank",
       class = "nav-link",
-      tags$span(class = "text-secondary-coral", "Kwiz Research")
+      tags$span(class = "text-secondary-coral", "Kwiz Computing Technologies")
     )
   ),
 
