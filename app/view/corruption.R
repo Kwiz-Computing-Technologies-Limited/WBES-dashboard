@@ -56,13 +56,33 @@ ui <- function(id) {
       column(8,
         card(
           card_header(icon("chart-bar"), " Corruption by Country"),
-          card_body(plotlyOutput(ns("bar_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("bar_chart"), height = "450px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-danger",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "This horizontal bar chart ranks countries by the percentage of firms reporting corruption as a major obstacle. Darker red colors indicate higher corruption perception. Countries at the top face more severe governance challenges that impede business operations."
+              )
+            )
+          )
         )
       ),
       column(4,
         card(
           card_header(icon("globe-africa"), " Regional Comparison"),
-          card_body(plotlyOutput(ns("regional_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("regional_chart"), height = "450px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-warning",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "The Governance Severity Index combines corruption perception and bribery incidence to provide a composite measure. Higher scores indicate regions where governance challenges are most acute."
+              )
+            )
+          )
         )
       )
     ),
@@ -73,13 +93,33 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("project-diagram"), " Corruption vs. Business Growth"),
-          card_body(plotlyOutput(ns("scatter_growth"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("scatter_growth"), height = "350px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-info",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "This scatter plot reveals the negative relationship between corruption and capacity utilization. Countries with higher corruption (right side) tend to have lower capacity utilization, indicating that governance issues directly impact firm productivity."
+              )
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-line"), " Corruption vs. Investment"),
-          card_body(plotlyOutput(ns("scatter_investment"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("scatter_investment"), height = "350px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-success",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "This chart shows how corruption and finance access obstacles tend to co-occur. Countries with high corruption often also face challenges in accessing finance, suggesting broader institutional weaknesses. Each point represents a country, colored by region."
+              )
+            )
+          )
         )
       )
     ),
@@ -90,13 +130,33 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("layer-group"), " Corruption by Income Group"),
-          card_body(plotlyOutput(ns("income_box"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("income_box"), height = "350px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-primary",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "Box plots show the distribution of corruption perception across income groups. The median line, box (25th-75th percentile), and whiskers reveal that lower-income countries tend to report higher and more variable corruption levels."
+              )
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-area"), " Bribery Depth vs. Breadth"),
-          card_body(plotlyOutput(ns("bribery_scatter"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("bribery_scatter"), height = "350px"),
+            tags$div(
+              class = "mt-3 p-2 bg-light border-start border-4 border-secondary",
+              tags$p(
+                class = "mb-0 small text-muted",
+                tags$strong("Interpretation: "),
+                "This scatter plot compares bribery incidence (x-axis) with corruption perception (y-axis). Points in the upper-right quadrant face both high bribery frequency and high corruption perception, indicating systemic governance challenges."
+              )
+            )
+          )
         )
       )
     ),
