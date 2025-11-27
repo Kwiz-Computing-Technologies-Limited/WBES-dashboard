@@ -153,11 +153,24 @@ server <- function(id, wbes_data) {
     # Update country choices
     observeEvent(wbes_data(), {
       req(wbes_data())
-      countries <- sort(wbes_data()$countries)
+      countries <- base::sort(wbes_data()$countries)
+
+      # Default to East African countries
+      east_african_countries <- base::c("Kenya", "Tanzania", "Uganda", "Rwanda",
+                                        "Burundi", "Ethiopia", "Somalia", "South Sudan")
+      available_ea <- countries[countries %in% east_african_countries]
+
+      # If we have EA countries, use them; otherwise use first 5 alphabetically
+      default_selection <- if (base::length(available_ea) > 0) {
+        available_ea[1:base::min(5, base::length(available_ea))]
+      } else {
+        countries[1:base::min(5, base::length(countries))]
+      }
+
       shiny::updateSelectizeInput(
         session, "countries_compare",
         choices = setNames(countries, countries),
-        selected = countries[1:min(5, length(countries))]
+        selected = default_selection
       )
     })
     
@@ -190,9 +203,9 @@ server <- function(id, wbes_data) {
         "Latin America & Caribbean" = "#17a2b8",
         "Europe & Central Asia" = "#6C757D"
       )
-      
+
       data$color <- colors[data$region]
-      data$country <- factor(data$country, levels = data$country)
+      data$country <- base::factor(data$country, levels = data$country)
       
       plot_ly(data,
               x = ~country,
@@ -203,7 +216,7 @@ server <- function(id, wbes_data) {
               hovertemplate = "%{x}<br>%{y:.1f}<extra>%{fullData.name}</extra>") |>
         layout(
           xaxis = list(title = "", tickangle = -45),
-          yaxis = list(title = gsub("_", " ", tools::toTitleCase(indicator))),
+          yaxis = list(title = base::gsub("_", " ", tools::toTitleCase(indicator))),
           legend = list(orientation = "h", y = -0.25),
           margin = list(b = 120),
           paper_bgcolor = "rgba(0,0,0,0)",
@@ -216,9 +229,9 @@ server <- function(id, wbes_data) {
     output$regional_pie <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      
-      regional_counts <- as.data.frame(table(data$region))
-      names(regional_counts) <- c("region", "count")
+
+      regional_counts <- base::as.data.frame(base::table(data$region))
+      base::names(regional_counts) <- base::c("region", "count")
       
       plot_ly(regional_counts,
               labels = ~region,
@@ -249,8 +262,8 @@ server <- function(id, wbes_data) {
               hovertemplate = "%{text}<br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
               marker = list(size = 10, opacity = 0.7)) |>
         layout(
-          xaxis = list(title = gsub("_", " ", input$scatter_x)),
-          yaxis = list(title = gsub("_", " ", input$scatter_y)),
+          xaxis = list(title = base::gsub("_", " ", input$scatter_x)),
+          yaxis = list(title = base::gsub("_", " ", input$scatter_y)),
           showlegend = FALSE,
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
