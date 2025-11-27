@@ -10,7 +10,8 @@ box::use(
   purrr[map_dfr, possibly],
   readr[read_csv, write_csv],
   haven[read_dta],
-  logger[log_info, log_warn, log_error]
+  logger[log_info, log_warn, log_error],
+  stats[runif, setNames]
 )
 
 # World Bank API Base URL
