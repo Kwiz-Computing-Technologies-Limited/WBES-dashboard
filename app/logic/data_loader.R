@@ -234,8 +234,8 @@ load_sample_data <- function() {
   regional_data <- aggregate(
     base::cbind(
       power_outages_per_month, avg_outage_duration_hrs,
-      firms_with_credit_line_pct, bribery_incidence_pct,
-      capacity_utilization_pct, female_ownership_pct
+      firms_with_bank_account_pct, firms_with_credit_line_pct,
+      bribery_incidence_pct, capacity_utilization_pct, female_ownership_pct
     ) ~ region,
     data = latest_data,
     FUN = base::mean
