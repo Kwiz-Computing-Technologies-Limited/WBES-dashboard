@@ -7,7 +7,7 @@ box::use(
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select],
-  stats[setNames],
+  stats[setNames, lm, predict],
   utils[head]
 )
 
@@ -258,11 +258,36 @@ server <- function(id, wbes_data) {
       regional <- wbes_data()$regional
       if (is.null(regional)) return(NULL)
 
-      plot_ly(regional, x = ~IC.FRM.FEMW.ZS, y = ~IC.FRM.FEMO.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- regional |>
+        filter(!is.na(IC.FRM.FEMW.ZS) & !is.na(IC.FRM.FEMO.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.FEMO.ZS ~ IC.FRM.FEMW.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(regional, x = ~IC.FRM.FEMW.ZS, y = ~IC.FRM.FEMO.ZS,
               type = "scatter", mode = "markers+text",
+              name = "Regions",
               text = ~region,
               textposition = "top center",
-              marker = list(size = 15, color = "#1B6B5F", opacity = 0.7)) |>
+              marker = list(size = 15, color = "#1B6B5F", opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.FEMW.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Female Workers (%)"),
           yaxis = list(title = "Female Ownership (%)"),
@@ -277,14 +302,39 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.WKFC.ZS) & !is.na(IC.FRM.CAPU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.WKFC.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 10,
                            color = ~IC.FRM.FEMW.ZS,
                            colorscale = list(c(0, "#dc3545"), c(0.5, "#F4A460"), c(1, "#2E7D32")),
                            colorbar = list(title = "Female<br>Workers (%)"),
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.WKFC.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Workforce as Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
@@ -363,12 +413,37 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.FEMO.ZS, y = ~IC.FRM.CAPU.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.FEMO.ZS) & !is.na(IC.FRM.CAPU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.FEMO.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.FEMO.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 10,
                            color = ~region,
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.FEMO.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Female Ownership (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),

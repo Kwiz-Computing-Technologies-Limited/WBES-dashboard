@@ -6,8 +6,8 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when],
-  stats[setNames, reorder],
+  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
+  stats[setNames, reorder, lm, predict],
   utils[head]
 )
 
@@ -283,15 +283,40 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.CRIM.ZS) & !is.na(IC.FRM.CAPU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.CRIM.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~paste0(country, "<br>Crime: ", round(IC.FRM.CRIM.ZS, 1),
                            "%<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1), "%"),
               hoverinfo = "text",
               marker = list(size = 10,
                            color = ~IC.FRM.CRIM.ZS,
                            colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.CRIM.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Crime as Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
@@ -328,13 +353,38 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.CRIM.ZS) & !is.na(IC.FRM.SECU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.SECU.ZS ~ IC.FRM.CRIM.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 12,
                            color = ~region,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.CRIM.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Crime as Obstacle (%)"),
           yaxis = list(title = "Security Costs (% of Sales)"),
@@ -349,12 +399,37 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.CORR.ZS) & !is.na(IC.FRM.CRIM.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CRIM.ZS ~ IC.FRM.CORR.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 10,
                            color = ~income_group,
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.CORR.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Crime Obstacle (%)"),

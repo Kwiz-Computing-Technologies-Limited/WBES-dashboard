@@ -14,7 +14,7 @@ box::use(
           facet_wrap, scale_fill_manual, scale_color_manual],
   tidyr[pivot_longer],
   DT[dataTableOutput, renderDataTable, datatable],
-  stats[setNames, median],
+  stats[setNames, median, lm, predict],
   utils[head]
 )
 
@@ -467,10 +467,41 @@ server <- function(id, wbes_data) {
     generate_scatter_plot <- function(data, ind1, ind2) {
       if (!ind1 %in% names(data) || !ind2 %in% names(data)) return(NULL)
 
-      plot_ly(data, x = ~get(ind1), y = ~get(ind2),
+      # Filter data for trend line (remove NAs)
+      d_trend <- data |>
+        filter(!is.na(get(ind1)) & !is.na(get(ind2)))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- tryCatch({
+          lm(get(ind2) ~ get(ind1), data = d_trend)
+        }, error = function(e) NULL)
+
+        if (!is.null(fit)) {
+          d_trend$predicted <- predict(fit, newdata = d_trend)
+        }
+      }
+
+      p <- plot_ly(data, x = ~get(ind1), y = ~get(ind2),
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
-              marker = list(size = 10, color = ~region, opacity = 0.7)) |>
+              marker = list(size = 10, color = ~region, opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~get(ind1), y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE,
+                   inherit = FALSE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = ind1),
           yaxis = list(title = ind2),

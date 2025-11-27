@@ -7,7 +7,7 @@ box::use(
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
-  stats[setNames, reorder],
+  stats[setNames, reorder, lm, predict],
   utils[head]
 )
 
@@ -267,13 +267,38 @@ server <- function(id, wbes_data) {
           )
         )
 
-      plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.CAPU.ZS) & !is.na(IC.FRM.EXPRT.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.EXPRT.ZS ~ IC.FRM.CAPU.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 12,
                            color = ~income_group,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.CAPU.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Capacity Utilization (%)"),
           yaxis = list(title = "Export Participation (%)"),
@@ -293,15 +318,40 @@ server <- function(id, wbes_data) {
           total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3
         )
 
-      plot_ly(d, x = ~total_obstacles, y = ~IC.FRM.CAPU.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(total_obstacles) & !is.na(IC.FRM.CAPU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ total_obstacles, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~total_obstacles, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~paste0(country, "<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1),
                            "%<br>Obstacles: ", round(total_obstacles, 1), "%"),
               hoverinfo = "text",
               marker = list(size = 10,
                            color = ~IC.FRM.CAPU.ZS,
                            colorscale = list(c(0, "#dc3545"), c(0.5, "#F4A460"), c(1, "#2E7D32")),
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~total_obstacles, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Business Obstacles Index (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
@@ -367,12 +417,37 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.INFRA.ZS, y = ~IC.FRM.EXPRT.ZS,
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.INFRA.ZS) & !is.na(IC.FRM.EXPRT.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.EXPRT.ZS ~ IC.FRM.INFRA.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.INFRA.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 10,
                            color = ~region,
-                           opacity = 0.7)) |>
+                           opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.INFRA.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Infrastructure Obstacle (%)"),
           yaxis = list(title = "Export Participation (%)"),

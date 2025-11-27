@@ -5,10 +5,10 @@ box::use(
   shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, p,
         fluidRow, column, selectInput, selectizeInput, actionButton, observeEvent],
   bslib[card, card_header, card_body],
-  plotly[plotlyOutput, renderPlotly, plot_ly, layout, config],
+  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, desc, any_of],
-  stats[setNames]
+  stats[setNames, lm, predict]
 )
 
 #' @export
@@ -138,11 +138,37 @@ server <- function(id, wbes_data) {
     output$scatter_plot <- renderPlotly({
       req(wbes_data())
       d <- wbes_data()$latest
-      
-      plot_ly(d, x = ~IC.FRM.OUTG.ZS, y = ~IC.FRM.CAPU.ZS,
+
+      # Filter data for trend line (remove NAs)
+      d_trend <- d |>
+        filter(!is.na(IC.FRM.OUTG.ZS) & !is.na(IC.FRM.CAPU.ZS))
+
+      # Fit linear model for trend line
+      fit <- NULL
+      if (nrow(d_trend) > 2) {
+        fit <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.OUTG.ZS, data = d_trend)
+        d_trend$predicted <- predict(fit, newdata = d_trend)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.OUTG.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               color = ~region, text = ~country,
-              marker = list(size = 10, opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line if model exists
+      if (!is.null(fit) && nrow(d_trend) > 2) {
+        p <- p |>
+          add_trace(data = d_trend, x = ~IC.FRM.OUTG.ZS, y = ~predicted,
+                   type = "scatter", mode = "lines",
+                   name = "Trend Line",
+                   line = list(color = "#1B6B5F", width = 2, dash = "dash"),
+                   hoverinfo = "skip",
+                   showlegend = TRUE,
+                   inherit = FALSE)
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Power Outages Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),

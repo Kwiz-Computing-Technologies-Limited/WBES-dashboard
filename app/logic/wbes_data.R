@@ -123,23 +123,23 @@ WBES_INDICATORS <- list(
 #' 1. Local microdata (.dta files) if present
 #' 2. Cached API data if available
 #' 3. Fresh API data
-#' 4. Sample data as fallback
+#' 4. Sample data as fallback (only if use_sample_data is true in config)
 #' @param data_path Path to data directory
 #' @param use_cache Whether to use cached data
 #' @param cache_hours Hours before cache expires
 #' @return List with WBES data components
 #' @export
 load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 24) {
-  
+
   log_info("Loading WBES data...")
-  
+
   # Check for local microdata first
   dta_files <- list.files(data_path, pattern = "\\.dta$", full.names = TRUE)
   if (length(dta_files) > 0) {
     log_info("Found local microdata files")
     return(load_microdata(dta_files))
   }
-  
+
   # Check for cached API data
   cache_file <- file.path(data_path, "wbes_cache.rds")
   if (use_cache && file.exists(cache_file)) {
@@ -149,23 +149,30 @@ load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 
       return(readRDS(cache_file))
     }
   }
-  
+
   # Try to fetch from API
+  log_info("Fetching data from World Bank API...")
   api_data <- fetch_all_indicators()
   if (!is.null(api_data)) {
     # Save to cache
     tryCatch({
       dir.create(data_path, showWarnings = FALSE, recursive = TRUE)
       saveRDS(api_data, cache_file)
-      log_info("Cached API data")
+      log_info("Successfully cached API data")
     }, error = function(e) {
       log_warn(paste("Could not cache data:", e$message))
     })
+    log_info("Successfully loaded data from World Bank API")
     return(api_data)
   }
-  
-  # Fallback to sample data
-  log_warn("Using sample data")
+
+  # Check if we should use sample data
+  log_warn("API fetch failed. To use actual WBES data, please:")
+  log_warn("  1. Download .dta microdata files from enterprisesurveys.org")
+  log_warn("  2. Place them in the 'data/' directory")
+  log_warn("  OR ensure internet connectivity for API access")
+  log_warn("Falling back to sample data for demonstration purposes")
+
   return(load_sample_data())
 }
 
