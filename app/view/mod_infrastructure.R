@@ -77,6 +77,14 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Countries ranked by infrastructure quality. Higher values indicate worse conditions (more outages, longer durations). ",
+              tags$em("Green = better performance, Red = more challenges.")
+            ),
             plotlyOutput(ns("infra_bar_chart"), height = "450px")
           )
         )
@@ -85,12 +93,19 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Power Source Distribution"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "How businesses source electricity. Mixed sources and generators indicate grid unreliability."
+            ),
             plotlyOutput(ns("power_source_pie"), height = "450px")
           )
         )
       )
     ),
-    
+
     # Secondary Analysis
     fluidRow(
       class = "mb-4",
@@ -98,6 +113,14 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), "Outages vs. Productivity"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Relationship between power outages and capacity utilization. ",
+              "Downward trend indicates that more frequent outages reduce production efficiency."
+            ),
             plotlyOutput(ns("outage_productivity"), height = "350px")
           )
         )
@@ -106,18 +129,34 @@ ui <- function(id) {
         card(
           card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Infrastructure problems as % of annual sales. Lost production from outages costs businesses ~4% of revenue annually."
+            ),
             plotlyOutput(ns("cost_chart"), height = "350px")
           )
         )
       )
     ),
-    
+
     # Regional Heatmap
     fluidRow(
       column(12,
         card(
           card_header(icon("th"), "Regional Infrastructure Heatmap"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Intensity map comparing infrastructure challenges across regions. ",
+              tags$em("Darker red = more severe problems. "),
+              "Sub-Saharan Africa and South Asia typically face the most significant infrastructure constraints."
+            ),
             plotlyOutput(ns("infra_heatmap"), height = "400px")
           )
         )

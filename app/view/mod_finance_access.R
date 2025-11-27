@@ -77,6 +77,15 @@ ui <- function(id) {
         card(
           card_header(icon("credit-card"), "Financial Products Access by Region"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Regional comparison of firms with bank accounts and credit lines. ",
+              tags$em("Highlights financial inclusion disparities - "),
+              "lower access correlates with slower business growth."
+            ),
             plotlyOutput(ns("finance_by_region"), height = "400px")
           )
         )
@@ -85,12 +94,20 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Why businesses don't seek credit. High interest rates and complex requirements are major barriers. ",
+              "Some firms self-exclude believing they'll be rejected."
+            ),
             plotlyOutput(ns("no_apply_reasons"), height = "400px")
           )
         )
       )
     ),
-    
+
     # SME Finance Gap
     fluidRow(
       class = "mb-4",
@@ -98,6 +115,14 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), "SME Finance Gap by Country"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Unmet financing needs of small/medium enterprises as % of GDP. ",
+              "Larger gaps indicate credit markets aren't serving SMEs, constraining economic growth."
+            ),
             plotlyOutput(ns("sme_finance_gap"), height = "400px")
           )
         )
@@ -106,12 +131,20 @@ ui <- function(id) {
         card(
           card_header(icon("venus"), "Gender Gap in Finance Access"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Difference in credit access between male and female-owned firms. ",
+              "Positive values = gender gap exists."
+            ),
             plotlyOutput(ns("gender_gap"), height = "400px")
           )
         )
       )
     ),
-    
+
     # Collateral Analysis
     fluidRow(
       class = "mb-4",
@@ -119,6 +152,15 @@ ui <- function(id) {
         card(
           card_header(icon("landmark"), "Collateral Requirements"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Average collateral needed as % of loan value. ",
+              tags$em("Values over 100% = banks require more collateral than loan amount, "),
+              "making credit inaccessible for asset-poor businesses."
+            ),
             plotlyOutput(ns("collateral_chart"), height = "350px")
           )
         )
@@ -127,6 +169,13 @@ ui <- function(id) {
         card(
           card_header(icon("clock"), "Loan Processing Time"),
           card_body(
+            tags$p(
+              class = "text-muted mb-3",
+              style = "font-size: 0.9em;",
+              icon("info-circle"), " ",
+              tags$strong("What this shows: "),
+              "Days to approve/disburse loans. Longer times mean businesses miss opportunities and incur costs while waiting."
+            ),
             plotlyOutput(ns("processing_time"), height = "350px")
           )
         )
