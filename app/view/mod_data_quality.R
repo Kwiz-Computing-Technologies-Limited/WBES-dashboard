@@ -8,7 +8,7 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, HTML, renderPrint,
         verbatimTextOutput, downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
-  plotly[plotlyOutput, renderPlotly, plot_ly, layout, config],
+  plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_annotations],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, case_when]
 )

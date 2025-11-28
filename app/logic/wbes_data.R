@@ -5,7 +5,7 @@
 box::use(
   httr[GET, content, status_code, http_error],
   jsonlite[fromJSON],
-  dplyr[...],
+  dplyr[...],  # ... imports all dplyr functions including first, group_by, summarise, across, filter, etc.
   tidyr[pivot_wider, pivot_longer],
   purrr[map_dfr, possibly],
   readr[read_csv, write_csv],
@@ -403,10 +403,27 @@ load_microdata <- function(dta_files) {
   countries <- extract_countries_from_microdata(combined)
   years <- extract_years_from_microdata(combined)
 
+  # CREATE COUNTRY-LEVEL AGGREGATES for maps and charts
+  country_aggregates <- processed |>
+    group_by(country, country_code = a0) |>
+    summarise(
+      across(c(power_outages_per_month, avg_outage_duration_hrs, firms_with_generator_pct,
+               firms_with_credit_line_pct, firms_with_bank_account_pct, loan_rejection_rate_pct,
+               collateral_required_pct, bribery_incidence_pct, corruption_obstacle_pct,
+               capacity_utilization_pct, export_share_pct, export_firms_pct,
+               female_ownership_pct, female_workers_pct, crime_obstacle_pct, security_costs_pct),
+             ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first(region),
+      income_group = first(income_group),
+      sample_size = n(),
+      .groups = "drop"
+    ) |>
+    filter(!is.na(country_code))
+
   result <- list(
     raw = combined,
     processed = processed,
-    latest = processed,  # For compatibility
+    latest = country_aggregates,  # Country-level aggregates for maps/charts
     countries = countries,
     country_codes = unique(combined$a0) |> na.omit() |> as.character(),
     years = years,
