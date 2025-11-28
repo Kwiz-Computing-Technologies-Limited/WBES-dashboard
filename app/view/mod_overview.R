@@ -8,7 +8,8 @@ box::use(
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
- dplyr[filter, arrange, desc, mutate, summarise, group_by, n]
+ dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
+ stats[setNames]
 )
 
 #' @export

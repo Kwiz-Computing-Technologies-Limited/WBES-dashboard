@@ -628,33 +628,44 @@ load_sample_data <- function() {
   
   panel <- panel |>
     mutate(
-      # Infrastructure
+      # Infrastructure - World Bank codes
       IC.FRM.OUTG.ZS = round(base::pmin(100, runif(n, 15, 45) * ssa_bonus), 1),
       IC.FRM.ELEC.ZS = round(base::pmin(100, runif(n, 20, 50) * ssa_bonus), 1),
       IC.FRM.INFRA.ZS = round(base::pmin(100, runif(n, 15, 40) * ssa_bonus), 1),
-      
-      # Access to Finance
+
+      # Access to Finance - World Bank codes
       IC.FRM.FINA.ZS = round(runif(n, 20, 55), 1),
       IC.FRM.BANK.ZS = round(runif(n, 75, 98), 1),
       IC.FRM.CRED.ZS = round(runif(n, 15, 50), 1),
-      
-      # Corruption
+
+      # Corruption - World Bank codes
       IC.FRM.CORR.ZS = round(runif(n, 10, 45), 1),
       IC.FRM.BRIB.ZS = round(runif(n, 8, 35), 1),
-      
-      # Workforce
+
+      # Workforce - World Bank codes
       IC.FRM.WKFC.ZS = round(runif(n, 15, 45), 1),
       IC.FRM.FEMW.ZS = round(runif(n, 20, 50), 1),
       IC.FRM.FEMO.ZS = round(runif(n, 10, 45), 1),
-      
-      # Performance
+
+      # Performance - World Bank codes
       IC.FRM.CAPU.ZS = round(runif(n, 55, 85), 1),
       IC.FRM.EXPRT.ZS = round(runif(n, 5, 35), 1),
-      
-      # Crime
+
+      # Crime - World Bank codes
       IC.FRM.CRIM.ZS = round(runif(n, 10, 40), 1),
       IC.FRM.SECU.ZS = round(runif(n, 1, 5), 2),
-      
+
+      # Friendly column names for compatibility
+      power_outages_per_month = round(runif(n, 0.5, 15), 1),
+      avg_outage_duration_hrs = round(runif(n, 2, 12), 1),
+      firms_with_generator_pct = round(runif(n, 20, 80), 1),
+      firms_with_credit_line_pct = round(runif(n, 15, 65), 1),
+      collateral_required_pct = round(runif(n, 40, 95), 1),
+      bribery_incidence_pct = round(runif(n, 5, 45), 1),
+      capacity_utilization_pct = round(runif(n, 55, 90), 1),
+      export_share_pct = round(runif(n, 5, 40), 1),
+      female_ownership_pct = round(runif(n, 10, 50), 1),
+
       # Sample metadata
       sample_size = round(runif(n, 150, 1500)),
       response_rate = round(runif(n, 45, 85), 1),

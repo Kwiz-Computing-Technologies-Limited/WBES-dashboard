@@ -6,7 +6,8 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, mutate, group_by, summarise]
+  dplyr[filter, arrange, mutate, group_by, summarise],
+  stats[setNames]
 )
 
 #' @export

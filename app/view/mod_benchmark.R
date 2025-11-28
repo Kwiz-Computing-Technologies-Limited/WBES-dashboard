@@ -3,12 +3,13 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
-        fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput, 
+        fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
         observeEvent, actionButton],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate, desc]
+  dplyr[filter, select, arrange, mutate, desc],
+  stats[setNames]
 )
 
 #' @export
@@ -107,7 +108,7 @@ ui <- function(id) {
       ),
       column(6,
         card(
-          card_header(icon("chart-scatter"), "Correlation Analysis"),
+          card_header(icon("chart-line"), "Correlation Analysis"),
           card_body(
             fluidRow(
               column(6,
