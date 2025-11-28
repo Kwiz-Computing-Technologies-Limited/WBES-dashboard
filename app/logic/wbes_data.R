@@ -10,7 +10,9 @@ box::use(
   purrr[map_dfr, possibly],
   readr[read_csv, write_csv],
   haven[read_dta],
-  logger[log_info, log_warn, log_error]
+  logger[log_info, log_warn, log_error],
+  utils[unzip, unlink],
+  stats[runif, setNames]
 )
 
 # World Bank API Base URL
@@ -564,8 +566,8 @@ add_country_metadata_to_microdata <- function(data) {
 #' @return Sample data list
 #' @export
 load_sample_data <- function() {
-  
-  set.seed(42)
+
+  base::set.seed(42)
   
   # African countries focus (aligned with your work)
   countries <- data.frame(
@@ -627,9 +629,9 @@ load_sample_data <- function() {
   panel <- panel |>
     mutate(
       # Infrastructure
-      IC.FRM.OUTG.ZS = round(pmin(100, runif(n, 15, 45) * ssa_bonus), 1),
-      IC.FRM.ELEC.ZS = round(pmin(100, runif(n, 20, 50) * ssa_bonus), 1),
-      IC.FRM.INFRA.ZS = round(pmin(100, runif(n, 15, 40) * ssa_bonus), 1),
+      IC.FRM.OUTG.ZS = round(base::pmin(100, runif(n, 15, 45) * ssa_bonus), 1),
+      IC.FRM.ELEC.ZS = round(base::pmin(100, runif(n, 20, 50) * ssa_bonus), 1),
+      IC.FRM.INFRA.ZS = round(base::pmin(100, runif(n, 15, 40) * ssa_bonus), 1),
       
       # Access to Finance
       IC.FRM.FINA.ZS = round(runif(n, 20, 55), 1),
