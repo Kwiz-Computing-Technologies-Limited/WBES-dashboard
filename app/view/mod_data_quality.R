@@ -4,8 +4,8 @@
 # Reference: Kwiz Research Blog on Data Quality Assessment
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, h5, p, span, br, hr, pre, code,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, HTML, renderPrint,
+  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, h5, p, span, strong, br, hr, pre, code,
+        ul, ol, li, fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, HTML, renderPrint,
         verbatimTextOutput, downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config],
