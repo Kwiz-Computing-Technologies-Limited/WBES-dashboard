@@ -2,7 +2,7 @@
 # Custom Analysis Configuration & Report Generator Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, hr,
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, h5, p, hr,
         fluidRow, column, selectInput, checkboxGroupInput, sliderInput,
         actionButton, downloadButton, renderUI, uiOutput, observeEvent,
         renderPlot, plotOutput, textInput, dateInput, radioButtons, downloadHandler],
