@@ -1,16 +1,17 @@
-<<<<<<< HEAD
-rhino: "1.9.0"
-sass: node
-test:
-  r: testthat
-  e2e: cypress
-legacy_entrypoint: box_top_level
-=======
 # World Bank Enterprise Surveys - Business Environment Benchmarking Dashboard
 # Rhino Framework Configuration
 # Theme: kwizresearch.com (Teal: #1B6B5F, Coral: #F49B7A)
 
+rhino: "1.9.0"
+
 # Sass configuration using kwizresearch.com theme
 # Options: "node" (Dart Sass via Node.js) or "r" (R sass package)
 sass: node
->>>>>>> origin/main
+
+# Testing configuration
+test:
+  r: testthat
+  e2e: cypress
+
+# Legacy entrypoint for box module system
+legacy_entrypoint: box_top_level
