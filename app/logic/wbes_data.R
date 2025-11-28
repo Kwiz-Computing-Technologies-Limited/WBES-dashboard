@@ -660,11 +660,18 @@ load_sample_data <- function() {
       avg_outage_duration_hrs = round(runif(n, 2, 12), 1),
       firms_with_generator_pct = round(runif(n, 20, 80), 1),
       firms_with_credit_line_pct = round(runif(n, 15, 65), 1),
+      firms_with_bank_account_pct = round(runif(n, 75, 98), 1),
+      loan_rejection_rate_pct = round(runif(n, 10, 40), 1),
       collateral_required_pct = round(runif(n, 40, 95), 1),
       bribery_incidence_pct = round(runif(n, 5, 45), 1),
+      corruption_obstacle_pct = round(runif(n, 10, 45), 1),
       capacity_utilization_pct = round(runif(n, 55, 90), 1),
       export_share_pct = round(runif(n, 5, 40), 1),
+      export_firms_pct = round(runif(n, 5, 35), 1),
       female_ownership_pct = round(runif(n, 10, 50), 1),
+      female_workers_pct = round(runif(n, 20, 50), 1),
+      crime_obstacle_pct = round(runif(n, 10, 40), 1),
+      security_costs_pct = round(runif(n, 1, 5), 2),
 
       # Sample metadata
       sample_size = round(runif(n, 150, 1500)),

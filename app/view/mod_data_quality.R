@@ -10,7 +10,7 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate]
+  dplyr[filter, select, arrange, mutate, case_when]
 )
 
 #' @export
