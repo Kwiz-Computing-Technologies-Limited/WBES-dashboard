@@ -2,7 +2,7 @@
 # About Page Module
 
 box::use(
-  shiny[moduleServer, NS, tags, icon, div, h2, h3, h4, p, span, a, br, hr,
+  shiny[moduleServer, NS, tags, icon, div, h2, h3, h4, h5, p, span, a, br, hr,
         fluidRow, column, HTML],
   bslib[card, card_header, card_body]
 )
