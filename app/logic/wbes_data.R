@@ -11,7 +11,7 @@ box::use(
   readr[read_csv, write_csv],
   haven[read_dta],
   logger[log_info, log_warn, log_error],
-  utils[unzip, unlink],
+  utils[unzip],
   stats[runif, setNames]
 )
 
@@ -346,7 +346,7 @@ load_from_zip <- function(zip_file, data_path) {
   }, error = function(e) {
     log_error(paste("Error extracting/loading from zip:", e$message))
     # Cleanup on error
-    unlink(extract_dir, recursive = TRUE)
+    base::unlink(extract_dir, recursive = TRUE)
     return(load_sample_data())
   })
 }

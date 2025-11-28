@@ -6,6 +6,10 @@ default:
   app_name: "WBES Business Environment Dashboard"
   app_version: "1.0.0"
 
+  # Logging settings
+  rhino_log_level: "INFO"
+  rhino_log_file: "app.log"
+
   # Data settings
   data_path: "data/"
   use_cache: TRUE
@@ -30,8 +34,10 @@ development:
   # Development-specific settings (inherits from default)
   debug: TRUE
   auto_reload: TRUE
+  rhino_log_level: "DEBUG"
 
 production:
   # Production-specific settings (inherits from default)
   debug: FALSE
   cache_hours: 168  # 1 week in production
+  rhino_log_level: "WARN"
