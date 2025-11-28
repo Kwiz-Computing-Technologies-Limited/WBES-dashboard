@@ -17,6 +17,11 @@ box::use(
   app/view/mod_benchmark,
   app/view/mod_infrastructure,
   app/view/mod_finance_access,
+  app/view/mod_corruption,
+  app/view/mod_workforce,
+  app/view/mod_performance,
+  app/view/mod_crime,
+  app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
   app/logic/wbes_data[load_wbes_data]
@@ -99,6 +104,41 @@ ui <- function(request) {
       value = "finance",
       icon = icon("university"),
       mod_finance_access$ui("finance")
+    ),
+
+    nav_panel(
+      title = "Corruption",
+      value = "corruption",
+      icon = icon("balance-scale"),
+      mod_corruption$ui("corruption")
+    ),
+
+    nav_panel(
+      title = "Workforce",
+      value = "workforce",
+      icon = icon("users"),
+      mod_workforce$ui("workforce")
+    ),
+
+    nav_panel(
+      title = "Performance",
+      value = "performance",
+      icon = icon("chart-line"),
+      mod_performance$ui("performance")
+    ),
+
+    nav_panel(
+      title = "Crime & Security",
+      value = "crime",
+      icon = icon("shield-alt"),
+      mod_crime$ui("crime")
+    ),
+
+    nav_panel(
+      title = "Custom Analysis",
+      value = "custom_analysis",
+      icon = icon("cogs"),
+      mod_custom_analysis$ui("custom_analysis")
     ),
 
     nav_spacer(),
@@ -203,6 +243,11 @@ server <- function(input, output, session) {
   mod_benchmark$server("benchmark", wbes_data)
   mod_infrastructure$server("infrastructure", wbes_data)
   mod_finance_access$server("finance", wbes_data)
+  mod_corruption$server("corruption", wbes_data)
+  mod_workforce$server("workforce", wbes_data)
+  mod_performance$server("performance", wbes_data)
+  mod_crime$server("crime", wbes_data)
+  mod_custom_analysis$server("custom_analysis", wbes_data)
   mod_data_quality$server("data_quality", wbes_data)
   mod_about$server("about")
 }
