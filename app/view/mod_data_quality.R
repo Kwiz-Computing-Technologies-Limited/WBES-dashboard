@@ -5,7 +5,7 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, h5, p, span, strong, br, hr, pre, code,
-        ul, ol, li, fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, HTML, renderPrint,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, HTML, renderPrint,
         verbatimTextOutput, downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config],
