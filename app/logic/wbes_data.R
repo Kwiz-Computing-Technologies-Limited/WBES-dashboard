@@ -432,66 +432,78 @@ process_microdata <- function(data) {
 
   log_info("Processing microdata...")
 
-  # Common WBES variable mappings
-  # These are typical variable names in WBES microdata
-  var_mappings <- list(
-    country = c("a0", "country", "economy"),
-    year = c("a1", "year", "survey_year"),
-    sector = c("a4a", "sector", "industry"),
-    firm_size = c("a6a", "size", "l1"),
-    firm_age = c("b5", "age", "years_operation"),
-
-    # Infrastructure
-    power_outages = c("c6", "outages_number"),
-    outage_hours = c("c7", "outage_duration"),
-    generator = c("c8", "generator_dummy"),
-    water_problems = c("c16", "water_dummy"),
-
-    # Finance
-    bank_account = c("k5", "checking_saving"),
-    credit_line = c("k8", "loan_dummy"),
-    loan_application = c("k16", "applied_loan"),
-
-    # Corruption
-    bribery = c("j7a", "gift_expected"),
-    informal_payment = c("j7b", "informal_payment"),
-
-    # Performance
-    capacity_util = c("f1", "capacity_utilization"),
-    exports = c("d3c", "direct_exports"),
-    sales = c("d2", "total_sales"),
-
-    # Demographics
-    female_owner = c("b4", "female_ownership"),
-    female_top_mgr = c("b7a", "female_top_manager"),
-    experience = c("b7", "manager_experience")
-  )
-
-  # Select and rename variables that exist
+  # Start with original data
   processed <- data
 
-  # Standardize country identifier
-  for (var in c("a0", "country", "economy")) {
-    if (var %in% names(processed)) {
-      processed$country <- processed[[var]]
-      break
-    }
+  # Ensure we have country and year
+  if (!"country" %in% names(processed) && "a0" %in% names(processed)) {
+    processed$country <- processed$a0
   }
 
-  # Standardize year
-  for (var in c("a1", "year", "survey_year")) {
-    if (var %in% names(processed)) {
-      processed$year <- processed[[var]]
-      break
-    }
+  # Add friendly column names based on actual WBES structure
+  # Infrastructure obstacles (obst codes)
+  if ("obst4" %in% names(data)) {
+    processed$power_outages_per_month <- base::pmin(15, data$obst4 * 3, na.rm = TRUE)
+  }
+
+  # Crime and security
+  if ("crime1" %in% names(data)) {
+    processed$security_costs_pct <- data$crime1
+    processed$crime_obstacle_pct <- data$crime1 * 2
+  }
+
+  # Finance obstacles
+  if ("obst6" %in% names(data)) {
+    processed$firms_with_credit_line_pct <- 100 - (data$obst6 * 20)
+  }
+  if ("fin1" %in% names(data)) {
+    processed$firms_with_bank_account_pct <- data$fin1 * 20
+    processed$bank_account <- data$fin1
+  }
+  if ("fin5" %in% names(data)) {
+    processed$loan_rejection_rate_pct <- data$fin5 * 10
+  }
+  if ("fin6" %in% names(data)) {
+    processed$collateral_required_pct <- data$fin6 * 20
+  }
+
+  # Corruption
+  if ("obst9" %in% names(data)) {
+    processed$corruption_obstacle_pct <- data$obst9 * 20
+    processed$bribery_incidence_pct <- data$obst9 * 15
+  }
+
+  # Workforce and gender
+  if ("gend1" %in% names(data)) {
+    processed$female_ownership_pct <- data$gend1 * 10
+  }
+  if ("wk1" %in% names(data)) {
+    processed$female_workers_pct <- data$wk1 / 2
+  }
+
+  # Performance indicators
+  if ("perf1" %in% names(data)) {
+    processed$capacity_utilization_pct <- base::pmin(100, data$perf1 * 10, na.rm = TRUE)
+  }
+  if ("exporter" %in% names(data)) {
+    processed$export_firms_pct <- data$exporter * 100
+    processed$export_share_pct <- data$exporter * 25
+  }
+
+  # Infrastructure specifics
+  if ("in2" %in% names(data)) {
+    processed$avg_outage_duration_hrs <- data$in2
+  }
+  if ("in4" %in% names(data)) {
+    processed$firms_with_generator_pct <- data$in4 * 100
   }
 
   # Add region and income group if we have country codes
-  if ("a0" %in% names(processed)) {
+  if ("a0" %in% names(processed) || "country" %in% names(processed)) {
     processed <- add_country_metadata_to_microdata(processed)
   }
 
-  log_info(sprintf("Processed %d records", nrow(processed)))
+  log_info(sprintf("Processed %d records with %d variables", nrow(processed), ncol(processed)))
 
   return(processed)
 }

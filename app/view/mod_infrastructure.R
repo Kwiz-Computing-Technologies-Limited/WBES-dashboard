@@ -7,7 +7,7 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, mutate, group_by, summarise],
-  stats[setNames, predict]
+  stats[setNames, predict, lm]
 )
 
 #' @export
