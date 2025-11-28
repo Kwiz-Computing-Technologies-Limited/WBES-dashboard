@@ -1,0 +1,41 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Shiny
+rsconnect/
+shinyapps/
+
+# Data files (microdata is confidential)
+data/*.dta
+data/*.csv
+data/*.rds
+data/wbes_cache.rds
+
+# Credentials
+.Renviron
+.wbes_cookies.txt
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
