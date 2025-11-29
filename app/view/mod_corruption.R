@@ -56,13 +56,25 @@ ui <- function(id) {
       column(8,
         card(
           card_header(icon("chart-bar"), " Corruption by Country"),
-          card_body(plotlyOutput(ns("bar_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("bar_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Horizontal bars show corruption or bribery rates by country; use the sort control to spotlight highest or lowest risk environments."
+            )
+          )
         )
       ),
       column(4,
         card(
           card_header(icon("globe-africa"), " Regional Comparison"),
-          card_body(plotlyOutput(ns("regional_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("regional_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Stacked bars compare corruption pressure across regions, highlighting where governance challenges are concentrated."
+            )
+          )
         )
       )
     ),
@@ -73,13 +85,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("project-diagram"), " Corruption vs. Business Growth"),
-          card_body(plotlyOutput(ns("scatter_growth"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("scatter_growth"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Each point represents a country; the slope shows how corruption correlates with reported sales growth."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-line"), " Corruption vs. Investment"),
-          card_body(plotlyOutput(ns("scatter_investment"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("scatter_investment"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "This scatter links corruption exposure to investment rates, indicating whether governance issues deter capital spending."
+            )
+          )
         )
       )
     ),
@@ -90,13 +114,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("layer-group"), " Corruption by Income Group"),
-          card_body(plotlyOutput(ns("income_box"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("income_box"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Box plots summarize corruption responses by income tier, showing typical levels and variability."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-area"), " Bribery Depth vs. Breadth"),
-          card_body(plotlyOutput(ns("bribery_scatter"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("bribery_scatter"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Points plot how widespread bribery requests are (breadth) against their frequency for affected firms (depth)."
+            )
+          )
         )
       )
     ),

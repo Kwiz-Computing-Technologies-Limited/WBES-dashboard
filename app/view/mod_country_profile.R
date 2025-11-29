@@ -55,7 +55,11 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            plotlyOutput(ns("radar_chart"), height = "400px")
+            plotlyOutput(ns("radar_chart"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "The radar highlights how the selected country scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
+            )
           )
         )
       ),
@@ -79,8 +83,24 @@ ui <- function(id) {
             title = "Infrastructure",
             icon = icon("bolt"),
             fluidRow(
-              column(6, plotlyOutput(ns("infra_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("infra_chart2"), height = "300px"))
+              column(6,
+                tagList(
+                  plotlyOutput(ns("infra_chart1"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Bars rank which infrastructure services firms flag as biggest obstacles, indicating where reliability investments are needed."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  plotlyOutput(ns("infra_chart2"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "The pie shows how firms power operations (grid, generator, mixed), revealing dependence on backup generation."
+                  )
+                )
+              )
             )
           ),
           
@@ -88,8 +108,24 @@ ui <- function(id) {
             title = "Finance",
             icon = icon("university"),
             fluidRow(
-              column(6, plotlyOutput(ns("finance_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("finance_chart2"), height = "300px"))
+              column(6,
+                tagList(
+                  plotlyOutput(ns("finance_chart1"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Financial product uptake across credit and deposit instruments highlights where inclusion gaps remain."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  plotlyOutput(ns("finance_chart2"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "The gauge reports average collateral required for loans; higher values signal tighter lending conditions."
+                  )
+                )
+              )
             )
           ),
           
@@ -97,15 +133,37 @@ ui <- function(id) {
             title = "Governance",
             icon = icon("balance-scale"),
             fluidRow(
-              column(6, plotlyOutput(ns("gov_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("gov_chart2"), height = "300px"))
+              column(6,
+                tagList(
+                  plotlyOutput(ns("gov_chart1"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Bribery prevalence by transaction type surfaces which interactions with government most often trigger informal payments."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  plotlyOutput(ns("gov_chart2"), height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Management time spent on regulatory tasks highlights the bureaucracy burden affecting daily operations."
+                  )
+                )
+              )
             )
           ),
           
           nav_panel(
             title = "Time Series",
             icon = icon("chart-line"),
-            plotlyOutput(ns("time_series"), height = "400px")
+            tagList(
+              plotlyOutput(ns("time_series"), height = "400px"),
+              p(
+                class = "text-muted small mt-2",
+                "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."
+              )
+            )
           )
         )
       )

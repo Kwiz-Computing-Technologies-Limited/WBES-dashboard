@@ -86,7 +86,11 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Data Completeness by Indicator"),
           card_body(
-            plotlyOutput(ns("completeness_chart"), height = "350px")
+            plotlyOutput(ns("completeness_chart"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars show the share of non-missing responses for each key indicator so you can judge reliability before analysis."
+            )
           )
         )
       ),
@@ -94,7 +98,11 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), "Completeness by Region"),
           card_body(
-            plotlyOutput(ns("regional_completeness"), height = "350px")
+            plotlyOutput(ns("regional_completeness"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Regional completeness highlights where survey coverage is thinner, guiding cautious interpretation."
+            )
           )
         )
       )
@@ -325,6 +333,200 @@ filter(!is.na(power_outages_per_month)) |>
                        of reprisal. Cross-country comparisons should focus on relative rankings rather 
                        than absolute values. Alternative measures (Transparency International CPI, 
                        World Governance Indicators) recommended for triangulation.")
+                  )
+                )
+              ),
+
+              nav_panel(
+                title = "Country Profile",
+                icon = icon("flag"),
+                tags$div(
+                  class = "filter-logic-box mt-3",
+                  h4("Country Profile Deep Dive", class = "text-primary-teal"),
+                  tags$div(
+                    class = "filter-description mb-3",
+                    p(tags$strong("Purpose:"), " Build radar charts and summary cards for a single country"),
+                    p(tags$strong("Data Scope:"), " Latest survey wave with complete core indicators"),
+                    p(tags$strong("Key Output:"), " Radar scores normalized to 0–100 for comparability")
+                  ),
+                  h5("Filter Steps:", class = "mt-3"),
+                  tags$ol(
+                    tags$li("Keep only most recent year available per country"),
+                    tags$li("Require non-missing values for all six radar dimensions"),
+                    tags$li("Cap extreme outage values at 30/month to stabilize the scale"),
+                    tags$li("Apply population weights when summarizing national KPIs")
+                  ),
+                  h5("R Code:", class = "mt-3"),
+                  tags$pre(
+                    class = "bg-light p-3 rounded",
+                    tags$code(
+                      'profile_data <- wbes_data |>
+  group_by(country) |>
+  filter(year == max(year, na.rm = TRUE)) |>
+  ungroup() |>
+  filter(!if_any(c(power_outages_per_month, firms_with_credit_line_pct,
+                   bribery_incidence_pct, capacity_utilization_pct,
+                   export_firms_pct, female_ownership_pct), is.na)) |>
+  mutate(power_outages_per_month = pmin(power_outages_per_month, 30))'
+                    )
+                  )
+                )
+              ),
+
+              nav_panel(
+                title = "Benchmark",
+                icon = icon("chart-bar"),
+                tags$div(
+                  class = "filter-logic-box mt-3",
+                  h4("Cross-Country Benchmarking", class = "text-primary-teal"),
+                  tags$div(
+                    class = "filter-description mb-3",
+                    p(tags$strong("Purpose:"), " Enable like-for-like comparisons across selected countries"),
+                    p(tags$strong("Data Scope:"), " Countries with Global Methodology surveys (2019+)"),
+                    p(tags$strong("Caution:"), " Exclude economies with sample size < 150 to avoid unstable ranks")
+                  ),
+                  h5("Filter Steps:", class = "mt-3"),
+                  tags$ol(
+                    tags$li("Limit to specified indicator and comparison set"),
+                    tags$li("Standardize firm size buckets before aggregating"),
+                    tags$li("Use weighted means with sector weights for fairness"),
+                    tags$li("Attach confidence intervals for interpretation of close ranks")
+                  ),
+                  h5("R Code:", class = "mt-3"),
+                  tags$pre(
+                    class = "bg-light p-3 rounded",
+                    tags$code(
+                      'benchmark_data <- wbes_data |>
+  filter(year >= 2019, sample_size >= 150) |>
+  mutate(size_bucket = case_when(
+    employees < 20 ~ "Small (5-19)",
+    employees < 100 ~ "Medium (20-99)",
+    TRUE ~ "Large (100+)"
+  )) |>
+  group_by(country) |>
+  summarise(
+    indicator_mean = weighted.mean(.data[[indicator_id]], w = sample_weight, na.rm = TRUE),
+    indicator_se = sd(.data[[indicator_id]], na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )'
+                    )
+                  )
+                )
+              ),
+
+              nav_panel(
+                title = "Workforce",
+                icon = icon("users"),
+                tags$div(
+                  class = "filter-logic-box mt-3",
+                  h4("Workforce & Gender Analysis", class = "text-primary-teal"),
+                  tags$div(
+                    class = "filter-description mb-3",
+                    p(tags$strong("Purpose:"), " Examine labor constraints and gender inclusion"),
+                    p(tags$strong("Data Scope:"), " Workforce and gender variables (b3, b4, b5, c6)"),
+                    p(tags$strong("Notes:"), " Gender variables use female share; missing values imputed with sector medians")
+                  ),
+                  h5("Filter Steps:", class = "mt-3"),
+                  tags$ol(
+                    tags$li("Exclude firms with <5 employees to align with sampling frame"),
+                    tags$li("Impute female worker share using sector medians when missing"),
+                    tags$li("Flag countries where female ownership response rate <60%"),
+                    tags$li("Calculate gender gap = female_workers_pct - female_ownership_pct")
+                  ),
+                  h5("R Code:", class = "mt-3"),
+                  tags$pre(
+                    class = "bg-light p-3 rounded",
+                    tags$code(
+                      'workforce_clean <- wbes_data |>
+  filter(employees >= 5) |>
+  group_by(sector) |>
+  mutate(female_workers_pct = if_else(
+    is.na(female_workers_pct),
+    median(female_workers_pct, na.rm = TRUE),
+    female_workers_pct
+  )) |>
+  ungroup() |>
+  mutate(gender_gap_pct = female_workers_pct - female_ownership_pct,
+         low_response_flag = female_ownership_response_rate < 0.6)'
+                    )
+                  )
+                )
+              ),
+
+              nav_panel(
+                title = "Performance",
+                icon = icon("chart-line"),
+                tags$div(
+                  class = "filter-logic-box mt-3",
+                  h4("Performance & Trade Analysis", class = "text-primary-teal"),
+                  tags$div(
+                    class = "filter-description mb-3",
+                    p(tags$strong("Purpose:"), " Assess capacity utilization, exports, and competitiveness"),
+                    p(tags$strong("Data Scope:"), " Capacity (f1), exports (d3), and constraint indicators"),
+                    p(tags$strong("Method:"), " Smooth volatile year-to-year changes with 3-year rolling averages where panel data exist")
+                  ),
+                  h5("Filter Steps:", class = "mt-3"),
+                  tags$ol(
+                    tags$li("Winsorize export share at 95th percentile"),
+                    tags$li("Remove panel observations with inconsistent firm identifiers"),
+                    tags$li("Compute rolling means for panel countries; fallback to latest cross-section otherwise"),
+                    tags$li("Flag competitiveness scores with n < 100 as low reliability")
+                  ),
+                  h5("R Code:", class = "mt-3"),
+                  tags$pre(
+                    class = "bg-light p-3 rounded",
+                    tags$code(
+                      'performance <- wbes_panel |>
+  mutate(export_firms_pct = pmin(export_firms_pct, quantile(export_firms_pct, 0.95, na.rm = TRUE))) |>
+  group_by(country) |>
+  arrange(year) |>
+  mutate(capacity_roll = zoo::rollmean(capacity_utilization_pct, 3, fill = NA, align = "right")) |>
+  summarise(
+    capacity_recent = coalesce(last(capacity_roll[!is.na(capacity_roll)]), last(capacity_utilization_pct)),
+    export_recent = last(export_firms_pct),
+    n_obs = n(),
+    reliability = if_else(n_obs < 100, "Low", "Adequate"),
+    .groups = "drop"
+  )'
+                    )
+                  )
+                )
+              ),
+
+              nav_panel(
+                title = "Crime & Security",
+                icon = icon("shield-alt"),
+                tags$div(
+                  class = "filter-logic-box mt-3",
+                  h4("Crime & Security Analysis", class = "text-primary-teal"),
+                  tags$div(
+                    class = "filter-description mb-3",
+                    p(tags$strong("Purpose:"), " Evaluate crime obstacles and security spending"),
+                    p(tags$strong("Data Scope:"), " Crime and security variables (g5, g6, j14)"),
+                    p(tags$strong("Bias Check:"), " Exclude firms with zero security spend but positive crime losses as inconsistent")
+                  ),
+                  h5("Filter Steps:", class = "mt-3"),
+                  tags$ol(
+                    tags$li("Remove inconsistent security spend responses"),
+                    tags$li("Cap security costs at 50% of sales to limit outliers"),
+                    tags$li("Group by income level to compare relative burden"),
+                    tags$li("Calculate combined risk score = crime_obstacle * 0.6 + security_costs_pct * 0.4")
+                  ),
+                  h5("R Code:", class = "mt-3"),
+                  tags$pre(
+                    class = "bg-light p-3 rounded",
+                    tags$code(
+                      'security_filters <- wbes_data |>
+  filter(!(security_costs_pct == 0 & crime_losses_pct > 0)) |>
+  mutate(security_costs_pct = pmin(security_costs_pct, 50)) |>
+  group_by(income_group) |>
+  summarise(
+    crime_obstacle = weighted.mean(IC.FRM.CRIM.ZS, w = sample_weight, na.rm = TRUE),
+    security_costs = weighted.mean(security_costs_pct, w = sample_weight, na.rm = TRUE),
+    combined_risk = crime_obstacle * 0.6 + security_costs * 0.4,
+    .groups = "drop"
+  )'
+                    )
                   )
                 )
               ),

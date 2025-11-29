@@ -55,13 +55,25 @@ ui <- function(id) {
       column(8,
         card(
           card_header(icon("chart-bar"), " Performance Indicators by Country"),
-          card_body(plotlyOutput(ns("bar_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("bar_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars compare capacity utilization or export participation across countries to spotlight standout performers."
+            )
+          )
         )
       ),
       column(4,
         card(
           card_header(icon("globe-africa"), " Regional Performance"),
-          card_body(plotlyOutput(ns("regional_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("regional_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Regional averages reveal how performance differs across geographies, contextualizing country scores."
+            )
+          )
         )
       )
     ),
@@ -72,13 +84,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("shipping-fast"), " Export Intensity Matrix"),
-          card_body(plotlyOutput(ns("export_matrix"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("export_matrix"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "The matrix contrasts export participation with firm characteristics, helping identify segments driving trade."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("industry"), " Capacity vs. Obstacles"),
-          card_body(plotlyOutput(ns("capacity_obstacles"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("capacity_obstacles"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Scatter points show how operational capacity aligns with reported obstacles, highlighting binding constraints."
+            )
+          )
         )
       )
     ),
@@ -89,13 +113,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("trophy"), " Competitiveness Index"),
-          card_body(plotlyOutput(ns("competitiveness_chart"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("competitiveness_chart"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "This index blends performance indicators to benchmark overall competitiveness across markets."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-area"), " Performance by Income Group"),
-          card_body(plotlyOutput(ns("income_performance"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("income_performance"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Box plots summarize performance dispersion within each income tier to reveal variability."
+            )
+          )
         )
       )
     ),
@@ -106,13 +142,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("balance-scale"), " Export vs. Infrastructure"),
-          card_body(plotlyOutput(ns("export_infra"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("export_infra"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Scatter compares export participation with infrastructure reliability to show how logistics affect trade."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-pie"), " Performance Segmentation"),
-          card_body(plotlyOutput(ns("performance_segments"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("performance_segments"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "The pie groups firms into performance tiers, clarifying how many operate at high, medium, or low capacity."
+            )
+          )
         )
       )
     ),

@@ -56,13 +56,25 @@ ui <- function(id) {
       column(8,
         card(
           card_header(icon("chart-bar"), " Workforce Indicators by Country"),
-          card_body(plotlyOutput(ns("bar_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("bar_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars compare workforce-related indicators across countries, surfacing where labor challenges or gender gaps are most severe."
+            )
+          )
         )
       ),
       column(4,
         card(
           card_header(icon("venus-mars"), " Gender Balance Overview"),
-          card_body(plotlyOutput(ns("gender_overview"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("gender_overview"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "The composition chart shows the share of female workers and leaders, highlighting representation gaps."
+            )
+          )
         )
       )
     ),
@@ -73,13 +85,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("chart-line"), " Female Participation Trends"),
-          card_body(plotlyOutput(ns("participation_chart"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("participation_chart"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Lines trace how female employment indicators evolve across income groups, flagging progress or setbacks."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("project-diagram"), " Workforce vs. Productivity"),
-          card_body(plotlyOutput(ns("scatter_productivity"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("scatter_productivity"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Each point connects workforce constraints with capacity utilization, highlighting whether labor shortages coincide with lower productivity."
+            )
+          )
         )
       )
     ),
@@ -90,13 +114,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("layer-group"), " Female Ownership by Region"),
-          card_body(plotlyOutput(ns("regional_gender"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("regional_gender"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars summarize female ownership prevalence by region, revealing where women-led firms are most common."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-area"), " Gender Gap Analysis"),
-          card_body(plotlyOutput(ns("gender_gap_chart"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("gender_gap_chart"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "This chart contrasts employment and ownership gaps, showing where representation diverges the most."
+            )
+          )
         )
       )
     ),
@@ -107,13 +143,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("coins"), " Workforce Challenge by Income"),
-          card_body(plotlyOutput(ns("income_comparison"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("income_comparison"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Income-tier box plots show how workforce obstacles differ between low- and high-income contexts."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("graduation-cap"), " Skills & Gender Correlation"),
-          card_body(plotlyOutput(ns("skills_correlation"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("skills_correlation"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Scatter points compare skilled labor availability with female employment shares to reveal inclusion linkages."
+            )
+          )
         )
       )
     ),
