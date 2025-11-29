@@ -2,7 +2,7 @@
 # About Page Module
 
 box::use(
-  shiny[moduleServer, NS, tags, icon, div, h2, h3, h4, p, span, a, br, hr,
+  shiny[moduleServer, NS, tags, icon, div, h2, h3, h4, h5, p, span, strong, a, br, hr,
         fluidRow, column, HTML],
   bslib[card, card_header, card_body]
 )
@@ -157,7 +157,7 @@ Available at: https://www.enterprisesurveys.org'
                 tags$ul(
                   tags$li(
                     icon("envelope"), " ",
-                    a(href = "mailto:info@kwizresearch.com", "info@kwizresearch.com")
+                    a(href = "mailto:jeankwizera@kwizresearch.com", "jeankwizera@kwizresearch.com")
                   ),
                   tags$li(
                     icon("globe"), " ",

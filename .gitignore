@@ -1,0 +1,36 @@
+# R specific
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# WBES Data files (keep these local, don't commit to git)
+data/*.dta
+data/*.csv
+data/assets.zip
+data/*.rds
+data/.extracted/
+
+# Cache files
+data/wbes_processed.rds
+data/wbes_cache.rds
+
+# Shiny app temporary files
+rsconnect/
+shinyapps/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.Renviron

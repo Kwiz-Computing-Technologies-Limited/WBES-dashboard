@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" role="img" aria-labelledby="title desc">
+  <title id="title">Run App button illustration</title>
+  <desc id="desc">Mock toolbar showing the Run App button highlighted for the World Bank Enterprise Surveys dashboard.</desc>
+  <rect width="640" height="360" fill="#f6f8fa" rx="12" />
+  <rect x="20" y="40" width="600" height="70" rx="8" fill="#1B6B5F" />
+  <text x="40" y="85" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="32" fill="#ffffff" font-weight="600">Run App</text>
+  <rect x="40" y="140" width="560" height="160" rx="10" fill="#ffffff" stroke="#d0d7de" />
+  <text x="60" y="190" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="20" fill="#333333">Start the dashboard from RStudio by clicking <tspan font-weight="700">Run App</tspan> on the toolbar.</text>
+  <text x="60" y="225" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="16" fill="#555555">This launches the Business Environment Benchmarking dashboard locally.</text>
+  <rect x="430" y="55" width="170" height="40" rx="6" fill="#f4a460" stroke="#f2a355" />
+  <text x="465" y="84" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="20" fill="#1B6B5F" font-weight="700">Run App ▶</text>
+</svg>

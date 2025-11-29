@@ -3,12 +3,13 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
-        fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput, 
+        fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
         observeEvent, actionButton],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate, desc]
+  dplyr[filter, select, arrange, mutate, desc],
+  stats[setNames]
 )
 
 #' @export
@@ -88,7 +89,11 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), "Country Comparison"),
           card_body(
-            plotlyOutput(ns("comparison_bar"), height = "450px")
+            plotlyOutput(ns("comparison_bar"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars compare the selected indicator across chosen countries; the sort option controls whether leaders or laggards appear first."
+            )
           )
         )
       )
@@ -101,13 +106,17 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Regional Distribution"),
           card_body(
-            plotlyOutput(ns("regional_pie"), height = "350px")
+            plotlyOutput(ns("regional_pie"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "The pie shows how the comparison sample is distributed by region so cross-country averages can be interpreted in context."
+            )
           )
         )
       ),
       column(6,
         card(
-          card_header(icon("chart-scatter"), "Correlation Analysis"),
+          card_header(icon("chart-line"), "Correlation Analysis"),
           card_body(
             fluidRow(
               column(6,
@@ -125,7 +134,11 @@ ui <- function(id) {
                   ), selected = "capacity_utilization_pct")
               )
             ),
-            plotlyOutput(ns("scatter_plot"), height = "280px")
+            plotlyOutput(ns("scatter_plot"), height = "280px"),
+            p(
+              class = "text-muted small mt-2",
+              "Each point represents a country; the scatter reveals correlations between the selected drivers, helping spot trade-offs or synergies."
+            )
           )
         )
       )

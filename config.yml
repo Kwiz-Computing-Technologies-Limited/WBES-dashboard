@@ -1,0 +1,43 @@
+# World Bank Enterprise Surveys Dashboard Configuration
+# Rhino framework config file
+
+default:
+  # Application settings
+  app_name: "WBES Business Environment Dashboard"
+  app_version: "1.0.0"
+
+  # Logging settings
+  rhino_log_level: "INFO"
+  rhino_log_file: "app.log"
+
+  # Data settings
+  data_path: "data/"
+  use_cache: TRUE
+  cache_hours: 24
+
+  # Theme settings
+  theme:
+    primary_color: "#1B6B5F"      # Kwiz Research Teal
+    secondary_color: "#F49B7A"    # Kwiz Research Coral
+    success_color: "#2E7D32"
+    info_color: "#17a2b8"
+    warning_color: "#F4A460"
+    danger_color: "#dc3545"
+
+  # API settings
+  worldbank_api:
+    base_url: "https://api.worldbank.org/v2"
+    source_id: 13  # Enterprise Surveys source ID
+    timeout: 30
+
+development:
+  # Development-specific settings (inherits from default)
+  debug: TRUE
+  auto_reload: TRUE
+  rhino_log_level: "DEBUG"
+
+production:
+  # Production-specific settings (inherits from default)
+  debug: FALSE
+  cache_hours: 168  # 1 week in production
+  rhino_log_level: "WARN"

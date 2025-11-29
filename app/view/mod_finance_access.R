@@ -6,7 +6,8 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, mutate, group_by, summarise]
+  dplyr[filter, arrange, mutate, group_by, summarise],
+  stats[setNames, runif]
 )
 
 #' @export
@@ -73,64 +74,88 @@ ui <- function(id) {
     fluidRow(
       class = "mb-4",
       column(6,
-        card(
-          card_header(icon("credit-card"), "Financial Products Access by Region"),
-          card_body(
-            plotlyOutput(ns("finance_by_region"), height = "400px")
-          )
-        )
-      ),
-      column(6,
-        card(
-          card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
-          card_body(
-            plotlyOutput(ns("no_apply_reasons"), height = "400px")
+      card(
+        card_header(icon("credit-card"), "Financial Products Access by Region"),
+        card_body(
+          plotlyOutput(ns("finance_by_region"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Regional bars show uptake of formal financial products, highlighting where bank outreach is strongest."
           )
         )
       )
     ),
+    column(6,
+      card(
+        card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
+        card_body(
+          plotlyOutput(ns("no_apply_reasons"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "The pie breaks down why firms opt out of loan applications, distinguishing demand-side gaps from perceived rejection risk."
+          )
+        )
+      )
+    )
+  ),
     
     # SME Finance Gap
     fluidRow(
       class = "mb-4",
       column(8,
-        card(
-          card_header(icon("chart-bar"), "SME Finance Gap by Country"),
-          card_body(
-            plotlyOutput(ns("sme_finance_gap"), height = "400px")
-          )
-        )
-      ),
-      column(4,
-        card(
-          card_header(icon("venus"), "Gender Gap in Finance Access"),
-          card_body(
-            plotlyOutput(ns("gender_gap"), height = "400px")
+      card(
+        card_header(icon("chart-bar"), "SME Finance Gap by Country"),
+        card_body(
+          plotlyOutput(ns("sme_finance_gap"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Bars estimate the financing gap faced by SMEs, spotlighting markets where credit shortfalls are most acute."
           )
         )
       )
     ),
+    column(4,
+      card(
+        card_header(icon("venus"), "Gender Gap in Finance Access"),
+        card_body(
+          plotlyOutput(ns("gender_gap"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Bars compare credit access for female- versus male-owned firms, illustrating gender disparities in financing."
+          )
+        )
+      )
+    )
+  ),
     
     # Collateral Analysis
     fluidRow(
       class = "mb-4",
       column(6,
-        card(
-          card_header(icon("landmark"), "Collateral Requirements"),
-          card_body(
-            plotlyOutput(ns("collateral_chart"), height = "350px")
+      card(
+        card_header(icon("landmark"), "Collateral Requirements"),
+        card_body(
+          plotlyOutput(ns("collateral_chart"), height = "350px"),
+          p(
+            class = "text-muted small mt-2",
+            "Box plots summarize collateral requested as a share of loan value, highlighting variability across segments."
           )
         )
-      ),
-      column(6,
-        card(
-          card_header(icon("clock"), "Loan Processing Time"),
-          card_body(
-            plotlyOutput(ns("processing_time"), height = "350px")
+      )
+    ),
+    column(6,
+      card(
+        card_header(icon("clock"), "Loan Processing Time"),
+        card_body(
+          plotlyOutput(ns("processing_time"), height = "350px"),
+          p(
+            class = "text-muted small mt-2",
+            "Processing time distributions show how quickly banks deliver decisions, indicating procedural efficiency."
           )
         )
       )
     )
+  )
   )
 }
 

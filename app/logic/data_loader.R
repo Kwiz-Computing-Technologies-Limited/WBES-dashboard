@@ -19,24 +19,24 @@ box::use(
 load_wbes_data <- function(data_path = "data/") {
 
   log_info("Loading WBES data...")
-  
+
 
   # Check for data files
   dta_files <- list.files(data_path, pattern = "\\.dta$", full.names = TRUE)
   csv_files <- list.files(data_path, pattern = "\\.csv$", full.names = TRUE)
-  
+
 
   if (length(dta_files) == 0 && length(csv_files) == 0) {
     log_warn("No data files found. Loading sample data.")
     return(load_sample_data())
   }
-  
+
   # Load Stata files
   if (length(dta_files) > 0) {
     data_list <- lapply(dta_files, function(f) {
       tryCatch({
         log_info(paste("Loading:", basename(f)))
-        read_dta(f)
+        read_dta(f, encoding = "latin1")
       }, error = function(e) {
         log_error(paste("Error loading", f, ":", e$message))
         NULL
@@ -54,10 +54,10 @@ load_wbes_data <- function(data_path = "data/") {
     })
     names(data_list) <- tools::file_path_sans_ext(basename(csv_files))
   }
-  
+
   # Process and standardize
   processed <- process_wbes_data(data_list)
-  
+
   log_info("Data loading complete.")
   return(processed)
 }
@@ -68,7 +68,7 @@ load_wbes_data <- function(data_path = "data/") {
 process_wbes_data <- function(data_list) {
   # Apply data quality filters and standardization
   # This will vary based on actual data structure
-  
+
   list(
     raw = data_list,
     indicators = extract_indicators(data_list),
@@ -86,7 +86,7 @@ extract_indicators <- function(data_list) {
     power_outage_hours = c("c7", "infrast2"),
     generator_use = c("c8", "infrast3"),
     water_insufficiency = c("c16", "infrast4"),
-    
+
 
     # Access to Finance
     has_bank_account = c("k5", "fin1"),
@@ -94,25 +94,25 @@ extract_indicators <- function(data_list) {
     loan_application = c("k16", "fin3"),
     loan_rejected = c("k17", "fin4"),
     collateral_pct = c("k14", "fin5"),
-    
+
     # Corruption & Governance
     bribery_incidence = c("j7a", "corr1"),
     informal_payment_pct = c("j7b", "corr2"),
     mgmt_time_regulations = c("j2", "corr3"),
-    
+
     # Competition & Performance
     capacity_utilization = c("f1", "perf1"),
     export_pct = c("d3c", "perf2"),
     employment_growth = c("l1", "perf3"),
     sales_growth = c("d2", "perf4"),
-    
+
     # Firm characteristics
     firm_size = c("a6a", "size1"),
     firm_age = c("b5", "age1"),
     female_owner = c("b4", "gender1"),
     foreign_ownership = c("b2b", "fdi1")
   )
-  
+
   indicator_map
 }
 
@@ -137,10 +137,10 @@ extract_metadata <- function(data_list) {
 #' @return Sample dataset for demonstration
 #' @export
 load_sample_data <- function() {
-  
+
   # Generate realistic sample data for demonstration
   set.seed(42)
-  
+
   countries <- c(
     "Kenya", "Nigeria", "South Africa", "Ghana", "Ethiopia",
     "Tanzania", "Uganda", "Rwanda", "Senegal", "Cote d'Ivoire",
@@ -149,7 +149,7 @@ load_sample_data <- function() {
     "Brazil", "Mexico", "Colombia", "Peru", "Chile",
     "Poland", "Turkey", "Romania", "Bulgaria", "Serbia"
   )
-  
+
   regions <- c(
     rep("Sub-Saharan Africa", 15),
     rep("South Asia", 2),
@@ -157,7 +157,7 @@ load_sample_data <- function() {
     rep("Latin America & Caribbean", 5),
     rep("Europe & Central Asia", 5)
   )
-  
+
   income_groups <- c(
     "Lower middle income", "Lower middle income", "Upper middle income",
     "Lower middle income", "Low income", "Lower middle income",
@@ -171,9 +171,9 @@ load_sample_data <- function() {
     "High income", "Upper middle income", "Upper middle income",
     "Upper middle income", "Upper middle income"
   )
-  
+
   years <- c(2019, 2020, 2021, 2022, 2023)
-  
+
   # Generate country-level indicators
   country_data <- data.frame(
     country = rep(countries, each = length(years)),
@@ -182,53 +182,53 @@ load_sample_data <- function() {
     year = rep(years, length(countries)),
     stringsAsFactors = FALSE
   )
-  
+
   n <- nrow(country_data)
-  
+
   # Infrastructure indicators
-  country_data$power_outages_per_month <- round(runif(n, 0.5, 15) + 
+  country_data$power_outages_per_month <- round(runif(n, 0.5, 15) +
     ifelse(country_data$region == "Sub-Saharan Africa", 5, 0), 1)
   country_data$avg_outage_duration_hrs <- round(runif(n, 0.5, 8) +
     ifelse(country_data$region == "Sub-Saharan Africa", 2, 0), 1)
   country_data$firms_with_generator_pct <- round(runif(n, 10, 70) +
     ifelse(country_data$region == "Sub-Saharan Africa", 15, 0), 1)
   country_data$water_insufficiency_pct <- round(runif(n, 5, 40), 1)
-  
+
   # Access to Finance
   country_data$firms_with_bank_account_pct <- round(runif(n, 60, 98), 1)
   country_data$firms_with_credit_line_pct <- round(runif(n, 15, 55), 1)
   country_data$loan_rejection_rate_pct <- round(runif(n, 5, 35), 1)
   country_data$collateral_required_pct <- round(runif(n, 100, 300), 0)
   country_data$finance_obstacle_pct <- round(runif(n, 15, 50), 1)
-  
+
   # Corruption & Governance
   country_data$bribery_incidence_pct <- round(runif(n, 5, 45), 1)
   country_data$informal_payments_pct_sales <- round(runif(n, 0.5, 5), 2)
   country_data$mgmt_time_regulations_pct <- round(runif(n, 5, 35), 1)
   country_data$days_to_get_license <- round(runif(n, 10, 120), 0)
-  
+
   # Competition & Performance
   country_data$capacity_utilization_pct <- round(runif(n, 55, 85), 1)
   country_data$export_firms_pct <- round(runif(n, 5, 35), 1)
   country_data$annual_employment_growth_pct <- round(runif(n, -5, 15), 1)
   country_data$annual_sales_growth_pct <- round(runif(n, -10, 25), 1)
-  
+
   # Firm demographics
   country_data$female_ownership_pct <- round(runif(n, 10, 45), 1)
   country_data$foreign_ownership_pct <- round(runif(n, 5, 30), 1)
   country_data$formal_training_pct <- round(runif(n, 15, 60), 1)
-  
+
   # Sample sizes and weights
   country_data$sample_size <- round(runif(n, 150, 1500), 0)
   country_data$response_rate_pct <- round(runif(n, 45, 85), 1)
-  
+
   # Data quality flags
   country_data$data_quality_score <- round(runif(n, 0.6, 1.0), 2)
   country_data$missing_rate_pct <- round(runif(n, 2, 25), 1)
-  
+
   # Aggregate latest year data
   latest_data <- country_data[country_data$year == max(country_data$year), ]
-  
+
   # Regional aggregates
   regional_data <- aggregate(
     cbind(
@@ -239,7 +239,7 @@ load_sample_data <- function() {
     data = latest_data,
     FUN = mean
   )
-  
+
   list(
     country_panel = country_data,
     latest = latest_data,
@@ -323,7 +323,7 @@ generate_quality_metadata <- function() {
         r_code = "mutate(definition_change_flag = year < 2019)"
       )
     ),
-    
+
     filters = list(
       list(
         name = "Infrastructure Analysis",
@@ -361,7 +361,7 @@ wbes_data |>
   filter(!(has_loan == 1 & has_bank_account == 0)) |>
   mutate(
     collateral_required_pct = pmin(
-      collateral_required_pct, 
+      collateral_required_pct,
       quantile(collateral_required_pct, 0.99, na.rm = TRUE)
     ),
     size_category = case_when(
@@ -385,7 +385,7 @@ wbes_data |>
   filter(corruption_response_rate >= 0.50) |>
   mutate(
     bribery_adjusted = case_when(
-      response_time < 5 ~ bribery_incidence * 1.2,  
+      response_time < 5 ~ bribery_incidence * 1.2,
       TRUE ~ bribery_incidence
     )
   ) |>
@@ -418,7 +418,7 @@ wbes_data |>
   summarise(across(where(is.numeric), ~weighted.mean(.x, w = sample_weight, na.rm = TRUE)))"
       )
     ),
-    
+
     methodology_notes = list(
       "Sampling weights should be applied for all population-level estimates",
       "Standard errors account for complex survey design (stratification, clustering)",
@@ -435,10 +435,10 @@ wbes_data |>
 #' @export
 calculate_completeness <- function(data) {
   if (is.null(data)) return(NULL)
-  
+
   total_cells <- prod(dim(data))
   missing_cells <- sum(is.na(data))
-  
+
   list(
     total_observations = nrow(data),
     total_variables = ncol(data),
