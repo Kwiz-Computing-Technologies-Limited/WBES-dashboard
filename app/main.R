@@ -24,7 +24,7 @@ box::use(
   app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
-  app/logic/wbes_data[load_wbes_data]
+  app/logic[load_wbes_data]
 )
 
 #' @export
