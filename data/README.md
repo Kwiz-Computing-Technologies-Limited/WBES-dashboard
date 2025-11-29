@@ -37,8 +37,7 @@ The app loads data in this order:
 1. ✅ **Cached processed data** (`.rds` file) - fastest, loads in seconds
 2. 📦 **assets.zip** - extracts and processes microdata, then caches
 3. 📄 **Individual .dta files** - processes and caches
-4. 🌐 **World Bank API** - fetches aggregate indicators (limited coverage)
-5. 🎯 **Sample data** - demonstration data if no other sources available
+4. 🎯 **Sample data** - demonstration data if no other sources available
 
 ## File Organization
 

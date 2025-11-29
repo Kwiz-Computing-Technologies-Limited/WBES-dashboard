@@ -1,10 +1,8 @@
 # app/logic/wbes_data.R
 # World Bank Enterprise Surveys Data Module
-# Fetches real WBES indicator data from World Bank API
+# Loads WBES microdata from the provided local data path (assets.zip or .dta files)
 
 box::use(
-  httr[GET, content, status_code, http_error],
-  jsonlite[fromJSON],
   dplyr[...],  # ... imports all dplyr functions including first, group_by, summarise, across, filter, etc.
   tidyr[pivot_wider, pivot_longer],
   purrr[map_dfr, possibly],
@@ -125,8 +123,7 @@ WBES_INDICATORS <- list(
 #' 1. Cached processed data (.rds) if present and recent
 #' 2. Local microdata from assets.zip if present
 #' 3. Individual .dta files if present
-#' 4. Fresh API data
-#' 5. Sample data as fallback
+#' 4. Sample data as fallback
 #' @param data_path Path to data directory
 #' @param use_cache Whether to use cached data
 #' @param cache_hours Hours before cache expires
@@ -184,124 +181,9 @@ load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 
     return(result)
   }
 
-  # Try to fetch from API
-  api_data <- fetch_all_indicators()
-  if (!is.null(api_data)) {
-    # Save to cache
-    tryCatch({
-      dir.create(data_path, showWarnings = FALSE, recursive = TRUE)
-      saveRDS(api_data, cache_file)
-      log_info("Cached API data")
-    }, error = function(e) {
-      log_warn(paste("Could not cache data:", e$message))
-    })
-    return(api_data)
-  }
-
   # Fallback to sample data
   log_warn("No data sources found - using sample data")
   return(load_sample_data())
-}
-
-#' Fetch all WBES indicators from API
-#' @return Processed data list
-fetch_all_indicators <- function() {
-  
-  indicator_codes <- unlist(WBES_INDICATORS)
-  
-  tryCatch({
-    # Fetch data for all indicators
-    raw_data <- fetch_es_data(indicator_codes)
-    
-    if (is.null(raw_data) || nrow(raw_data) == 0) {
-      return(NULL)
-    }
-    
-    # Process into clean format
-    processed <- raw_data |>
-      select(
-        country = country.value,
-        country_code = countryiso3code,
-        indicator = indicator.id,
-        indicator_name = indicator.value,
-        year = date,
-        value = value
-      ) |>
-      mutate(
-        year = as.integer(year),
-        value = as.numeric(value)
-      ) |>
-      filter(!is.na(value))
-    
-    # Get latest year per country/indicator
-    latest <- processed |>
-      group_by(country, country_code, indicator) |>
-      filter(year == max(year)) |>
-      ungroup()
-    
-    # Pivot to wide format
-    wide_data <- latest |>
-      select(country, country_code, indicator, value) |>
-      pivot_wider(
-        names_from = indicator,
-        values_from = value,
-        values_fn = first
-      )
-    
-    # Add region/income metadata
-    wide_data <- add_country_metadata(wide_data)
-    
-    list(
-      raw = processed,
-      latest = wide_data,
-      countries = unique(wide_data$country),
-      years = sort(unique(processed$year)),
-      metadata = list(
-        source = "World Bank Enterprise Surveys API",
-        url = "https://www.enterprisesurveys.org",
-        fetched = Sys.time(),
-        indicators = length(indicator_codes)
-      ),
-      quality = generate_quality_metadata()
-    )
-    
-  }, error = function(e) {
-    log_error(paste("Error processing API data:", e$message))
-    NULL
-  })
-}
-
-#' Add country metadata (region, income group)
-#' @param data Data frame with country_code column
-#' @return Data with added metadata
-add_country_metadata <- function(data) {
-  
-  # Fetch country metadata from World Bank API
-  url <- sprintf("%s/country/all?format=json&per_page=300", WB_API_BASE)
-  
-  tryCatch({
-    response <- GET(url)
-    json <- fromJSON(content(response, as = "text", encoding = "UTF-8"), flatten = TRUE)
-    
-    if (length(json) >= 2) {
-      countries <- as.data.frame(json[[2]]) |>
-        select(
-          country_code = id,
-          region = region.value,
-          income_group = incomeLevel.value
-        ) |>
-        filter(!is.na(region) & region != "Aggregates")
-      
-      data <- left_join(data, countries, by = "country_code")
-    }
-    
-    data
-  }, error = function(e) {
-    log_warn("Could not fetch country metadata")
-    data$region <- NA_character_
-    data$income_group <- NA_character_
-    data
-  })
 }
 
 #' Load microdata from ZIP archive
@@ -592,39 +474,6 @@ extract_years_from_microdata <- function(data) {
     }
   }
   integer(0)
-}
-
-#' Add country metadata to microdata
-#' @param data Microdata with country codes
-#' @return Data with region/income metadata
-add_country_metadata_to_microdata <- function(data) {
-
-  tryCatch({
-    # Fetch country metadata from World Bank API
-    url <- sprintf("%s/country/all?format=json&per_page=300", WB_API_BASE)
-    response <- GET(url)
-    json <- fromJSON(content(response, as = "text", encoding = "UTF-8"), flatten = TRUE)
-
-    if (length(json) >= 2) {
-      countries <- as.data.frame(json[[2]]) |>
-        select(
-          a0 = id,
-          country_name = name,
-          region = region.value,
-          income_group = incomeLevel.value
-        ) |>
-        filter(!is.na(region) & region != "Aggregates")
-
-      # Join with data
-      data <- left_join(data, countries, by = "a0")
-    }
-
-    data
-
-  }, error = function(e) {
-    log_warn("Could not fetch country metadata for microdata")
-    data
-  })
 }
 
 #' Generate sample data for demonstration
