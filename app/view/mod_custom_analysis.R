@@ -316,7 +316,11 @@ server <- function(id, wbes_data) {
         result_panels[[length(result_panels) + 1]] <- div(
           class = "mb-4",
           h3(icon("chart-bar"), " Country Comparison"),
-          plotlyOutput(session$ns("bar_chart_output"), height = "500px")
+          plotlyOutput(session$ns("bar_chart_output"), height = "500px"),
+          p(
+            class = "text-muted small mt-2",
+            "Bars compare the selected indicator across your chosen countries or groups, reflecting any filters applied above."
+          )
         )
       }
 
@@ -324,7 +328,11 @@ server <- function(id, wbes_data) {
         result_panels[[length(result_panels) + 1]] <- div(
           class = "mb-4",
           h3(icon("chart-line"), " Distribution Analysis"),
-          plotlyOutput(session$ns("box_plot_output"), height = "400px")
+          plotlyOutput(session$ns("box_plot_output"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Box plots summarize indicator dispersion and highlight outliers, allowing quick quality checks before reporting."
+          )
         )
       }
 
@@ -332,7 +340,11 @@ server <- function(id, wbes_data) {
         result_panels[[length(result_panels) + 1]] <- div(
           class = "mb-4",
           h3(icon("project-diagram"), " Correlation Analysis"),
-          plotlyOutput(session$ns("scatter_output"), height = "400px")
+          plotlyOutput(session$ns("scatter_output"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Each point plots two indicators to reveal positive or negative relationships; hover to see the underlying country or segment."
+          )
         )
       }
 
@@ -340,7 +352,11 @@ server <- function(id, wbes_data) {
         result_panels[[length(result_panels) + 1]] <- div(
           class = "mb-4",
           h3(icon("th"), " Indicator Heatmap"),
-          plotlyOutput(session$ns("heatmap_output"), height = "500px")
+          plotlyOutput(session$ns("heatmap_output"), height = "500px"),
+          p(
+            class = "text-muted small mt-2",
+            "The heatmap compares multiple indicators across entities; darker tiles signal stronger values or higher risk depending on the metric."
+          )
         )
       }
 

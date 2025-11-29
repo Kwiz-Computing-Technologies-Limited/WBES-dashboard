@@ -127,7 +127,7 @@ https://www.enterprisesurveys.org'
                 p("Developed by Kwiz Computing Technologies."),
                 p("For commercial licensing or consultancy:"),
                 tags$ul(
-                  tags$li(icon("envelope"), " ", a(href = "mailto:info@kwizresearch.com", "info@kwizresearch.com")),
+                  tags$li(icon("envelope"), " ", a(href = "mailto:jeankwizera@kwizresearch.com", "jeankwizera@kwizresearch.com")),
                   tags$li(icon("globe"), " ", a(href = "https://kwizresearch.com", target = "_blank", "kwizresearch.com"))
                 )
               )

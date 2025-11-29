@@ -74,55 +74,75 @@ ui <- function(id) {
     fluidRow(
       class = "mb-4",
       column(8,
-        card(
-          card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
-          card_body(
-            plotlyOutput(ns("infra_bar_chart"), height = "450px")
-          )
-        )
-      ),
-      column(4,
-        card(
-          card_header(icon("chart-pie"), "Power Source Distribution"),
-          card_body(
-            plotlyOutput(ns("power_source_pie"), height = "450px")
+      card(
+        card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
+        card_body(
+          plotlyOutput(ns("infra_bar_chart"), height = "450px"),
+          p(
+            class = "text-muted small mt-2",
+            "Horizontal bars compare the selected infrastructure indicator for the top countries, with higher values signaling greater constraint."
           )
         )
       )
     ),
+    column(4,
+      card(
+        card_header(icon("chart-pie"), "Power Source Distribution"),
+        card_body(
+          plotlyOutput(ns("power_source_pie"), height = "450px"),
+          p(
+            class = "text-muted small mt-2",
+            "Slices show how firms split between grid-only power, generators, or mixed sources, highlighting reliance on backups."
+          )
+        )
+      )
+    )
+  ),
     
     # Secondary Analysis
     fluidRow(
       class = "mb-4",
       column(6,
-        card(
-          card_header(icon("chart-line"), "Outages vs. Productivity"),
-          card_body(
-            plotlyOutput(ns("outage_productivity"), height = "350px")
-          )
-        )
-      ),
-      column(6,
-        card(
-          card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
-          card_body(
-            plotlyOutput(ns("cost_chart"), height = "350px")
+      card(
+        card_header(icon("chart-line"), "Outages vs. Productivity"),
+        card_body(
+          plotlyOutput(ns("outage_productivity"), height = "350px"),
+          p(
+            class = "text-muted small mt-2",
+            "The fitted line illustrates how rising outage frequency relates to declines in capacity utilization."
           )
         )
       )
     ),
-    
-    # Regional Heatmap
-    fluidRow(
-      column(12,
-        card(
-          card_header(icon("th"), "Regional Infrastructure Heatmap"),
-          card_body(
-            plotlyOutput(ns("infra_heatmap"), height = "400px")
+    column(6,
+      card(
+        card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
+        card_body(
+          plotlyOutput(ns("cost_chart"), height = "350px"),
+          p(
+            class = "text-muted small mt-2",
+            "Bars translate outages into estimated sales losses, showing which regions bear the largest revenue impact."
           )
         )
       )
     )
+  ),
+    
+    # Regional Heatmap
+    fluidRow(
+      column(12,
+      card(
+        card_header(icon("th"), "Regional Infrastructure Heatmap"),
+        card_body(
+          plotlyOutput(ns("infra_heatmap"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "The heatmap compares infrastructure indicators across regions and metrics; darker cells flag hotspots needing attention."
+          )
+        )
+      )
+    )
+  )
   )
 }
 

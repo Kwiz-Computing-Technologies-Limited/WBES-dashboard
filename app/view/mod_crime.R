@@ -55,13 +55,25 @@ ui <- function(id) {
       column(8,
         card(
           card_header(icon("chart-bar"), " Security Indicators by Country"),
-          card_body(plotlyOutput(ns("bar_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("bar_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars benchmark crime-related obstacles or security costs by country, surfacing the highest-risk environments."
+            )
+          )
         )
       ),
       column(4,
         card(
           card_header(icon("globe-africa"), " Regional Security Overview"),
-          card_body(plotlyOutput(ns("regional_chart"), height = "450px"))
+          card_body(
+            plotlyOutput(ns("regional_chart"), height = "450px"),
+            p(
+              class = "text-muted small mt-2",
+              "Regional averages reveal how security pressures vary across geographies, contextualizing country performance."
+            )
+          )
         )
       )
     ),
@@ -72,13 +84,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("coins"), " Security Cost Analysis"),
-          card_body(plotlyOutput(ns("cost_analysis"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("cost_analysis"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Bars translate security spending into percentage of sales, indicating the financial burden of crime mitigation."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("project-diagram"), " Crime vs. Business Performance"),
-          card_body(plotlyOutput(ns("crime_performance"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("crime_performance"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Scatter points show how crime obstacles relate to operational performance, signaling whether insecurity dampens output."
+            )
+          )
         )
       )
     ),
@@ -89,13 +113,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("layer-group"), " Security by Income Group"),
-          card_body(plotlyOutput(ns("income_security"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("income_security"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Box plots summarize crime and security costs across income tiers, highlighting risk dispersion."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-area"), " Crime Impact Matrix"),
-          card_body(plotlyOutput(ns("impact_matrix"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("impact_matrix"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Matrix cells combine crime prevalence and severity to pinpoint the most disruptive contexts."
+            )
+          )
         )
       )
     ),
@@ -106,13 +142,25 @@ ui <- function(id) {
       column(6,
         card(
           card_header(icon("balance-scale"), " Crime vs. Corruption"),
-          card_body(plotlyOutput(ns("crime_corruption"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("crime_corruption"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "Scatter compares security risks with corruption incidence to see how governance and crime challenges overlap."
+            )
+          )
         )
       ),
       column(6,
         card(
           card_header(icon("chart-pie"), " Risk Distribution"),
-          card_body(plotlyOutput(ns("risk_distribution"), height = "350px"))
+          card_body(
+            plotlyOutput(ns("risk_distribution"), height = "350px"),
+            p(
+              class = "text-muted small mt-2",
+              "The pie segments firms by reported risk level, providing a quick view of how pervasive security threats are."
+            )
+          )
         )
       )
     ),

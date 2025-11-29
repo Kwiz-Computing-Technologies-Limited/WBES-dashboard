@@ -103,72 +103,92 @@ ui <- function(id) {
        card(
          card_header(icon("map-marked-alt"), "Business Environment Map"),
          card_body(
-           selectInput(
-             ns("map_indicator"),
-             "Select Indicator:",
-             choices = c(
-               "Power Outages (per month)" = "power_outages_per_month",
-               "Access to Credit (%)" = "firms_with_credit_line_pct",
-               "Bribery Incidence (%)" = "bribery_incidence_pct",
-               "Capacity Utilization (%)" = "capacity_utilization_pct"
-             ),
-             width = "300px"
-           ),
-           leafletOutput(ns("world_map"), height = "450px")
-         )
-       )
-     ),
-     column(4,
-       card(
-         card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
-         card_body(
-           plotlyOutput(ns("obstacles_chart"), height = "500px")
-         )
-       )
-     )
-   ),
+          selectInput(
+            ns("map_indicator"),
+            "Select Indicator:",
+            choices = c(
+              "Power Outages (per month)" = "power_outages_per_month",
+              "Access to Credit (%)" = "firms_with_credit_line_pct",
+              "Bribery Incidence (%)" = "bribery_incidence_pct",
+              "Capacity Utilization (%)" = "capacity_utilization_pct"
+            ),
+            width = "300px"
+          ),
+          leafletOutput(ns("world_map"), height = "450px"),
+          p(
+            class = "text-muted small mt-2",
+            "Circle colors show how each selected indicator varies by country; darker markers highlight higher values while tooltips reveal country-specific figures."
+          )
+        )
+      )
+    ),
+    column(4,
+      card(
+        card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
+        card_body(
+          plotlyOutput(ns("obstacles_chart"), height = "500px"),
+          p(
+            class = "text-muted small mt-2",
+            "Bars rank the most frequently cited obstacles among surveyed firms, making it easy to see which constraints dominate the business landscape."
+          )
+        )
+      )
+    )
+  ),
    
    # Regional Comparison
    fluidRow(
      class = "mb-4",
      column(12,
-       card(
-         card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
-         card_body(
-           plotlyOutput(ns("regional_comparison"), height = "400px")
-         )
-       )
-     )
-   ),
+      card(
+        card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
+        card_body(
+          plotlyOutput(ns("regional_comparison"), height = "400px"),
+          p(
+            class = "text-muted small mt-2",
+            "Grouped bars compare infrastructure reliability, access to finance, and bribery exposure across regions, highlighting where each region performs strongest."
+          )
+        )
+      )
+    )
+  ),
    
    # Bottom Row - Quick Stats
    fluidRow(
      column(6,
        card(
-         card_header(
-           icon("bolt"), 
-           "Infrastructure Quality Index",
-           class = "card-header-secondary"
-         ),
-         card_body(
-           plotlyOutput(ns("infrastructure_gauge"), height = "250px")
-         )
-       )
-     ),
-     column(6,
-       card(
-         card_header(
-           icon("university"), 
-           "Financial Access Index",
-           class = "card-header-secondary"
-         ),
-         card_body(
-           plotlyOutput(ns("finance_gauge"), height = "250px")
-         )
-       )
-     )
-   )
- )
+        card_header(
+          icon("bolt"),
+          "Infrastructure Quality Index",
+          class = "card-header-secondary"
+        ),
+        card_body(
+          plotlyOutput(ns("infrastructure_gauge"), height = "250px"),
+          p(
+            class = "text-muted small mt-2",
+            "The gauge summarizes regional infrastructure strength on a 0–100 scale; the threshold line marks the target resilience benchmark."
+          )
+        )
+      )
+    ),
+    column(6,
+      card(
+        card_header(
+          icon("university"),
+          "Financial Access Index",
+          class = "card-header-secondary"
+        ),
+        card_body(
+          plotlyOutput(ns("finance_gauge"), height = "250px"),
+          p(
+            class = "text-muted small mt-2",
+            "This dial tracks how easily firms secure formal credit; scores below the threshold highlight markets where access remains constrained."
+          )
+        )
+      )
+    )
+  )
+)
 }
 
 #' @export

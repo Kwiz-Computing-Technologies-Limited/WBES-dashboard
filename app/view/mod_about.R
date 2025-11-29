@@ -157,7 +157,7 @@ Available at: https://www.enterprisesurveys.org'
                 tags$ul(
                   tags$li(
                     icon("envelope"), " ",
-                    a(href = "mailto:info@kwizresearch.com", "info@kwizresearch.com")
+                    a(href = "mailto:jeankwizera@kwizresearch.com", "jeankwizera@kwizresearch.com")
                   ),
                   tags$li(
                     icon("globe"), " ",
