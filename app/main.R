@@ -24,7 +24,7 @@ box::use(
   app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
-  app/logic/wbes_data[load_wbes_data]
+  logic = app/logic
 )
 
 #' @export
@@ -204,8 +204,8 @@ ui <- function(request) {
   )
 }
 
-#' @export
-server <- function(input, output, session) {
+  #' @export
+  server <- function(input, output, session) {
 
   # Show loading screen
   waiter_show(
@@ -216,22 +216,26 @@ server <- function(input, output, session) {
     color = "#FFFFFF"
   )
 
-  # Load data reactively (shared across modules)
-  wbes_data <- shiny::reactiveVal(NULL)
+    # Load data reactively (shared across modules)
+    wbes_data <- shiny::reactiveVal(NULL)
 
   # Initialize data loading with improved error handling
   shiny::observe({
-    tryCatch({
-      # Load data from assets.zip, .dta files, API, or sample data
-      data <- load_wbes_data(data_path = "data/", use_cache = TRUE, cache_hours = 24)
-      wbes_data(data)
+      tryCatch({
+        # Load data from assets.zip, .dta files, API, or sample data
+        data <- logic$load_wbes_data(
+          data_path = "data/",
+          use_cache = TRUE,
+          cache_hours = 24
+        )
+        wbes_data(data)
 
-    }, error = function(e) {
-      message("Error loading WBES data: ", e$message)
-      # Load sample data as fallback
-      data <- load_wbes_data()  # Will fallback to sample data
-      wbes_data(data)
-    })
+      }, error = function(e) {
+        message("Error loading WBES data: ", e$message)
+        # Load sample data as fallback
+        data <- logic$load_wbes_data()  # Will fallback to sample data
+        wbes_data(data)
+      })
 
     # Hide waiter after data loads
     waiter_hide()

@@ -9,7 +9,7 @@ box::use(
   tidyr[pivot_wider, pivot_longer],
   purrr[map_dfr, possibly],
   readr[read_csv, write_csv],
-  haven[read_dta],
+  haven[read_dta, as_factor],
   logger[log_info, log_warn, log_error],
   utils[unzip],
   stats[runif, setNames]
@@ -18,6 +18,7 @@ box::use(
 # World Bank API Base URL
 WB_API_BASE <- "https://api.worldbank.org/v2"
 ES_SOURCE_ID <- 13  # Enterprise Surveys source ID
+RAW_DTA_FILENAME <- "ES-Indicators-Database-Global-Methodology_November_24_2025.dta"
 
 #' Get list of Enterprise Survey indicators
 #' @return Data frame of available indicators
@@ -319,7 +320,11 @@ load_from_zip <- function(zip_file, data_path) {
   tryCatch({
     # List contents of zip
     zip_contents <- unzip(zip_file, list = TRUE)
-    dta_files_in_zip <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
+    candidate_dta <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
+
+    # Prefer the known combined microdata file name if present
+    preferred_match <- candidate_dta[basename(candidate_dta) == RAW_DTA_FILENAME]
+    dta_files_in_zip <- if (length(preferred_match) > 0) preferred_match else candidate_dta
 
     if (length(dta_files_in_zip) == 0) {
       log_error("No .dta files found in assets.zip")
@@ -362,10 +367,10 @@ load_microdata <- function(dta_files) {
   data_list <- lapply(dta_files, function(f) {
     tryCatch({
       file_size_mb <- file.size(f) / 1024^2
-      log_info(sprintf("Reading: %s (%.1f MB)", basename(f), file_size_mb))
+      log_info(sprintf("Reading: %s (%.1f MB) [encoding=latin1]", basename(f), file_size_mb))
 
       # Read with progress for large files
-      data <- read_dta(f)
+      data <- read_dta(f, encoding = "latin1")
 
       log_info(sprintf("Loaded %s with %d observations and %d variables",
                       basename(f), nrow(data), ncol(data)))
@@ -404,28 +409,31 @@ load_microdata <- function(dta_files) {
   years <- extract_years_from_microdata(combined)
 
   # CREATE COUNTRY-LEVEL AGGREGATES for maps and charts
+  metric_cols <- c(
+    "power_outages_per_month", "avg_outage_duration_hrs", "firms_with_generator_pct",
+    "firms_with_credit_line_pct", "firms_with_bank_account_pct", "loan_rejection_rate_pct",
+    "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
+    "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
+    "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct"
+  )
+
   country_aggregates <- processed |>
-    group_by(country, country_code = a0) |>
+    filter(!is.na(country) & !is.na(country_code)) |>
+    group_by(country, country_code) |>
     summarise(
-      across(c(power_outages_per_month, avg_outage_duration_hrs, firms_with_generator_pct,
-               firms_with_credit_line_pct, firms_with_bank_account_pct, loan_rejection_rate_pct,
-               collateral_required_pct, bribery_incidence_pct, corruption_obstacle_pct,
-               capacity_utilization_pct, export_share_pct, export_firms_pct,
-               female_ownership_pct, female_workers_pct, crime_obstacle_pct, security_costs_pct),
-             ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first(region),
-      income_group = first(income_group),
+      across(all_of(metric_cols), ~weighted_mean_safe(.x, sample_weight), .names = "{.col}"),
+      region = first_non_na(region),
+      income_group = first_non_na(income_group),
       sample_size = n(),
       .groups = "drop"
-    ) |>
-    filter(!is.na(country_code))
+    )
 
   result <- list(
     raw = combined,
     processed = processed,
     latest = country_aggregates,  # Country-level aggregates for maps/charts
     countries = countries,
-    country_codes = unique(combined$a0) |> na.omit() |> as.character(),
+    country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,
     metadata = list(
       source = "World Bank Enterprise Surveys (Microdata)",
@@ -449,80 +457,108 @@ process_microdata <- function(data) {
 
   log_info("Processing microdata...")
 
-  # Start with original data
-  processed <- data
+  processed <- data |>
+    mutate(
+      country = coalesce_chr(
+        get0("country2", ifnotfound = NULL),
+        get0("country", ifnotfound = NULL),
+        get0("country_official", ifnotfound = NULL)
+      ),
+      country_code = coalesce_chr(
+        get0("wbcode", ifnotfound = NULL),
+        get0("country_abr", ifnotfound = NULL)
+      ),
+      year = get0("year", ifnotfound = NA_integer_),
+      region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
+      income_group = if ("income" %in% names(data)) as.character(as_factor(income)) else NA_character_,
+      sample_weight = get0("wt", ifnotfound = NA_real_),
 
-  # Ensure we have country and year
-  if (!"country" %in% names(processed) && "a0" %in% names(processed)) {
-    processed$country <- processed$a0
-  }
+      # Infrastructure
+      power_outages_per_month = coalesce_num(get0("in2", ifnotfound = NULL)),
+      avg_outage_duration_hrs = coalesce_num(get0("in3", ifnotfound = NULL)),
+      firms_with_generator_pct = coalesce_num(get0("in9", ifnotfound = NULL)),
 
-  # Add friendly column names based on actual WBES structure
-  # Infrastructure obstacles (obst codes)
-  if ("obst4" %in% names(data)) {
-    processed$power_outages_per_month <- base::pmin(15, data$obst4 * 3, na.rm = TRUE)
-  }
+      # Access to finance
+      firms_with_credit_line_pct = coalesce_num(get0("fin14", ifnotfound = NULL)),
+      firms_with_bank_account_pct = coalesce_num(get0("fin15", ifnotfound = NULL)),
+      loan_rejection_rate_pct = coalesce_num(get0("fin21", ifnotfound = NULL)),
+      collateral_required_pct = coalesce_num(get0("fin10", ifnotfound = NULL)),
 
-  # Crime and security
-  if ("crime1" %in% names(data)) {
-    processed$security_costs_pct <- data$crime1
-    processed$crime_obstacle_pct <- data$crime1 * 2
-  }
+      # Corruption and governance
+      bribery_incidence_pct = coalesce_num(get0("graft3", ifnotfound = NULL)),
+      corruption_obstacle_pct = coalesce_num(get0("corr11", ifnotfound = NULL)),
 
-  # Finance obstacles
-  if ("obst6" %in% names(data)) {
-    processed$firms_with_credit_line_pct <- 100 - (data$obst6 * 20)
-  }
-  if ("fin1" %in% names(data)) {
-    processed$firms_with_bank_account_pct <- data$fin1 * 20
-    processed$bank_account <- data$fin1
-  }
-  if ("fin5" %in% names(data)) {
-    processed$loan_rejection_rate_pct <- data$fin5 * 10
-  }
-  if ("fin6" %in% names(data)) {
-    processed$collateral_required_pct <- data$fin6 * 20
-  }
+      # Workforce and gender
+      female_ownership_pct = coalesce_num(get0("gend1", ifnotfound = NULL)),
+      female_workers_pct = coalesce_num(get0("gend2", ifnotfound = NULL)),
 
-  # Corruption
-  if ("obst9" %in% names(data)) {
-    processed$corruption_obstacle_pct <- data$obst9 * 20
-    processed$bribery_incidence_pct <- data$obst9 * 15
-  }
+      # Performance and exports
+      capacity_utilization_pct = coalesce_num(get0("t3", ifnotfound = NULL)),
+      export_firms_pct = coalesce_num(get0("tr10", ifnotfound = NULL)),
+      export_share_pct = compute_export_share(data),
 
-  # Workforce and gender
-  if ("gend1" %in% names(data)) {
-    processed$female_ownership_pct <- data$gend1 * 10
-  }
-  if ("wk1" %in% names(data)) {
-    processed$female_workers_pct <- data$wk1 / 2
-  }
-
-  # Performance indicators
-  if ("perf1" %in% names(data)) {
-    processed$capacity_utilization_pct <- base::pmin(100, data$perf1 * 10, na.rm = TRUE)
-  }
-  if ("exporter" %in% names(data)) {
-    processed$export_firms_pct <- data$exporter * 100
-    processed$export_share_pct <- data$exporter * 25
-  }
-
-  # Infrastructure specifics
-  if ("in2" %in% names(data)) {
-    processed$avg_outage_duration_hrs <- data$in2
-  }
-  if ("in4" %in% names(data)) {
-    processed$firms_with_generator_pct <- data$in4 * 100
-  }
-
-  # Add region and income group if we have country codes
-  if ("a0" %in% names(processed) || "country" %in% names(processed)) {
-    processed <- add_country_metadata_to_microdata(processed)
-  }
+      # Crime and security
+      crime_obstacle_pct = coalesce_num(get0("crime8", ifnotfound = NULL)),
+      security_costs_pct = coalesce_num(get0("crime2", ifnotfound = NULL))
+    ) |>
+    mutate(region = ifelse(region == "Aggregates", NA_character_, region))
 
   log_info(sprintf("Processed %d records with %d variables", nrow(processed), ncol(processed)))
 
-  return(processed)
+  processed
+}
+
+compute_export_share <- function(data) {
+  if (all(c("tr5", "tr6") %in% names(data))) {
+    direct <- data$tr5
+    indirect <- data$tr6
+    total <- rowSums(cbind(direct, indirect), na.rm = TRUE)
+    missing_both <- is.na(direct) & is.na(indirect)
+    total[missing_both] <- NA_real_
+    return(total)
+  }
+
+  if ("tr5" %in% names(data)) {
+    return(as.numeric(data$tr5))
+  }
+
+  NA_real_
+}
+
+coalesce_chr <- function(...) {
+  vals <- list(...)
+  for (v in vals) {
+    if (!is.null(v)) {
+      candidate <- as.character(v)
+      candidate <- candidate[!is.na(candidate) & candidate != ""]
+      if (length(candidate) > 0) {
+        return(v)
+      }
+    }
+  }
+  NA_character_
+}
+
+coalesce_num <- function(x) {
+  if (is.null(x)) {
+    return(NA_real_)
+  }
+  as.numeric(x)
+}
+
+weighted_mean_safe <- function(x, w = NULL) {
+  if (all(is.na(x))) {
+    return(NA_real_)
+  }
+  if (!is.null(w) && !all(is.na(w))) {
+    return(weighted.mean(x, w, na.rm = TRUE))
+  }
+  mean(x, na.rm = TRUE)
+}
+
+first_non_na <- function(x) {
+  idx <- which(!is.na(x))[1]
+  if (is.na(idx)) NA else x[idx]
 }
 
 #' Extract country list from microdata
@@ -530,7 +566,7 @@ process_microdata <- function(data) {
 #' @return Vector of countries
 extract_countries_from_microdata <- function(data) {
   # Try different country variable names
-  for (var in c("country", "a0", "economy", "countryname")) {
+  for (var in c("country", "country2", "country_official", "wbcode", "country_abr", "economy", "countryname")) {
     if (var %in% names(data)) {
       countries <- unique(data[[var]]) |>
         na.omit() |>

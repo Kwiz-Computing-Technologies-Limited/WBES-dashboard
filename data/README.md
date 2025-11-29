@@ -10,7 +10,7 @@ Download WBES microdata from: https://www.enterprisesurveys.org/en/survey-datase
 
 **For optimal performance, use the combined microdata ZIP file:**
 
-1. Download the combined WBES microdata .dta file from the Enterprise Surveys website
+1. Download the combined WBES microdata .dta file from the Enterprise Surveys website (currently `ES-Indicators-Database-Global-Methodology_November_24_2025.dta`, encoded in `latin1`)
 2. Create a ZIP archive named `assets.zip` containing the .dta file(s)
 3. Place `assets.zip` in this directory
 4. The app will automatically:
