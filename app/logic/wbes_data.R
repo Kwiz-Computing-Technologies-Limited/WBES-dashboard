@@ -13,7 +13,79 @@ box::use(
   stats[runif, setNames]
 )
 
+# World Bank API Base URL
+WB_API_BASE <- "https://api.worldbank.org/v2"
+ES_SOURCE_ID <- 13  # Enterprise Surveys source ID
 RAW_DTA_FILENAME <- "ES-Indicators-Database-Global-Methodology_November_24_2025.dta"
+
+#' Get list of Enterprise Survey indicators
+#' @return Data frame of available indicators
+#' @export
+get_es_indicators <- function() {
+  url <- sprintf(
+    "%s/sources/%d/indicators?format=json&per_page=500",
+    WB_API_BASE, ES_SOURCE_ID
+  )
+  
+  tryCatch({
+    response <- GET(url)
+    if (http_error(response)) {
+      log_warn("Failed to fetch indicator list from World Bank API")
+      return(NULL)
+    }
+    
+    data <- content(response, as = "text", encoding = "UTF-8")
+    json <- fromJSON(data, flatten = TRUE)
+    
+    if (length(json) >= 2 && !is.null(json[[2]])) {
+      indicators <- as.data.frame(json[[2]])
+      return(indicators)
+    }
+    NULL
+  }, error = function(e) {
+    log_error(paste("Error fetching indicators:", e$message))
+    NULL
+  })
+}
+
+#' Fetch Enterprise Survey indicator data for countries
+#' @param indicator_codes Vector of indicator codes
+#' @param countries Vector of ISO3 country codes (NULL for all)
+#' @param date_range Date range string e.g. "2015:2023"
+#' @return Data frame with indicator values
+#' @export
+fetch_es_data <- function(indicator_codes, countries = NULL, date_range = "2010:2024") {
+  
+  country_str <- if (is.null(countries)) "all" else paste(countries, collapse = ";")
+  indicator_str <- paste(indicator_codes, collapse = ";")
+  
+  url <- sprintf(
+    "%s/country/%s/indicator/%s?source=%d&date=%s&format=json&per_page=10000",
+    WB_API_BASE, country_str, indicator_str, ES_SOURCE_ID, date_range
+  )
+  
+  log_info(paste("Fetching WBES data:", indicator_str))
+  
+  tryCatch({
+    response <- GET(url)
+    if (http_error(response)) {
+      log_warn(paste("API error:", status_code(response)))
+      return(NULL)
+    }
+    
+    data <- content(response, as = "text", encoding = "UTF-8")
+    json <- fromJSON(data, flatten = TRUE)
+    
+    if (length(json) >= 2 && !is.null(json[[2]])) {
+      df <- as.data.frame(json[[2]])
+      return(df)
+    }
+    NULL
+  }, error = function(e) {
+    log_error(paste("Error fetching data:", e$message))
+    NULL
+  })
+}
 
 #' Key WBES indicator codes mapped to readable names
 #' @export

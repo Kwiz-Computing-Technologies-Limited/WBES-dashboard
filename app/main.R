@@ -24,7 +24,7 @@ box::use(
   app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
-  logic = app/logic
+  app/logic[load_wbes_data]
 )
 
 #' @export
@@ -221,21 +221,21 @@ ui <- function(request) {
 
   # Initialize data loading with improved error handling
   shiny::observe({
-      tryCatch({
-        # Load data from assets.zip, .dta files, API, or sample data
-        data <- logic$load_wbes_data(
-          data_path = "data/",
-          use_cache = TRUE,
-          cache_hours = 24
-        )
-        wbes_data(data)
+    tryCatch({
+      # Load data from assets.zip, .dta files, API, or sample data
+      data <- wbes_data$load_wbes_data(
+        data_path = "data/",
+        use_cache = TRUE,
+        cache_hours = 24
+      )
+      wbes_data(data)
 
-      }, error = function(e) {
-        message("Error loading WBES data: ", e$message)
-        # Load sample data as fallback
-        data <- logic$load_wbes_data()  # Will fallback to sample data
-        wbes_data(data)
-      })
+    }, error = function(e) {
+      message("Error loading WBES data: ", e$message)
+      # Load sample data as fallback
+      data <- wbes_data$load_wbes_data()  # Will fallback to sample data
+      wbes_data(data)
+    })
 
     # Hide waiter after data loads
     waiter_hide()
