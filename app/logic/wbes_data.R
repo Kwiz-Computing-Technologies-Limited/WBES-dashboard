@@ -18,6 +18,7 @@ box::use(
 # World Bank API Base URL
 WB_API_BASE <- "https://api.worldbank.org/v2"
 ES_SOURCE_ID <- 13  # Enterprise Surveys source ID
+RAW_DTA_FILENAME <- "ES-Indicators-Database-Global-Methodology_November_24_2025.dta"
 
 #' Get list of Enterprise Survey indicators
 #' @return Data frame of available indicators
@@ -319,7 +320,11 @@ load_from_zip <- function(zip_file, data_path) {
   tryCatch({
     # List contents of zip
     zip_contents <- unzip(zip_file, list = TRUE)
-    dta_files_in_zip <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
+    candidate_dta <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
+
+    # Prefer the known combined microdata file name if present
+    preferred_match <- candidate_dta[basename(candidate_dta) == RAW_DTA_FILENAME]
+    dta_files_in_zip <- if (length(preferred_match) > 0) preferred_match else candidate_dta
 
     if (length(dta_files_in_zip) == 0) {
       log_error("No .dta files found in assets.zip")
@@ -362,10 +367,10 @@ load_microdata <- function(dta_files) {
   data_list <- lapply(dta_files, function(f) {
     tryCatch({
       file_size_mb <- file.size(f) / 1024^2
-      log_info(sprintf("Reading: %s (%.1f MB)", basename(f), file_size_mb))
+      log_info(sprintf("Reading: %s (%.1f MB) [encoding=latin1]", basename(f), file_size_mb))
 
       # Read with progress for large files
-      data <- read_dta(f)
+      data <- read_dta(f, encoding = "latin1")
 
       log_info(sprintf("Loaded %s with %d observations and %d variables",
                       basename(f), nrow(data), ncol(data)))
