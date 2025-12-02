@@ -236,12 +236,12 @@ load_microdata <- function(dta_files) {
     "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
     "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
     "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct",
-    "annual_sales_growth_pct",  # Added: from perf1 or d2 (Real annual sales growth)
+    "workforce_obstacle_pct", "annual_sales_growth_pct",
     # Add IC.FRM.* aliases (only those that exist)
     "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS", "IC.FRM.OUTG.ZS",
     "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS", "IC.FRM.FEMO.ZS",
     "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS",
-    "IC.FRM.CRIM.ZS"  # Added: crime as major constraint (from crime8)
+    "IC.FRM.CRIM.ZS", "IC.FRM.WKFC.ZS"
   )
 
   # Filter for valid columns that exist in the data
@@ -414,6 +414,7 @@ process_microdata <- function(data) {
       # Workforce and gender
       female_ownership_pct = coalesce_num(get0("gend1", ifnotfound = NULL)),
       female_workers_pct = coalesce_num(get0("gend2", ifnotfound = NULL)),
+      workforce_obstacle_pct = coalesce_num(get0("l3", ifnotfound = NULL)),  # Workforce quality obstacle
 
       # Performance and exports
       capacity_utilization_pct = coalesce_num(get0("t3", ifnotfound = NULL)),
@@ -440,7 +441,8 @@ process_microdata <- function(data) {
       IC.FRM.EXPRT.ZS = export_firms_pct,            # Export orientation
       IC.FRM.ELEC.ZS = coalesce_num(get0("elec", ifnotfound = NULL)),    # Electricity obstacle
       IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL)),  # Infrastructure obstacle
-      IC.FRM.CRIM.ZS = crime_obstacle_pct            # Crime as obstacle (from crime8)
+      IC.FRM.CRIM.ZS = crime_obstacle_pct,           # Crime as obstacle (from crime8)
+      IC.FRM.WKFC.ZS = workforce_obstacle_pct        # Workforce quality as obstacle (from l3)
     ) |>
     mutate(region = ifelse(region == "Aggregates", NA_character_, region))
 
