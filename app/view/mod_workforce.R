@@ -334,6 +334,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
@@ -403,6 +405,8 @@ server <- function(id, wbes_data) {
     output$income_comparison <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d, y = ~IC.FRM.WKFC.ZS, x = ~income_group, type = "box",
               marker = list(color = "#1B6B5F")) |>

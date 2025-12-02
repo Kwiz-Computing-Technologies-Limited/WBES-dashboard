@@ -8,7 +8,8 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, mutate, group_by, summarise, coalesce],
   tidyr[pivot_wider],
-  stats[setNames, runif]
+  stats[setNames, runif],
+  utils[head]
 )
 
 #' @export

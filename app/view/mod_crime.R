@@ -344,6 +344,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
               text = ~paste0(country, "<br>Crime: ", round(IC.FRM.CRIM.ZS, 1),
@@ -367,6 +369,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d) |>
         add_trace(y = ~IC.FRM.CRIM.ZS, x = ~income_group, type = "box",
                  name = "Crime Obstacle",
@@ -389,6 +393,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
@@ -409,6 +415,8 @@ server <- function(id, wbes_data) {
     output$crime_corruption <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CORR.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
               type = "scatter", mode = "markers",

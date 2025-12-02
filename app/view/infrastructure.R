@@ -126,7 +126,9 @@ server <- function(id, wbes_data) {
     
     output$kpi_crime <- renderUI({
       req(filtered())
-      val <- round(mean(filtered()$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
+      d <- filtered()
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d)) return(NULL)
+      val <- round(mean(d$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
       div(class = "card bg-danger text-white h-100",
         div(class = "card-body text-center", h2(paste0(val, "%")), p("Crime Obstacle")))
     })
