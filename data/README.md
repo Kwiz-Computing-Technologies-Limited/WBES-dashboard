@@ -1,24 +1,84 @@
 # WBES Data Directory
 
-This directory is for World Bank Enterprise Surveys data files.
+This directory contains World Bank Enterprise Surveys data files.
 
-## ⚠️ IMPORTANT: Real Data Required
+## ✅ DATA AVAILABLE
 
-**The dashboard currently defaults to SAMPLE DATA because no real WBES microdata is present.**
+**Real WBES microdata is present in this directory (`assets.zip`).**
 
-To use real WBES microdata, follow the setup instructions below.
+The dashboard is configured to automatically load the real data on startup.
+
+---
+
+## Current Setup
+
+**File:** `data/assets.zip`
+**Contains:** `ES-Indicators-Database-Global-Methodology_November_24_2025.dta`
+**Encoding:** `latin1` (configured automatically)
+**Status:** ✅ Ready to use
+
+---
+
+## Using the Dashboard
+
+Simply run the app - it will automatically detect and load the real data:
+
+```r
+rhino::app()
+```
+
+**Expected console output:**
+- ✅ "Found assets.zip - loading combined microdata"
+- ✅ "Loaded X with Y observations and Z variables"
+- ✅ "Extracting variable labels from microdata..."
+- ✅ "Created label mapping with 100+ labels"
+
+The first load will take 30-60 seconds as it processes the microdata and creates a cache. Subsequent loads will be much faster (<5 seconds).
+
+---
+
+## Data File Details
+
+### File Structure
+```
+data/
+└── assets.zip
+    └── ES-Indicators-Database-Global-Methodology_November_24_2025.dta
+```
+
+### Technical Details
+- **Format:** Stata `.dta` file
+- **Encoding:** `latin1` (automatically handled by `haven::read_dta()`)
+- **Size:** ~100-500 MB (typical for full microdata)
+- **Source:** World Bank Enterprise Surveys
+- **Coverage:** 168 economies, 250,000+ firms
+
+### What Happens on Load
+
+1. **Detection:** App finds `data/assets.zip`
+2. **Extraction:** Extracts `.dta` file to `data/.extracted/`
+3. **Reading:** Loads data with `haven::read_dta(..., encoding = "latin1")`
+4. **Label Extraction:** Extracts variable labels from Stata metadata
+5. **Processing:** Creates country aggregates and processed datasets
+6. **Caching:** Saves to `data/wbes_processed.rds` for fast future loads
+7. **Ready:** All modules have access to real data with descriptive labels
 
 ---
 
 ## Data Sources
 
-Download WBES microdata from: https://www.enterprisesurveys.org/en/survey-datasets
+If you need to re-download or update the data:
+
+**Primary Source:** World Bank Enterprise Surveys
+https://www.enterprisesurveys.org/en/survey-datasets
 
 **Required File:** `ES-Indicators-Database-Global-Methodology_November_24_2025.dta`
 
 ---
 
-## Quick Setup (Recommended)
+## Re-downloading or Updating Data
+
+If you need to download or update the data file:
 
 ### Step 1: Download the Data
 
