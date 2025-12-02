@@ -234,11 +234,10 @@ load_microdata <- function(dta_files) {
     "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
     "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
     "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct",
-    # Add IC.FRM.* aliases
+    # Add IC.FRM.* aliases (only those that exist)
     "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS", "IC.FRM.OUTG.ZS",
     "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS", "IC.FRM.FEMO.ZS",
-    "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS",
-    "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS"
+    "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS"
   )
 
   # Filter for valid columns that exist in the data
@@ -252,6 +251,7 @@ load_microdata <- function(dta_files) {
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
       income_group = first_non_na(income_group),
+      sector = first_non_na(sector),
       sample_size = n(),
       .groups = "drop"
     )
@@ -265,6 +265,10 @@ load_microdata <- function(dta_files) {
     all.x = TRUE
   )
 
+  # Extract unique regions and sectors
+  regions <- processed$region |> unique() |> na.omit() |> as.character() |> sort()
+  sectors <- processed$sector |> unique() |> na.omit() |> as.character() |> sort()
+
   result <- list(
     raw = combined,
     processed = processed,
@@ -272,6 +276,8 @@ load_microdata <- function(dta_files) {
     countries = countries,
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,
+    regions = regions,  # Unique region values from data
+    sectors = sectors,  # Unique sector values from data
     country_coordinates = country_coords,  # Separate coordinates dataset
     column_labels = column_labels,  # Raw extracted labels from Stata file
     label_mapping = label_mapping,  # Comprehensive label mapping (extracted + manual)
@@ -301,9 +307,9 @@ process_microdata <- function(data) {
   processed <- data |>
     mutate(
       country = coalesce_chr(
+        get0("country_official", ifnotfound = NULL),
         get0("country2", ifnotfound = NULL),
-        get0("country", ifnotfound = NULL),
-        get0("country_official", ifnotfound = NULL)
+        get0("country", ifnotfound = NULL)
       ),
       country_code = coalesce_chr(
         get0("wbcode", ifnotfound = NULL),
@@ -312,6 +318,7 @@ process_microdata <- function(data) {
       year = get0("year", ifnotfound = NA_integer_),
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
       income_group = if ("income" %in% names(data)) as.character(as_factor(income)) else NA_character_,
+      sector = if ("stra_sector" %in% names(data)) as.character(as_factor(stra_sector)) else NA_character_,
       sample_weight = get0("wt", ifnotfound = NA_real_),
 
       # Infrastructure
@@ -354,8 +361,6 @@ process_microdata <- function(data) {
       IC.FRM.FEMO.ZS = female_ownership_pct,
       IC.FRM.FEMW.ZS = female_workers_pct,
       IC.FRM.EXPRT.ZS = export_firms_pct,
-      IC.FRM.CRIM.ZS = crime_obstacle_pct,
-      IC.FRM.SECU.ZS = security_costs_pct,
       IC.FRM.ELEC.ZS = coalesce_num(get0("elec", ifnotfound = NULL)),  # Electricity obstacle
       IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL))  # Infrastructure obstacle
     ) |>
@@ -423,8 +428,8 @@ first_non_na <- function(x) {
 #' @param data Microdata frame
 #' @return Vector of countries
 extract_countries_from_microdata <- function(data) {
-  # Try different country variable names
-  for (var in c("country", "country2", "country_official", "wbcode", "country_abr", "economy", "countryname")) {
+  # Try different country variable names, prioritizing country_official
+  for (var in c("country_official", "country2", "country", "wbcode", "country_abr", "economy", "countryname")) {
     if (var %in% names(data)) {
       countries <- unique(data[[var]]) |>
         na.omit() |>

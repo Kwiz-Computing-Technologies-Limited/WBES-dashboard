@@ -279,16 +279,26 @@ server <- function(id, wbes_data) {
      # Get data with coordinates (already merged in wbes_data)
      data <- filtered_data()
 
+     # Check if lat/lng columns exist
+     has_coords <- "lat" %in% names(data) && "lng" %in% names(data)
+
+     if (!has_coords) {
+       # No coordinates available - show empty map
+       return(
+         leaflet() |>
+           addTiles() |>
+           setView(lng = 20, lat = 10, zoom = 2)
+       )
+     }
+
      # Filter to only countries with valid coordinates and indicator data
      indicator <- input$map_indicator
 
-     if (!is.null(data$lat) && !is.null(data$lng)) {
-       data <- data[!is.na(data$lat) & !is.na(data$lng), ]
+     data <- data[!is.na(data$lat) & !is.na(data$lng), ]
 
-       # Filter to countries with non-NA indicator values
-       if (indicator %in% names(data)) {
-         data <- data[!is.na(data[[indicator]]), ]
-       }
+     # Filter to countries with non-NA indicator values
+     if (indicator %in% names(data)) {
+       data <- data[!is.na(data[[indicator]]), ]
      }
 
      if (nrow(data) > 0 && indicator %in% names(data)) {
