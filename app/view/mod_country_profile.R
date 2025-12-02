@@ -55,7 +55,10 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            plotlyOutput(ns("radar_chart"), height = "400px")
+            plotlyOutput(ns("radar_chart"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Radar chart visualizing the country's performance across five key business environment dimensions. ",
+              "Larger area indicates better overall conditions. Compare the shape to regional or global benchmarks to identify relative strengths and weaknesses.")
           )
         )
       ),
@@ -79,8 +82,16 @@ ui <- function(id) {
             title = "Infrastructure",
             icon = icon("bolt"),
             fluidRow(
-              column(6, plotlyOutput(ns("infra_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("infra_chart2"), height = "300px"))
+              column(6,
+                plotlyOutput(ns("infra_chart1"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Power outage frequency and duration metrics. Higher values indicate worse infrastructure quality and increased production disruptions.")
+              ),
+              column(6,
+                plotlyOutput(ns("infra_chart2"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Generator ownership and backup infrastructure. Higher generator usage often signals unreliable grid electricity.")
+              )
             )
           ),
           
@@ -88,8 +99,16 @@ ui <- function(id) {
             title = "Finance",
             icon = icon("university"),
             fluidRow(
-              column(6, plotlyOutput(ns("finance_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("finance_chart2"), height = "300px"))
+              column(6,
+                plotlyOutput(ns("finance_chart1"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Bank account ownership and credit line access rates. Low values indicate financial exclusion and limited access to formal credit markets.")
+              ),
+              column(6,
+                plotlyOutput(ns("finance_chart2"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Loan application outcomes and collateral requirements. High rejection rates and strict collateral demands constrain firm growth and investment.")
+              )
             )
           ),
           
@@ -97,15 +116,27 @@ ui <- function(id) {
             title = "Governance",
             icon = icon("balance-scale"),
             fluidRow(
-              column(6, plotlyOutput(ns("gov_chart1"), height = "300px")),
-              column(6, plotlyOutput(ns("gov_chart2"), height = "300px"))
+              column(6,
+                plotlyOutput(ns("gov_chart1"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Corruption perception and bribery incidence among businesses. High values indicate governance challenges and informal payment expectations.")
+              ),
+              column(6,
+                plotlyOutput(ns("gov_chart2"), height = "300px"),
+                p(class = "text-muted mt-2 small",
+                  "Regulatory burden and compliance costs. Higher values suggest excessive bureaucracy and red tape affecting business operations.")
+              )
             )
           ),
-          
+
           nav_panel(
             title = "Time Series",
             icon = icon("chart-line"),
-            plotlyOutput(ns("time_series"), height = "400px")
+            plotlyOutput(ns("time_series"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Historical trends of key business environment indicators over time. ",
+              "Track improvements or deteriorations in infrastructure, finance, corruption, and other constraints. ",
+              "Trends reveal whether policy reforms are having measurable impacts on the business climate.")
           )
         )
       )
