@@ -364,8 +364,8 @@ load_microdata <- function(dta_files) {
       file_size_mb <- file.size(f) / 1024^2
       log_info(sprintf("Reading: %s (%.1f MB)", basename(f), file_size_mb))
 
-      # Read with progress for large files
-      data <- read_dta(f)
+      # Read with encoding for international characters
+      data <- read_dta(f, encoding = "latin1")
 
       log_info(sprintf("Loaded %s with %d observations and %d variables",
                       basename(f), nrow(data), ncol(data)))
@@ -452,75 +452,229 @@ process_microdata <- function(data) {
   # Start with original data
   processed <- data
 
+  # Helper function to get variable label
+  get_var_label <- function(var_name) {
+    if (var_name %in% names(data)) {
+      label <- attr(data[[var_name]], "label")
+      if (!is.null(label)) return(label)
+    }
+    return(NA_character_)
+  }
+
+  # Helper function to convert obstacle scale (0-4) to percentage
+  # 0=No obstacle, 1=Minor, 2=Moderate, 3=Major, 4=Very severe
+  obstacle_to_pct <- function(x) {
+    ifelse(is.na(x), NA, (x / 4) * 100)
+  }
+
+  # Helper function to ensure binary (0/1) conversion
+  to_binary <- function(x) {
+    ifelse(is.na(x), NA, ifelse(x > 0, 1, 0))
+  }
+
   # Ensure we have country and year
   if (!"country" %in% names(processed) && "a0" %in% names(processed)) {
     processed$country <- processed$a0
   }
 
-  # Add friendly column names based on actual WBES structure
-  # Infrastructure obstacles (obst codes)
+  log_info("Extracting and transforming WBES variables...")
+
+  # ==== INFRASTRUCTURE VARIABLES ====
+
+  # Power outages per month (in2 or c6)
+  if ("c6" %in% names(data)) {
+    processed$power_outages_per_month <- as.numeric(data$c6)
+  }
+
+  # Average outage duration in hours (in2 or c7)
+  if ("c7" %in% names(data)) {
+    processed$avg_outage_duration_hrs <- as.numeric(data$c7)
+  } else if ("in2" %in% names(data)) {
+    processed$avg_outage_duration_hrs <- as.numeric(data$in2)
+  }
+
+  # Generator ownership (binary: in4, c9)
+  if ("c9" %in% names(data)) {
+    processed$firms_with_generator_pct <- to_binary(data$c9) * 100
+  } else if ("in4" %in% names(data)) {
+    processed$firms_with_generator_pct <- to_binary(data$in4) * 100
+  }
+
+  # Electricity obstacle (obst4 - scale 0-4)
   if ("obst4" %in% names(data)) {
-    processed$power_outages_per_month <- base::pmin(15, data$obst4 * 3, na.rm = TRUE)
+    processed$electricity_obstacle_pct <- obstacle_to_pct(data$obst4)
+  } else if ("e30b" %in% names(data)) {
+    processed$electricity_obstacle_pct <- obstacle_to_pct(data$e30b)
   }
 
-  # Crime and security
-  if ("crime1" %in% names(data)) {
-    processed$security_costs_pct <- data$crime1
-    processed$crime_obstacle_pct <- data$crime1 * 2
+  # ==== ACCESS TO FINANCE VARIABLES ====
+
+  # Bank account or credit line (fin1, k3, k4)
+  if ("k4" %in% names(data)) {
+    processed$firms_with_credit_line_pct <- to_binary(data$k4) * 100
+  }
+  if ("k3" %in% names(data)) {
+    processed$firms_with_bank_account_pct <- to_binary(data$k3) * 100
+  } else if ("fin1" %in% names(data)) {
+    processed$firms_with_bank_account_pct <- to_binary(data$fin1) * 100
   }
 
-  # Finance obstacles
+  # Loan application and rejection (k15, k16)
+  if ("k16" %in% names(data)) {
+    # k16 typically = 1 if rejected, 0 if approved
+    processed$loan_rejection_rate_pct <- to_binary(data$k16) * 100
+  } else if ("fin5" %in% names(data)) {
+    processed$loan_rejection_rate_pct <- to_binary(data$fin5) * 100
+  }
+
+  # Collateral required (k17 or fin6)
+  if ("k17" %in% names(data)) {
+    processed$collateral_required_pct <- to_binary(data$k17) * 100
+  } else if ("fin6" %in% names(data)) {
+    processed$collateral_required_pct <- to_binary(data$fin6) * 100
+  }
+
+  # Finance obstacle (obst6 - scale 0-4)
   if ("obst6" %in% names(data)) {
-    processed$firms_with_credit_line_pct <- 100 - (data$obst6 * 20)
-  }
-  if ("fin1" %in% names(data)) {
-    processed$firms_with_bank_account_pct <- data$fin1 * 20
-    processed$bank_account <- data$fin1
-  }
-  if ("fin5" %in% names(data)) {
-    processed$loan_rejection_rate_pct <- data$fin5 * 10
-  }
-  if ("fin6" %in% names(data)) {
-    processed$collateral_required_pct <- data$fin6 * 20
+    processed$finance_obstacle_pct <- obstacle_to_pct(data$obst6)
+  } else if ("e30c" %in% names(data)) {
+    processed$finance_obstacle_pct <- obstacle_to_pct(data$e30c)
   }
 
-  # Corruption
+  # ==== CORRUPTION VARIABLES ====
+
+  # Bribery incidence - gift or informal payment expected (j2, j3, j4, j5, j6)
+  # These are typically binary for different service types
+  bribery_vars <- c("j2", "j3", "j4", "j5", "j6")
+  bribery_available <- bribery_vars[bribery_vars %in% names(data)]
+  if (length(bribery_available) > 0) {
+    bribery_mean <- rowMeans(sapply(data[bribery_available], to_binary), na.rm = TRUE)
+    processed$bribery_incidence_pct <- bribery_mean * 100
+  }
+
+  # Corruption obstacle (obst9 - scale 0-4)
   if ("obst9" %in% names(data)) {
-    processed$corruption_obstacle_pct <- data$obst9 * 20
-    processed$bribery_incidence_pct <- data$obst9 * 15
+    processed$corruption_obstacle_pct <- obstacle_to_pct(data$obst9)
+  } else if ("e30f" %in% names(data)) {
+    processed$corruption_obstacle_pct <- obstacle_to_pct(data$e30f)
   }
 
-  # Workforce and gender
-  if ("gend1" %in% names(data)) {
-    processed$female_ownership_pct <- data$gend1 * 10
-  }
-  if ("wk1" %in% names(data)) {
-    processed$female_workers_pct <- data$wk1 / 2
+  # ==== CRIME AND SECURITY VARIABLES ====
+
+  # Security costs as % of sales (i1)
+  if ("i1" %in% names(data)) {
+    processed$security_costs_pct <- as.numeric(data$i1)
+  } else if ("crime1" %in% names(data)) {
+    processed$security_costs_pct <- as.numeric(data$crime1)
   }
 
-  # Performance indicators
-  if ("perf1" %in% names(data)) {
-    processed$capacity_utilization_pct <- base::pmin(100, data$perf1 * 10, na.rm = TRUE)
+  # Crime obstacle (obst10 - scale 0-4)
+  if ("obst10" %in% names(data)) {
+    processed$crime_obstacle_pct <- obstacle_to_pct(data$obst10)
+  } else if ("e30g" %in% names(data)) {
+    processed$crime_obstacle_pct <- obstacle_to_pct(data$e30g)
+  }
+
+  # ==== WORKFORCE AND GENDER VARIABLES ====
+
+  # Female ownership (b4 typically %, b7 for principal owner gender)
+  if ("b4" %in% names(data)) {
+    # b4 is already percentage of female ownership
+    processed$female_ownership_pct <- as.numeric(data$b4)
+  } else if ("gend1" %in% names(data)) {
+    processed$female_ownership_pct <- as.numeric(data$gend1)
+  }
+
+  # Female workers percentage (l1 = full-time workers, some surveys ask male/female breakdown)
+  # Try to calculate from various possible variables
+  if ("l3a" %in% names(data) && "l1" %in% names(data)) {
+    # l3a = female full-time workers, l1 = total full-time workers
+    processed$female_workers_pct <- (as.numeric(data$l3a) / as.numeric(data$l1)) * 100
+  } else if ("wk1" %in% names(data)) {
+    processed$female_workers_pct <- as.numeric(data$wk1)
+  }
+
+  # Workforce/labor regulations obstacle (obst11 - scale 0-4)
+  if ("obst11" %in% names(data)) {
+    processed$workforce_obstacle_pct <- obstacle_to_pct(data$obst11)
+  } else if ("e30h" %in% names(data)) {
+    processed$workforce_obstacle_pct <- obstacle_to_pct(data$e30h)
+  }
+
+  # ==== PERFORMANCE VARIABLES ====
+
+  # Capacity utilization (n5 typically as percentage)
+  if ("n5" %in% names(data)) {
+    processed$capacity_utilization_pct <- as.numeric(data$n5)
+  } else if ("perf1" %in% names(data)) {
+    processed$capacity_utilization_pct <- as.numeric(data$perf1)
+  }
+
+  # Export status and share (d3b = % of sales exported directly, d3c = indirectly)
+  if ("d3b" %in% names(data)) {
+    processed$export_share_pct <- as.numeric(data$d3b)
   }
   if ("exporter" %in% names(data)) {
-    processed$export_firms_pct <- data$exporter * 100
-    processed$export_share_pct <- data$exporter * 25
+    # Binary indicator: firm exports or not
+    processed$export_firms_pct <- to_binary(data$exporter) * 100
+  } else if ("d3b" %in% names(data)) {
+    # If d3b > 0, firm is an exporter
+    processed$export_firms_pct <- to_binary(ifelse(data$d3b > 0, 1, 0)) * 100
   }
 
-  # Infrastructure specifics
-  if ("in2" %in% names(data)) {
-    processed$avg_outage_duration_hrs <- data$in2
-  }
-  if ("in4" %in% names(data)) {
-    processed$firms_with_generator_pct <- data$in4 * 100
+  # ==== GENERAL OBSTACLE VARIABLES ====
+  # These help contextualize the dashboard
+
+  # Overall biggest obstacle (m1a - categorical, points to which obstacle)
+  # We can use this to calculate % citing each as top obstacle
+
+  # Map obstacle categories
+  obstacle_map <- list(
+    obst1 = "transport_obstacle_pct",
+    obst2 = "customs_obstacle_pct",
+    obst3 = "tax_rates_obstacle_pct",
+    obst4 = "electricity_obstacle_pct",
+    obst5 = "tax_admin_obstacle_pct",
+    obst6 = "finance_obstacle_pct",
+    obst7 = "political_instability_obstacle_pct",
+    obst8 = "macro_instability_obstacle_pct",
+    obst9 = "corruption_obstacle_pct",
+    obst10 = "crime_obstacle_pct",
+    obst11 = "workforce_obstacle_pct",
+    obst12 = "business_licensing_obstacle_pct",
+    obst13 = "courts_obstacle_pct",
+    obst14 = "competition_obstacle_pct",
+    obst15 = "land_access_obstacle_pct"
+  )
+
+  # Convert all obstacle variables to percentages
+  for (obst_var in names(obstacle_map)) {
+    if (obst_var %in% names(data)) {
+      friendly_name <- obstacle_map[[obst_var]]
+      processed[[friendly_name]] <- obstacle_to_pct(data[[obst_var]])
+    }
   }
 
-  # Add region and income group if we have country codes
+  # ==== FIRM CHARACTERISTICS ====
+
+  # Ensure key firm characteristics are preserved
+  if ("size" %in% names(data)) {
+    processed$firm_size_category <- data$size
+  }
+  if ("sector_3" %in% names(data)) {
+    processed$sector <- data$sector_3
+  }
+  if ("year" %in% names(data)) {
+    processed$survey_year <- as.integer(data$year)
+  }
+
+  # Add region and income group metadata
   if ("a0" %in% names(processed) || "country" %in% names(processed)) {
     processed <- add_country_metadata_to_microdata(processed)
   }
 
   log_info(sprintf("Processed %d records with %d variables", nrow(processed), ncol(processed)))
+  log_info("Variable transformations complete - using actual WBES scales")
 
   return(processed)
 }
