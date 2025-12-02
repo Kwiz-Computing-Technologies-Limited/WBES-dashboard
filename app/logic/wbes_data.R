@@ -10,7 +10,8 @@ box::use(
   haven[read_dta, as_factor],
   logger[log_info, log_warn, log_error],
   utils[unzip],
-  stats[runif, setNames]
+  stats[runif, setNames],
+  app/logic/column_labels[extract_column_labels, create_wbes_label_mapping]
 )
 
 # World Bank API Base URL
@@ -123,13 +124,14 @@ WBES_INDICATORS <- list(
 #' 1. Cached processed data (.rds) if present and recent
 #' 2. Local microdata from assets.zip if present
 #' 3. Individual .dta files if present
-#' 4. Sample data as fallback
+#' 4. Sample data as fallback (with prominent warning)
 #' @param data_path Path to data directory
 #' @param use_cache Whether to use cached data
 #' @param cache_hours Hours before cache expires
+#' @param require_real_data If TRUE, fails loudly when real data is missing (default: FALSE for compatibility)
 #' @return List with WBES data components
 #' @export
-load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 24) {
+load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 24, require_real_data = FALSE) {
 
   log_info("Loading WBES data...")
 
@@ -139,11 +141,20 @@ load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 
     cache_age <- difftime(Sys.time(), file.mtime(cache_file), units = "hours")
     if (cache_age < cache_hours) {
       log_info("Loading from cache (processed data)")
-      return(readRDS(cache_file))
+      cached_data <- readRDS(cache_file)
+
+      # Validate that cached data is real data if required
+      if (require_real_data && !is.null(cached_data$metadata$note) &&
+          grepl("Sample Data|Simulated", cached_data$metadata$note, ignore.case = TRUE)) {
+        log_error("Cached data is sample data but real data is required")
+        stop("REAL DATA REQUIRED: Cached data is sample/simulated data. Please provide real WBES microdata in data/assets.zip")
+      }
+
+      return(cached_data)
     }
   }
 
-  # Check for assets.zip (combined microdata)
+  # Check for assets.zip (combined microdata) - PREFERRED METHOD
   assets_zip <- file.path(data_path, "assets.zip")
   if (file.exists(assets_zip)) {
     log_info("Found assets.zip - loading combined microdata")
@@ -160,6 +171,8 @@ load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 
     }
 
     return(result)
+  } else {
+    log_warn("assets.zip not found in data/ directory")
   }
 
   # Check for individual .dta files
@@ -179,10 +192,60 @@ load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 
     }
 
     return(result)
+  } else {
+    log_warn("No .dta files found in data/ directory")
   }
 
-  # Fallback to sample data
-  log_warn("No data sources found - using sample data")
+  # NO REAL DATA FOUND - Fail loudly if required
+  if (require_real_data) {
+    error_msg <- paste0(
+      "\n\n",
+      "╔════════════════════════════════════════════════════════════════════════════╗\n",
+      "║ REAL DATA REQUIRED BUT NOT FOUND                                          ║\n",
+      "╠════════════════════════════════════════════════════════════════════════════╣\n",
+      "║                                                                            ║\n",
+      "║ The WBES dashboard requires real microdata to run, but none was found.    ║\n",
+      "║                                                                            ║\n",
+      "║ Expected data file:                                                        ║\n",
+      "║   ", RAW_DTA_FILENAME, "                                                  ║\n",
+      "║                                                                            ║\n",
+      "║ Required setup:                                                            ║\n",
+      "║   1. Download the WBES microdata from:                                     ║\n",
+      "║      https://www.enterprisesurveys.org/en/survey-datasets                 ║\n",
+      "║   2. Create a ZIP file named 'assets.zip' containing the .dta file         ║\n",
+      "║   3. Place assets.zip in: ", normalizePath(data_path, mustWork = FALSE), "  ║\n",
+      "║                                                                            ║\n",
+      "║ Alternative: Place .dta files directly in the data/ directory              ║\n",
+      "║                                                                            ║\n",
+      "╚════════════════════════════════════════════════════════════════════════════╝\n"
+    )
+    log_error(error_msg)
+    stop(error_msg)
+  }
+
+  # Fallback to sample data with prominent warning
+  warning_msg <- paste0(
+    "\n\n",
+    "╔════════════════════════════════════════════════════════════════════════════╗\n",
+    "║ WARNING: USING SAMPLE DATA (NOT REAL WBES MICRODATA)                     ║\n",
+    "╠════════════════════════════════════════════════════════════════════════════╣\n",
+    "║                                                                            ║\n",
+    "║ No real WBES data found in ", data_path, "                                 ║\n",
+    "║                                                                            ║\n",
+    "║ The dashboard is loading SIMULATED sample data for demonstration only.    ║\n",
+    "║ This is NOT real World Bank Enterprise Survey data.                       ║\n",
+    "║                                                                            ║\n",
+    "║ To use real data:                                                          ║\n",
+    "║   1. Download: ", RAW_DTA_FILENAME, "                                      ║\n",
+    "║      from: https://www.enterprisesurveys.org/en/survey-datasets           ║\n",
+    "║   2. Create assets.zip containing the .dta file                            ║\n",
+    "║   3. Place in: ", normalizePath(data_path, mustWork = FALSE), "            ║\n",
+    "║                                                                            ║\n",
+    "╚════════════════════════════════════════════════════════════════════════════╝\n"
+  )
+  log_warn(warning_msg)
+  message(warning_msg)
+
   return(load_sample_data())
 }
 
@@ -290,6 +353,14 @@ load_microdata <- function(dta_files) {
   countries <- extract_countries_from_microdata(combined)
   years <- extract_years_from_microdata(combined)
 
+  # EXTRACT COLUMN LABELS from Stata file
+  log_info("Extracting variable labels from microdata...")
+  column_labels <- extract_column_labels(combined)
+
+  # Create comprehensive label mapping (combines extracted + manual labels)
+  label_mapping <- create_wbes_label_mapping(combined)
+  log_info(sprintf("Created label mapping with %d labels", length(label_mapping)))
+
   # CREATE COUNTRY-LEVEL AGGREGATES for maps and charts
   metric_cols <- c(
     "power_outages_per_month", "avg_outage_duration_hrs", "firms_with_generator_pct",
@@ -317,13 +388,16 @@ load_microdata <- function(dta_files) {
     countries = countries,
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,
+    column_labels = column_labels,  # Raw extracted labels from Stata file
+    label_mapping = label_mapping,  # Comprehensive label mapping (extracted + manual)
     metadata = list(
       source = "World Bank Enterprise Surveys (Microdata)",
       url = "https://www.enterprisesurveys.org/en/survey-datasets",
       files = names(data_list),
       observations = nrow(combined),
       variables = ncol(combined),
-      loaded_at = Sys.time()
+      loaded_at = Sys.time(),
+      total_labels = length(label_mapping)
     ),
     quality = generate_quality_metadata()
   )
@@ -608,6 +682,9 @@ load_sample_data <- function() {
       .groups = "drop"
     )
   
+  # Create label mapping for sample data
+  sample_label_mapping <- create_wbes_label_mapping(panel)
+
   list(
     raw = panel,
     latest = latest,
@@ -616,11 +693,14 @@ load_sample_data <- function() {
     country_codes = unique(panel$country_code),
     regions = unique(panel$region),
     years = years,
+    column_labels = character(0),  # No extracted labels for sample data
+    label_mapping = sample_label_mapping,  # Use manual label mapping
     metadata = list(
       source = "World Bank Enterprise Surveys (Sample Data)",
       url = "https://www.enterprisesurveys.org",
       note = "Simulated data for demonstration. Download actual data from enterprisesurveys.org",
-      generated = Sys.Date()
+      generated = Sys.Date(),
+      total_labels = length(sample_label_mapping)
     ),
     quality = generate_quality_metadata()
   )
