@@ -13,9 +13,6 @@ load_sample_data <- wbes_data$load_sample_data
 #' @export
 generate_quality_metadata <- wbes_data$generate_quality_metadata
 
-#' @export
-WBES_INDICATORS <- wbes_data$WBES_INDICATORS
-
 # Column label management
 #' @export
 extract_column_labels <- column_labels$extract_column_labels
