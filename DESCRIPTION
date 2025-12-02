@@ -32,6 +32,7 @@ Imports:
     readr (>= 2.1.0),
     purrr (>= 1.0.0),
     stringr (>= 1.5.0),
+    countrycode (>= 1.5.0),
     waiter (>= 0.2.0),
     logger (>= 0.3.0),
     sass (>= 0.4.0),

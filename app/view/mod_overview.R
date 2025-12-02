@@ -8,8 +8,10 @@ box::use(
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
- dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
- stats[setNames]
+ dplyr[filter, arrange, desc, mutate, summarise, group_by, n, select, across, left_join, distinct, coalesce],
+ tidyr[pivot_longer],
+ countrycode[countrycode, codelist],
+ stats[setNames, na.omit]
 )
 
 #' @export
@@ -102,15 +104,15 @@ ui <- function(id) {
      column(8,
        card(
          card_header(icon("map-marked-alt"), "Business Environment Map"),
-         card_body(
+          card_body(
           selectInput(
             ns("map_indicator"),
             "Select Indicator:",
             choices = c(
-              "Power Outages (per month)" = "power_outages_per_month",
-              "Access to Credit (%)" = "firms_with_credit_line_pct",
-              "Bribery Incidence (%)" = "bribery_incidence_pct",
-              "Capacity Utilization (%)" = "capacity_utilization_pct"
+              "Power Outages Obstacle (%)" = "IC.FRM.OUTG.ZS",
+              "Access to Finance Obstacle (%)" = "IC.FRM.FINA.ZS",
+              "Bribery Incidence (%)" = "IC.FRM.BRIB.ZS",
+              "Capacity Utilization (%)" = "IC.FRM.CAPU.ZS"
             ),
             width = "300px"
           ),
@@ -196,9 +198,9 @@ server <- function(id, wbes_data) {
  moduleServer(id, function(input, output, session) {
    
    # Update filter choices when data loads
-   observeEvent(wbes_data(), {
-     req(wbes_data())
-     data <- wbes_data()
+  observeEvent(wbes_data(), {
+    req(wbes_data())
+    data <- wbes_data()
      
      if (!is.null(data$regions)) {
        shiny::updateSelectInput(
@@ -222,21 +224,67 @@ server <- function(id, wbes_data) {
      shiny::updateSelectInput(session, "year_filter", selected = "latest")
    })
    
-   # Filtered data reactive
-   filtered_data <- reactive({
+   safe_max_year <- function(x) {
+     if (all(is.na(x))) {
+       return(NA_integer_)
+     }
+     suppressWarnings(max(x, na.rm = TRUE))
+   }
+
+   indicator_cols <- reactive({
      req(wbes_data())
-     data <- wbes_data()$latest
-     
+     cols <- wbes_data()$indicator_columns
+     if (is.null(cols)) {
+       cols <- names(wbes_data()$latest)[vapply(wbes_data()$latest, is.numeric, logical(1))]
+     }
+     cols
+   })
+
+   country_panel_filtered <- reactive({
+     req(wbes_data())
+     panel <- wbes_data()$country_panel
+     if (is.null(panel)) {
+       panel <- wbes_data()$latest
+     }
+
+     if (!is.null(panel$year)) {
+       if (input$year_filter == "latest") {
+         panel <- panel |>
+           group_by(country) |>
+           filter(year == safe_max_year(year) | all(is.na(year))) |>
+           ungroup()
+       } else {
+         panel <- filter(panel, year == as.integer(input$year_filter))
+       }
+     }
+
      if (input$region_filter != "all") {
-       data <- filter(data, region == input$region_filter)
+       panel <- filter(panel, region == input$region_filter)
      }
      if (input$income_filter != "all") {
-       data <- filter(data, income_group == input$income_filter)
+       panel <- filter(panel, income_group == input$income_filter)
      }
-     
-     data
+
+     panel
    })
-   
+
+   filtered_data <- reactive({
+     data <- country_panel_filtered()
+     cols <- intersect(indicator_cols(), names(data))
+
+     if (!"year" %in% names(data)) {
+       data$year <- NA_integer_
+     }
+
+     data |>
+       group_by(country, country_code, region, income_group) |>
+       summarise(
+         across(all_of(cols), ~mean(.x, na.rm = TRUE)),
+         year = safe_max_year(year),
+         .groups = "drop"
+       )
+   })
+
    # KPI Boxes
    output$kpi_countries <- renderUI({
      req(wbes_data())
@@ -275,26 +323,34 @@ server <- function(id, wbes_data) {
    # World Map
    output$world_map <- renderLeaflet({
      req(filtered_data())
-     
-     # Sample coordinates for demo
-     coords <- data.frame(
-       country = c("Kenya", "Nigeria", "South Africa", "India", "Brazil", "Mexico"),
-       lat = c(-1.28, 9.08, -30.56, 20.59, -14.24, 23.63),
-       lng = c(36.82, 7.40, 22.94, 78.96, -51.93, -102.55)
-     )
-     
+
      data <- filtered_data()
-     data <- merge(data, coords, by = "country", all.x = TRUE)
-     data <- data[!is.na(data$lat), ]
-     
      indicator <- input$map_indicator
-     
+
+     coords <- codelist |>
+       transmute(
+         iso3c,
+         lat = as.numeric(capitalLatitude),
+         lng = as.numeric(capitalLongitude)
+       ) |>
+       distinct()
+
+     data <- data |>
+       mutate(
+         iso3c = dplyr::coalesce(
+           countrycode(country, origin = "country.name", destination = "iso3c", warn = FALSE),
+           countrycode(country_code, origin = "iso3c", destination = "iso3c", warn = FALSE)
+         )
+       ) |>
+       left_join(coords, by = "iso3c") |>
+       filter(!is.na(lat) & !is.na(lng))
+
      if (nrow(data) > 0 && indicator %in% names(data)) {
        pal <- colorNumeric(
          palette = c("#2E7D32", "#F4A460", "#dc3545"),
          domain = data[[indicator]]
        )
-       
+
        leaflet(data) |>
          addTiles() |>
          setView(lng = 20, lat = 10, zoom = 2) |>
@@ -314,22 +370,29 @@ server <- function(id, wbes_data) {
          setView(lng = 20, lat = 10, zoom = 2)
      }
    })
-   
+
    # Obstacles Chart
    output$obstacles_chart <- renderPlotly({
-     obstacles <- data.frame(
-       obstacle = c("Access to Finance", "Electricity", "Informal Competition",
-                    "Tax Rates", "Corruption", "Political Instability",
-                    "Inadequately Educated Workforce", "Tax Administration"),
-       pct = c(23.5, 19.2, 17.8, 14.5, 12.3, 11.8, 9.5, 8.2)
-     )
-     
-     obstacles <- arrange(obstacles, pct)
-     obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
-     
-     plot_ly(obstacles, 
-             y = ~obstacle, 
-             x = ~pct, 
+     panel <- country_panel_filtered()
+     obstacles <- c("IC.FRM.FINA.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.CORR.ZS",
+                    "IC.FRM.WKFC.ZS", "IC.FRM.CRIM.ZS")
+     available <- intersect(obstacles, names(panel))
+
+     if (length(available) == 0) {
+       return(NULL)
+     }
+
+     obstacle_summary <- panel |>
+       summarise(across(all_of(available), ~mean(as.numeric(.x), na.rm = TRUE))) |>
+       pivot_longer(everything(), names_to = "obstacle", values_to = "pct") |>
+       mutate(obstacle = gsub("IC.FRM.|.ZS", "", obstacle)) |>
+       arrange(pct)
+
+     obstacle_summary$obstacle <- factor(obstacle_summary$obstacle, levels = obstacle_summary$obstacle)
+
+     plot_ly(obstacle_summary,
+             y = ~obstacle,
+             x = ~pct,
              type = "bar",
              orientation = "h",
              marker = list(
@@ -350,36 +413,47 @@ server <- function(id, wbes_data) {
    # Regional Comparison
    output$regional_comparison <- renderPlotly({
      req(wbes_data())
-     
-     regional <- wbes_data()$regional
-     if (is.null(regional)) {
-       regional <- data.frame(
-         region = c("Sub-Saharan Africa", "South Asia", "East Asia & Pacific",
-                    "Latin America & Caribbean", "Europe & Central Asia"),
-         power_outages_per_month = c(8.5, 6.2, 3.1, 4.2, 2.8),
-         firms_with_credit_line_pct = c(22, 28, 35, 42, 48),
-         bribery_incidence_pct = c(24, 28, 18, 15, 12)
-       )
+
+     panel <- country_panel_filtered()
+     key_indicators <- c("IC.FRM.OUTG.ZS", "IC.FRM.FINA.ZS", "IC.FRM.CORR.ZS")
+     available <- intersect(key_indicators, names(panel))
+
+     if (length(available) == 0) {
+       return(NULL)
      }
-     
+
+     regional <- panel |>
+       filter(!is.na(region)) |>
+       group_by(region) |>
+       summarise(across(all_of(available), ~mean(as.numeric(.x), na.rm = TRUE)), .groups = "drop")
+
+     missing_cols <- setdiff(key_indicators, names(regional))
+     if (length(missing_cols) > 0) {
+       for (col in missing_cols) {
+         regional[[col]] <- NA_real_
+       }
+     }
+
+     regional <- select(regional, region, all_of(key_indicators))
+
      plot_ly(regional) |>
        add_trace(
-         x = ~region, 
-         y = ~power_outages_per_month,
+         x = ~region,
+         y = ~`IC.FRM.OUTG.ZS`,
          type = "bar",
          name = "Power Outages/Month",
          marker = list(color = "#1B6B5F")
        ) |>
        add_trace(
-         x = ~region, 
-         y = ~firms_with_credit_line_pct,
+         x = ~region,
+         y = ~`IC.FRM.FINA.ZS`,
          type = "bar",
          name = "Credit Access (%)",
          marker = list(color = "#F49B7A")
        ) |>
        add_trace(
-         x = ~region, 
-         y = ~bribery_incidence_pct,
+         x = ~region,
+         y = ~`IC.FRM.CORR.ZS`,
          type = "bar",
          name = "Bribery Incidence (%)",
          marker = list(color = "#6C757D")
@@ -398,10 +472,17 @@ server <- function(id, wbes_data) {
    
    # Infrastructure Gauge
    output$infrastructure_gauge <- renderPlotly({
+     panel <- country_panel_filtered()
+     value <- if ("IC.FRM.INFRA.ZS" %in% names(panel)) {
+       round(mean(panel$IC.FRM.INFRA.ZS, na.rm = TRUE), 1)
+     } else {
+       NA_real_
+     }
+
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = 62,
+       value = value,
        title = list(text = "Regional Average Score"),
        gauge = list(
          axis = list(range = list(0, 100)),
@@ -424,13 +505,20 @@ server <- function(id, wbes_data) {
        ) |>
        config(displayModeBar = FALSE)
    })
-   
+
    # Finance Gauge
    output$finance_gauge <- renderPlotly({
+     panel <- country_panel_filtered()
+     value <- if ("IC.FRM.FINA.ZS" %in% names(panel)) {
+       round(mean(panel$IC.FRM.FINA.ZS, na.rm = TRUE), 1)
+     } else {
+       NA_real_
+     }
+
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = 38,
+       value = value,
        title = list(text = "Credit Access Index"),
        gauge = list(
          axis = list(range = list(0, 100)),

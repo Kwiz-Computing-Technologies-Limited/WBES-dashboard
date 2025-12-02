@@ -11,6 +11,7 @@ box::use(
   logger[log_info, log_warn, log_error],
   utils[unzip],
   stats[runif, setNames, na.omit],
+  stringr[str_detect, str_extract, str_trim],
   here[here],
   app/logic/column_labels[extract_column_labels, create_wbes_label_mapping]
 )
@@ -214,10 +215,11 @@ load_microdata <- function(dta_files) {
 
   # Process and structure the data
   processed <- process_microdata(combined)
+  processed <- add_required_indicators(processed)
 
   # Extract metadata
-  countries <- extract_countries_from_microdata(combined)
-  years <- extract_years_from_microdata(combined)
+  countries <- processed$country |> unique() |> na.omit() |> as.character() |> sort()
+  years <- processed$year |> unique() |> na.omit() |> sort()
 
   # EXTRACT COLUMN LABELS from Stata file
   log_info("Extracting variable labels from microdata...")
@@ -227,26 +229,30 @@ load_microdata <- function(dta_files) {
   label_mapping <- create_wbes_label_mapping(combined)
   log_info(sprintf("Created label mapping with %d labels", length(label_mapping)))
 
-  # CREATE COUNTRY-LEVEL AGGREGATES for maps and charts
-  metric_cols <- c(
-    "power_outages_per_month", "avg_outage_duration_hrs", "firms_with_generator_pct",
-    "firms_with_credit_line_pct", "firms_with_bank_account_pct", "loan_rejection_rate_pct",
-    "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
-    "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
-    "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct"
-  )
+  indicator_cols <- detect_indicator_columns(processed)
 
-  # Filter for valid columns that exist in the data
-  available_metric_cols <- metric_cols[metric_cols %in% names(processed)]
+  country_panel <- processed |>
+    select(any_of(c(
+      "country", "country_code", "region", "income_group", "year", "sample_weight"
+    )), all_of(indicator_cols)) |>
+    mutate(across(all_of(indicator_cols), as.numeric)) |>
+    filter(!is.na(country))
 
   # Create aggregates without using sample_weight in across()
-  country_aggregates <- processed |>
-    filter(!is.na(country) & !is.na(country_code)) |>
-    group_by(country, country_code) |>
+  country_aggregates <- country_panel |>
+    group_by(country, country_code, region, income_group) |>
     summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first_non_na(region),
-      income_group = first_non_na(income_group),
+      across(all_of(indicator_cols), ~mean(.x, na.rm = TRUE)),
+      latest_year = safe_max_year(year),
+      sample_size = n(),
+      .groups = "drop"
+    )
+
+  regional_aggregates <- country_panel |>
+    filter(!is.na(region)) |>
+    group_by(region) |>
+    summarise(
+      across(all_of(indicator_cols), ~mean(.x, na.rm = TRUE)),
       sample_size = n(),
       .groups = "drop"
     )
@@ -254,10 +260,15 @@ load_microdata <- function(dta_files) {
   result <- list(
     raw = combined,
     processed = processed,
+    country_panel = country_panel,
     latest = country_aggregates,  # Country-level aggregates for maps/charts
+    regional = regional_aggregates,
+    indicator_columns = indicator_cols,
     countries = countries,
+    regions = country_panel$region |> unique() |> na.omit() |> as.character() |> sort(),
+    income_groups = country_panel$income_group |> unique() |> na.omit() |> as.character() |> sort(),
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
-    years = years,
+    years = country_panel$year |> unique() |> na.omit() |> sort(),
     column_labels = column_labels,  # Raw extracted labels from Stata file
     label_mapping = label_mapping,  # Comprehensive label mapping (extracted + manual)
     metadata = list(
@@ -285,16 +296,22 @@ process_microdata <- function(data) {
 
   processed <- data |>
     mutate(
-      country = coalesce_chr(
+      country = clean_country(
         get0("country2", ifnotfound = NULL),
         get0("country", ifnotfound = NULL),
-        get0("country_official", ifnotfound = NULL)
-      ),
+        get0("country_official", ifnotfound = NULL),
+        fallback_year = get0("year", ifnotfound = NA_integer_)
+      )$country,
       country_code = coalesce_chr(
         get0("wbcode", ifnotfound = NULL),
         get0("country_abr", ifnotfound = NULL)
       ),
-      year = get0("year", ifnotfound = NA_integer_),
+      year = clean_country(
+        get0("country2", ifnotfound = NULL),
+        get0("country", ifnotfound = NULL),
+        get0("country_official", ifnotfound = NULL),
+        fallback_year = get0("year", ifnotfound = NA_integer_)
+      )$year,
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
       income_group = if ("income" %in% names(data)) as.character(as_factor(income)) else NA_character_,
       sample_weight = get0("wt", ifnotfound = NA_real_),
@@ -334,6 +351,25 @@ process_microdata <- function(data) {
   processed
 }
 
+clean_country <- function(country2 = NULL, country = NULL, country_official = NULL, fallback_year = NA_integer_) {
+  raw <- coalesce_chr(country2, country, country_official)
+
+  if (is.na(raw)) {
+    return(list(country = NA_character_, year = fallback_year))
+  }
+
+  trimmed <- str_trim(as.character(raw))
+
+  # Detect concatenated patterns like "Albania2007"
+  if (str_detect(trimmed, "\\d{4}$")) {
+    extracted_year <- as.integer(str_extract(trimmed, "\\d{4}$"))
+    base_country <- str_trim(str_extract(trimmed, "^.*?(?=\\d{4}$)"))
+    return(list(country = base_country, year = coalesce_num(extracted_year)))
+  }
+
+  list(country = trimmed, year = fallback_year)
+}
+
 compute_export_share <- function(data) {
   if (all(c("tr5", "tr6") %in% names(data))) {
     direct <- data$tr5
@@ -370,6 +406,45 @@ coalesce_num <- function(x) {
     return(NA_real_)
   }
   as.numeric(x)
+}
+
+add_required_indicators <- function(data) {
+  required <- c(
+    "IC.FRM.OUTG.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS",
+    "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS",
+    "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS",
+    "IC.FRM.EXPRT.ZS", "IC.FRM.FEMO.ZS", "IC.FRM.WKFC.ZS",
+    "IC.FRM.FEMW.ZS", "IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS"
+  )
+
+  missing <- setdiff(required, names(data))
+  if (length(missing) > 0) {
+    data[missing] <- NA_real_
+  }
+
+  data |>
+    mutate(across(all_of(required), as.numeric))
+}
+
+detect_indicator_columns <- function(data) {
+  numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
+  exclude <- c("year", "sample_weight")
+
+  unique(c(
+    setdiff(numeric_cols, exclude),
+    "IC.FRM.OUTG.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS",
+    "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS",
+    "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS",
+    "IC.FRM.EXPRT.ZS", "IC.FRM.FEMO.ZS", "IC.FRM.WKFC.ZS",
+    "IC.FRM.FEMW.ZS", "IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS"
+  ))
+}
+
+safe_max_year <- function(x) {
+  if (all(is.na(x))) {
+    return(NA_integer_)
+  }
+  suppressWarnings(max(x, na.rm = TRUE))
 }
 
 weighted_mean_safe <- function(x, w = NULL) {
