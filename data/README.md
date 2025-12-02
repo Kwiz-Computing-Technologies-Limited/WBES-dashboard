@@ -33,11 +33,15 @@ https://www.enterprisesurveys.org/en/survey-datasets
    - Move it to: `/path/to/WBES-dashboard/data/assets.zip`
 
 2. **Using Download Script (Automated):**
-   ```bash
-   # Run the automated download script
+   ```r
+   # R version (recommended - native to project)
+   source("scripts/download_data.R")
+   # Or from command line: Rscript scripts/download_data.R
+
+   # Bash version
    bash scripts/download_data.sh
 
-   # Or use the Python version
+   # Python version
    python3 scripts/download_data.py
    ```
 
@@ -327,7 +331,17 @@ write.csv(dictionary, "data/column_dictionary.csv")
 
 ## Download Scripts
 
-Two automated download scripts are available in the `scripts/` directory:
+Three automated download scripts are available in the `scripts/` directory:
+
+### R Script (Recommended)
+```r
+source("scripts/download_data.R")
+# Or: Rscript scripts/download_data.R
+```
+- Native R implementation
+- Uses curl, wget, or libcurl methods
+- Optional googledrive package support
+- Verifies file integrity
 
 ### Bash Script
 ```bash
@@ -345,7 +359,7 @@ python3 scripts/download_data.py
 - Shows download progress
 - ZIP file validation
 
-Both scripts will:
+All scripts will:
 - Download `assets.zip` from Google Drive
 - Verify the file is valid
 - Place it in the correct location

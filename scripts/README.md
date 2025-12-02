@@ -4,6 +4,36 @@ This directory contains utility scripts for the WBES dashboard.
 
 ## Data Download Scripts
 
+### download_data.R (R Script) ⭐ **Recommended**
+
+R-based download script - native to the project environment.
+
+**Usage:**
+```r
+# From R console
+source("scripts/download_data.R")
+
+# Or from command line
+Rscript scripts/download_data.R
+```
+
+**Features:**
+- Native R implementation (no external dependencies for basic download)
+- Tries multiple download methods (curl, wget, libcurl)
+- Optional googledrive package support for enhanced reliability
+- Checks if file already exists (asks before overwriting)
+- Verifies file size and ZIP integrity
+- Shows clear error messages with manual download instructions
+
+**Requirements:**
+- R (already installed for the project)
+- Optional: `googledrive` package for enhanced downloads
+  ```r
+  install.packages("googledrive")
+  ```
+
+---
+
 ### download_data.sh (Bash)
 
 Automated script to download WBES microdata from Google Drive.
