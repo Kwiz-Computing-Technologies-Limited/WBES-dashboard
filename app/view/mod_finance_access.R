@@ -175,11 +175,13 @@ server <- function(id, wbes_data) {
       shiny::updateSelectInput(session, "region_filter",
         choices = c("All Regions" = "all", setNames(regions, regions)))
 
-      # Update firm size filter
-      sizes <- unique(data$firm_size) |> stats::na.omit() |> as.character() |> sort()
-      if (length(sizes) > 0) {
-        shiny::updateSelectInput(session, "firm_size",
-          choices = c("All Sizes" = "all", setNames(sizes, sizes)))
+      # Update firm size filter (check if column exists first)
+      if ("firm_size" %in% names(data)) {
+        sizes <- unique(data$firm_size) |> stats::na.omit() |> as.character() |> sort()
+        if (length(sizes) > 0) {
+          shiny::updateSelectInput(session, "firm_size",
+            choices = c("All Sizes" = "all", setNames(sizes, sizes)))
+        }
       }
 
       # Update sector filter

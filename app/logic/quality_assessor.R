@@ -190,7 +190,7 @@ apply_quality_flags <- function(data) {
       
       # Missing critical variables
       flag_missing_sector = is.na(sector) | sector == "",
-      flag_missing_size = is.na(firm_size) | firm_size == "",
+      flag_missing_size = if ("firm_size" %in% names(data)) is.na(firm_size) | firm_size == "" else FALSE,
       flag_missing_weight = is.na(weight),
       
       # Infrastructure consistency
