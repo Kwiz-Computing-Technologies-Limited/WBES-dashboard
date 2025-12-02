@@ -198,6 +198,27 @@ server <- function(id, wbes_data) {
       req(country_data())
       d <- country_data()
 
+      # Extract values with fallback handling for NA
+      region_val <- if (!is.null(d$region) && length(d$region) > 0 && !is.na(d$region[1])) {
+        as.character(d$region[1])
+      } else {
+        "N/A"
+      }
+
+      income_val <- if (!is.null(d$income_group) && length(d$income_group) > 0 && !is.na(d$income_group[1])) {
+        as.character(d$income_group[1])
+      } else {
+        "N/A"
+      }
+
+      # For firms surveyed, use sample_size from the aggregated data
+      # Note: sample_size represents the number of firms in this country's latest survey
+      firms_val <- if (!is.null(d$sample_size) && length(d$sample_size) > 0 && !is.na(d$sample_size[1])) {
+        format(round(d$sample_size[1]), big.mark = ",")
+      } else {
+        "N/A"
+      }
+
       tags$div(
         class = "card h-100",
         tags$div(
@@ -205,19 +226,19 @@ server <- function(id, wbes_data) {
           fluidRow(
             column(4,
               tags$div(class = "kpi-box",
-                tags$div(class = "kpi-value", d$region[1]),
+                tags$div(class = "kpi-value", region_val),
                 tags$div(class = "kpi-label", "Region")
               )
             ),
             column(4,
               tags$div(class = "kpi-box kpi-box-coral",
-                tags$div(class = "kpi-value", d$income_group[1]),
+                tags$div(class = "kpi-value", income_val),
                 tags$div(class = "kpi-label", "Income Group")
               )
             ),
             column(4,
               tags$div(class = "kpi-box kpi-box-success",
-                tags$div(class = "kpi-value", d$sample_size[1]),
+                tags$div(class = "kpi-value", firms_val),
                 tags$div(class = "kpi-label", "Firms Surveyed")
               )
             )
@@ -231,14 +252,27 @@ server <- function(id, wbes_data) {
       req(country_data())
       d <- country_data()
 
-      # Normalize to 0-100 scale
+      # Helper function to safely extract and normalize values
+      safe_val <- function(col, default = 0, scale = 1, invert = FALSE) {
+        val <- if (col %in% names(d) && !is.na(d[[col]][1])) d[[col]][1] * scale else default
+        if (invert) 100 - min(val, 100) else min(val, 100)
+      }
+
+      # Normalize to 0-100 scale with NA handling
+      # WBES variable mappings:
+      # - power_outages_per_month: from in2 (infrastructure quality, inverted)
+      # - firms_with_credit_line_pct: from fin14 (finance access)
+      # - bribery_incidence_pct: from graft3 (corruption, inverted for "Low Corruption")
+      # - capacity_utilization_pct: from t3 (operational efficiency)
+      # - export_firms_pct: from tr10 (export orientation)
+      # - female_ownership_pct: from gend1 (gender equity)
       indicators <- c(
-        "Infrastructure" = 100 - min(d$power_outages_per_month * 5, 100),
-        "Finance Access" = d$firms_with_credit_line_pct,
-        "Low Corruption" = 100 - d$bribery_incidence_pct,
-        "Capacity Use" = d$capacity_utilization_pct,
-        "Export Orient." = d$export_firms_pct * 2,
-        "Gender Equity" = d$female_ownership_pct * 2
+        "Infrastructure" = safe_val("power_outages_per_month", default = 50, scale = 5, invert = TRUE),
+        "Finance Access" = safe_val("firms_with_credit_line_pct", default = 30),
+        "Low Corruption" = safe_val("bribery_incidence_pct", default = 50, invert = TRUE),
+        "Capacity Use" = safe_val("capacity_utilization_pct", default = 50),
+        "Export Orient." = safe_val("export_firms_pct", default = 25, scale = 2),
+        "Gender Equity" = safe_val("female_ownership_pct", default = 25, scale = 2)
       )
 
       plot_ly(
@@ -264,13 +298,29 @@ server <- function(id, wbes_data) {
       req(country_data())
       d <- country_data()
 
+      # Helper to safely extract metric values with NA handling
+      get_metric <- function(col) {
+        if (col %in% names(d) && length(d[[col]]) > 0 && !is.na(d[[col]][1])) {
+          round(d[[col]][1], 1)
+        } else {
+          "N/A"
+        }
+      }
+
+      # WBES variable mappings documented inline:
+      # power_outages_per_month: from in2 (Number of power outages per month)
+      # avg_outage_duration_hrs: from in3 (Average duration of power outages in hours)
+      # firms_with_credit_line_pct: from fin14 (% firms with line of credit)
+      # bribery_incidence_pct: from graft3 (% firms experiencing bribery requests)
+      # capacity_utilization_pct: from t3 (Capacity utilization rate)
+      # female_ownership_pct: from gend1 (% female ownership)
       metrics <- list(
-        list("Power Outages/Month", round(d$power_outages_per_month, 1), "bolt"),
-        list("Outage Duration (hrs)", round(d$avg_outage_duration_hrs, 1), "clock"),
-        list("Credit Access (%)", round(d$firms_with_credit_line_pct, 1), "credit-card"),
-        list("Bribery Incidence (%)", round(d$bribery_incidence_pct, 1), "hand-holding-usd"),
-        list("Capacity Utilization (%)", round(d$capacity_utilization_pct, 1), "industry"),
-        list("Female Ownership (%)", round(d$female_ownership_pct, 1), "female")
+        list("Power Outages/Month", get_metric("power_outages_per_month"), "bolt"),
+        list("Outage Duration (hrs)", get_metric("avg_outage_duration_hrs"), "clock"),
+        list("Credit Access (%)", get_metric("firms_with_credit_line_pct"), "credit-card"),
+        list("Bribery Incidence (%)", get_metric("bribery_incidence_pct"), "hand-holding-usd"),
+        list("Capacity Utilization (%)", get_metric("capacity_utilization_pct"), "industry"),
+        list("Female Ownership (%)", get_metric("female_ownership_pct"), "female")
       )
 
       tags$div(

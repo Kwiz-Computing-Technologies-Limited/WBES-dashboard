@@ -256,10 +256,12 @@ server <- function(id, wbes_data) {
 
    # KPI Boxes
    output$kpi_countries <- renderUI({
-     req(wbes_data())
+     req(filtered_data())
+     # Count distinct countries from filtered data (respects region/income filters)
+     n_countries <- length(unique(filtered_data()$country[!is.na(filtered_data()$country)]))
      tags$div(
        class = "kpi-box",
-       tags$div(class = "kpi-value", length(unique(wbes_data()$country))),
+       tags$div(class = "kpi-value", n_countries),
        tags$div(class = "kpi-label", "Countries Covered")
      )
    })
