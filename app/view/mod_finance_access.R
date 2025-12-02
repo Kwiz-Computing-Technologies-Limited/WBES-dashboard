@@ -77,7 +77,10 @@ ui <- function(id) {
         card(
           card_header(icon("credit-card"), "Financial Products Access by Region"),
           card_body(
-            plotlyOutput(ns("finance_by_region"), height = "400px")
+            plotlyOutput(ns("finance_by_region"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Compares financial inclusion across regions - bank account ownership, credit lines, and loan access. ",
+              "Sub-Saharan Africa typically shows lowest access rates, indicating significant credit constraints.")
           )
         )
       ),
@@ -85,7 +88,10 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
           card_body(
-            plotlyOutput(ns("no_apply_reasons"), height = "400px")
+            plotlyOutput(ns("no_apply_reasons"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Shows why firms don't seek external financing. ",
+              "Common reasons: high interest rates, complex procedures, stringent collateral demands, or perceived rejection risk.")
           )
         )
       )
@@ -98,7 +104,10 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), "SME Finance Gap by Country"),
           card_body(
-            plotlyOutput(ns("sme_finance_gap"), height = "400px")
+            plotlyOutput(ns("sme_finance_gap"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Measures the gap between firms' credit needs and actual access. ",
+              "Larger gaps indicate severe credit rationing, forcing firms to forego investments or rely on informal financing.")
           )
         )
       ),
@@ -106,7 +115,10 @@ ui <- function(id) {
         card(
           card_header(icon("venus"), "Gender Gap in Finance Access"),
           card_body(
-            plotlyOutput(ns("gender_gap"), height = "400px")
+            plotlyOutput(ns("gender_gap"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Compares credit access between male-owned and female-owned firms. ",
+              "Positive gaps show women entrepreneurs face additional barriers beyond general credit constraints.")
           )
         )
       )
@@ -119,7 +131,10 @@ ui <- function(id) {
         card(
           card_header(icon("landmark"), "Collateral Requirements"),
           card_body(
-            plotlyOutput(ns("collateral_chart"), height = "350px")
+            plotlyOutput(ns("collateral_chart"), height = "350px"),
+            p(class = "text-muted mt-3 small",
+              "Shows collateral demanded as percentage of loan value. ",
+              "Requirements exceeding 150% make credit inaccessible for asset-poor firms, especially startups and women-owned businesses.")
           )
         )
       ),
@@ -127,7 +142,10 @@ ui <- function(id) {
         card(
           card_header(icon("clock"), "Loan Processing Time"),
           card_body(
-            plotlyOutput(ns("processing_time"), height = "350px")
+            plotlyOutput(ns("processing_time"), height = "350px"),
+            p(class = "text-muted mt-3 small",
+              "Average days from application to approval/disbursement. ",
+              "Long delays deter firms from seeking credit and reduce ability to respond to time-sensitive opportunities.")
           )
         )
       )
