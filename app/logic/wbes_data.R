@@ -369,16 +369,41 @@ process_microdata <- function(data) {
       power_outages_per_month = coalesce_num(get0("in2", ifnotfound = NULL)),
       avg_outage_duration_hrs = coalesce_num(get0("in3", ifnotfound = NULL)),
       firms_with_generator_pct = coalesce_num(get0("in9", ifnotfound = NULL)),
+      # Infrastructure obstacles (for detailed breakdown)
+      electricity_obstacle = coalesce_num(get0("elec", ifnotfound = NULL)),
+      water_obstacle = coalesce_num(get0("c16", ifnotfound = NULL)),
+      transport_obstacle = coalesce_num(get0("d4", ifnotfound = NULL)),
+      # Power sources (for power source mix chart)
+      generator_share_pct = coalesce_num(get0("in7", ifnotfound = NULL)),  # % electricity from generator
 
       # Access to finance
       firms_with_credit_line_pct = coalesce_num(get0("fin14", ifnotfound = NULL)),
       firms_with_bank_account_pct = coalesce_num(get0("fin15", ifnotfound = NULL)),
       loan_rejection_rate_pct = coalesce_num(get0("fin21", ifnotfound = NULL)),
       collateral_required_pct = coalesce_num(get0("fin10", ifnotfound = NULL)),
+      # Detailed finance access indicators
+      loan_application_pct = coalesce_num(get0("fin16", ifnotfound = NULL)),  # Applied for loan
+      overdraft_facility_pct = coalesce_num(get0("fin9", ifnotfound = NULL)),  # Has overdraft
+      # Loan application details
+      no_need_for_loan = coalesce_num(get0("fin19a", ifnotfound = NULL)),  # Main reason: no need
+      loan_procedures_complex = coalesce_num(get0("fin19b", ifnotfound = NULL)),  # Complex procedures
+      loan_interest_high = coalesce_num(get0("fin19c", ifnotfound = NULL)),  # Interest rates high
+      insufficient_collateral = coalesce_num(get0("fin19d", ifnotfound = NULL)),  # Lack collateral
+      loan_size_inadequate = coalesce_num(get0("fin19e", ifnotfound = NULL)),  # Loan size
+      # Loan processing
+      days_to_get_loan = coalesce_num(get0("fin22", ifnotfound = NULL)),  # Days to process loan
 
       # Corruption and governance
       bribery_incidence_pct = coalesce_num(get0("graft3", ifnotfound = NULL)),
       corruption_obstacle_pct = coalesce_num(get0("corr11", ifnotfound = NULL)),
+      # Bribery by transaction type
+      bribe_for_permit = coalesce_num(get0("j7a", ifnotfound = NULL)),  # Construction permit
+      bribe_for_import = coalesce_num(get0("j7b", ifnotfound = NULL)),  # Import license
+      bribe_for_utilities = coalesce_num(get0("j7c", ifnotfound = NULL)),  # Utility connection
+      bribe_for_tax = coalesce_num(get0("j7d", ifnotfound = NULL)),  # Tax assessment
+      bribe_for_contract = coalesce_num(get0("j7e", ifnotfound = NULL)),  # Government contract
+      # Management time spent
+      mgmt_time_regulations_pct = coalesce_num(get0("j2", ifnotfound = NULL)),  # Time on regulations
 
       # Workforce and gender
       female_ownership_pct = coalesce_num(get0("gend1", ifnotfound = NULL)),

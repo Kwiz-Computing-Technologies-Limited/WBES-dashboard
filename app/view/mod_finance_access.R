@@ -300,27 +300,68 @@ server <- function(id, wbes_data) {
       }
     })
     
-    # No apply reasons
+    # No apply reasons - uses actual WBES data
+    # Variables: fin19a-fin19e (reasons for not applying for loan)
     output$no_apply_reasons <- renderPlotly({
-      reasons <- data.frame(
-        reason = c("No Need", "High Interest", "Complex Procedures", 
-                   "Collateral Issues", "Informal Alternative", "Size of Loan"),
-        pct = c(42, 18, 15, 12, 8, 5)
-      )
-      
-      plot_ly(reasons,
-              labels = ~reason,
-              values = ~pct,
-              type = "pie",
-              hole = 0.4,
-              marker = list(colors = c("#1B6B5F", "#F49B7A", "#2E7D32", 
-                                       "#17a2b8", "#6C757D", "#ffc107")),
-              textinfo = "label+percent") |>
-        layout(
-          showlegend = FALSE,
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+      req(wbes_data())
+      data <- wbes_data()$latest
+
+      # Calculate average percentages for each reason across all countries
+      reasons_list <- list()
+
+      if ("no_need_for_loan" %in% names(data)) {
+        val <- mean(data$no_need_for_loan, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) reasons_list$`No Need` <- val
+      }
+      if ("loan_interest_high" %in% names(data)) {
+        val <- mean(data$loan_interest_high, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) reasons_list$`High Interest` <- val
+      }
+      if ("loan_procedures_complex" %in% names(data)) {
+        val <- mean(data$loan_procedures_complex, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) reasons_list$`Complex Procedures` <- val
+      }
+      if ("insufficient_collateral" %in% names(data)) {
+        val <- mean(data$insufficient_collateral, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) reasons_list$`Collateral Issues` <- val
+      }
+      if ("loan_size_inadequate" %in% names(data)) {
+        val <- mean(data$loan_size_inadequate, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) reasons_list$`Loan Size Issues` <- val
+      }
+
+      if (length(reasons_list) > 0) {
+        reasons <- data.frame(
+          reason = names(reasons_list),
+          pct = unlist(reasons_list),
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(reasons,
+                labels = ~reason,
+                values = ~pct,
+                type = "pie",
+                hole = 0.4,
+                marker = list(colors = c("#1B6B5F", "#F49B7A", "#2E7D32",
+                                         "#17a2b8", "#6C757D", "#ffc107")),
+                textinfo = "label+percent") |>
+          layout(
+            showlegend = FALSE,
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        # Show placeholder message if no data
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "Loan application reason data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
     
     # SME finance gap
@@ -352,27 +393,95 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
     
-    # Gender gap
+    # Gender gap - Calculate from firm-level data disaggregated by female ownership
+    # Note: WBES data typically doesn't have pre-aggregated gender gaps
+    # We would need to calculate from raw/processed data with gender disaggregation
     output$gender_gap <- renderPlotly({
-      gender_data <- data.frame(
-        category = c("Credit Line", "Bank Loan", "Overdraft", "Trade Credit"),
-        female = c(28, 22, 15, 35),
-        male = c(35, 28, 20, 42)
-      )
-      
-      plot_ly(gender_data) |>
-        add_trace(x = ~category, y = ~female, name = "Female-Owned",
-                  type = "bar", marker = list(color = "#F49B7A")) |>
-        add_trace(x = ~category, y = ~male, name = "Male-Owned",
-                  type = "bar", marker = list(color = "#1B6B5F")) |>
-        layout(
-          barmode = "group",
-          xaxis = list(title = ""),
-          yaxis = list(title = "% of Firms", ticksuffix = "%"),
-          legend = list(orientation = "h", y = -0.15),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+      req(wbes_data())
+
+      # Calculate gender gap using processed data if available
+      # This requires firm-level data with gender indicator
+      # For now, show a summary comparing female vs non-female owned firms
+
+      raw_data <- wbes_data()$processed
+
+      if (!is.null(raw_data) && "female_ownership_pct" %in% names(raw_data) &&
+          "firms_with_credit_line_pct" %in% names(raw_data)) {
+
+        # Attempt to disaggregate by female ownership
+        # Note: This is an approximation based on available data
+        # Ideally would use binary female_owned indicator from raw data
+
+        tryCatch({
+          # Check if we have gender disaggregation variable
+          if ("b4" %in% names(raw_data)) {  # b4 is often the gender ownership indicator
+            gender_finance <- raw_data |>
+              mutate(is_female_owned = ifelse(b4 == 1, "Female-Owned", "Male-Owned")) |>
+              group_by(is_female_owned) |>
+              summarise(
+                credit_line = mean(firms_with_credit_line_pct, na.rm = TRUE),
+                .groups = "drop"
+              )
+
+            if (nrow(gender_finance) == 2) {
+              plot_ly(gender_finance) |>
+                add_trace(x = ~"Credit Access", y = ~credit_line,
+                          color = ~is_female_owned,
+                          colors = c("Female-Owned" = "#F49B7A", "Male-Owned" = "#1B6B5F"),
+                          type = "bar") |>
+                layout(
+                  barmode = "group",
+                  xaxis = list(title = ""),
+                  yaxis = list(title = "% of Firms", ticksuffix = "%"),
+                  legend = list(orientation = "h", y = -0.15),
+                  paper_bgcolor = "rgba(0,0,0,0)"
+                ) |>
+                config(displayModeBar = FALSE)
+            } else {
+              # Not enough gender data
+              plot_ly() |>
+                layout(
+                  annotations = list(
+                    text = "Gender disaggregated finance data not available",
+                    xref = "paper", yref = "paper",
+                    x = 0.5, y = 0.5, showarrow = FALSE
+                  ),
+                  paper_bgcolor = "rgba(0,0,0,0)"
+                )
+            }
+          } else {
+            plot_ly() |>
+              layout(
+                annotations = list(
+                  text = "Gender disaggregated finance data not available",
+                  xref = "paper", yref = "paper",
+                  x = 0.5, y = 0.5, showarrow = FALSE
+                ),
+                paper_bgcolor = "rgba(0,0,0,0)"
+              )
+          }
+        }, error = function(e) {
+          plot_ly() |>
+            layout(
+              annotations = list(
+                text = "Unable to compute gender gap",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            )
+        })
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "Gender data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
     
     # Collateral chart
@@ -400,26 +509,61 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
     
-    # Processing time
+    # Processing time - uses actual WBES data from fin22 (days to get loan)
     output$processing_time <- renderPlotly({
-      time_data <- data.frame(
-        region = c("SSA", "SA", "EAP", "LAC", "ECA"),
-        days = c(45, 38, 25, 32, 18)
-      )
-      time_data <- arrange(time_data, desc(days))
-      time_data$region <- factor(time_data$region, levels = time_data$region)
-      
-      plot_ly(time_data,
-              x = ~region,
-              y = ~days,
-              type = "bar",
-              marker = list(color = "#1B6B5F")) |>
-        layout(
-          xaxis = list(title = "Region"),
-          yaxis = list(title = "Average Days"),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+      req(wbes_data())
+      data <- wbes_data()$latest
+
+      # Calculate average loan processing time by region
+      if ("region" %in% names(data) && "days_to_get_loan" %in% names(data)) {
+        time_data <- data |>
+          filter(!is.na(region) & !is.na(days_to_get_loan)) |>
+          group_by(region) |>
+          summarise(
+            avg_days = mean(days_to_get_loan, na.rm = TRUE),
+            .groups = "drop"
+          ) |>
+          arrange(desc(avg_days))
+
+        if (nrow(time_data) > 0) {
+          # Reorder factor for plotting
+          time_data$region <- factor(time_data$region, levels = time_data$region)
+
+          plot_ly(time_data,
+                  x = ~region,
+                  y = ~avg_days,
+                  type = "bar",
+                  marker = list(color = "#1B6B5F")) |>
+            layout(
+              title = list(text = "Loan Processing Time by Region", font = list(size = 14)),
+              xaxis = list(title = "Region", tickangle = -30),
+              yaxis = list(title = "Average Days"),
+              margin = list(b = 100),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          plot_ly() |>
+            layout(
+              annotations = list(
+                text = "No loan processing time data available",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            )
+        }
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "Loan processing data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
     
   })
