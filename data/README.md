@@ -12,7 +12,11 @@ To use real WBES microdata, follow the setup instructions below.
 
 ## Data Sources
 
-Download WBES microdata from: https://www.enterprisesurveys.org/en/survey-datasets
+**Primary Source (Recommended):** Download from Google Drive
+🔗 https://drive.google.com/file/d/1CFQ3djtgNlfKKB_2Ru7GHvkRGaKYkeuZ/view?usp=sharing
+
+**Alternative Source:** World Bank Enterprise Surveys
+https://www.enterprisesurveys.org/en/survey-datasets
 
 **Required File:** `ES-Indicators-Database-Global-Methodology_November_24_2025.dta`
 
@@ -20,34 +24,55 @@ Download WBES microdata from: https://www.enterprisesurveys.org/en/survey-datase
 
 ## Quick Setup (Recommended)
 
-### Step 1: Download the Data
+### Option A: Download from Google Drive (Easiest)
+
+1. **Direct Download:**
+   - Visit: https://drive.google.com/file/d/1CFQ3djtgNlfKKB_2Ru7GHvkRGaKYkeuZ/view?usp=sharing
+   - Click the **Download** button
+   - Save the file as `assets.zip`
+   - Move it to: `/path/to/WBES-dashboard/data/assets.zip`
+
+2. **Using Download Script (Automated):**
+   ```bash
+   # Run the automated download script
+   bash scripts/download_data.sh
+
+   # Or use the Python version
+   python3 scripts/download_data.py
+   ```
+
+   These scripts will automatically download and verify the file.
+
+### Option B: Download from World Bank (Manual)
 
 1. Visit https://www.enterprisesurveys.org/en/survey-datasets
 2. Register/login if required
 3. Download: **ES-Indicators-Database-Global-Methodology_November_24_2025.dta**
-   - File encoding: `latin1`
+   - File encoding: `latin1` (important for reading)
    - Format: Stata `.dta`
    - Size: ~100-500 MB (typical for full microdata)
 
-### Step 2: Create assets.zip
+4. Create assets.zip:
+   ```bash
+   # Navigate to your download directory
+   cd ~/Downloads
 
-```bash
-# Navigate to your download directory
-cd ~/Downloads
+   # Create the ZIP file containing the .dta file
+   zip assets.zip ES-Indicators-Database-Global-Methodology_November_24_2025.dta
 
-# Create the ZIP file containing the .dta file
-zip assets.zip ES-Indicators-Database-Global-Methodology_November_24_2025.dta
+   # Move to the WBES dashboard data directory
+   mv assets.zip /path/to/WBES-dashboard/data/
+   ```
 
-# Move to the WBES dashboard data directory
-mv assets.zip /path/to/WBES-dashboard/data/
-```
-
-### Step 3: Verify Setup
+### Step 2: Verify Setup
 
 Run the app. You should see:
 - ✅ "Found assets.zip - loading combined microdata" in logs
-- ✅ Real country data in all visualizations
+- ✅ "Extracted X variable labels from dataset" in logs
+- ✅ Real country data in all visualizations (100,000+ observations)
 - ✅ Descriptive column labels extracted from Stata file
+
+**Note:** The `.dta` file is read with `encoding = "latin1"` to ensure proper character handling.
 
 ---
 
@@ -300,10 +325,40 @@ write.csv(dictionary, "data/column_dictionary.csv")
 
 ---
 
+## Download Scripts
+
+Two automated download scripts are available in the `scripts/` directory:
+
+### Bash Script
+```bash
+bash scripts/download_data.sh
+```
+- Uses curl, wget, or gdown
+- Automatic retry with multiple methods
+- Verifies file integrity
+
+### Python Script
+```bash
+python3 scripts/download_data.py
+```
+- Pure Python implementation
+- Shows download progress
+- ZIP file validation
+
+Both scripts will:
+- Download `assets.zip` from Google Drive
+- Verify the file is valid
+- Place it in the correct location
+- Display success/error messages
+
+---
+
 ## Support
 
 If you encounter issues:
 1. Check the app logs in the R console
 2. Verify file integrity (MD5/SHA checksums)
-3. Consult the World Bank Enterprise Surveys documentation
-4. Review the code in `app/logic/wbes_data.R` for data loading logic
+3. Use the download scripts in `scripts/` directory
+4. Try the Google Drive link: https://drive.google.com/file/d/1CFQ3djtgNlfKKB_2Ru7GHvkRGaKYkeuZ/view?usp=sharing
+5. Consult the World Bank Enterprise Surveys documentation
+6. Review the code in `app/logic/wbes_data.R` for data loading logic
