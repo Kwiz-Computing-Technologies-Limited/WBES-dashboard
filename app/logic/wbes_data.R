@@ -233,7 +233,12 @@ load_microdata <- function(dta_files) {
     "firms_with_credit_line_pct", "firms_with_bank_account_pct", "loan_rejection_rate_pct",
     "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
     "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
-    "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct"
+    "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct",
+    # Add IC.FRM.* aliases
+    "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS", "IC.FRM.OUTG.ZS",
+    "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS", "IC.FRM.FEMO.ZS",
+    "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS",
+    "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS"
   )
 
   # Filter for valid columns that exist in the data
@@ -251,13 +256,23 @@ load_microdata <- function(dta_files) {
       .groups = "drop"
     )
 
+  # Get country coordinates and merge with aggregates
+  country_coords <- get_country_coordinates()
+  country_aggregates_with_coords <- merge(
+    country_aggregates,
+    country_coords,
+    by = "country",
+    all.x = TRUE
+  )
+
   result <- list(
     raw = combined,
     processed = processed,
-    latest = country_aggregates,  # Country-level aggregates for maps/charts
+    latest = country_aggregates_with_coords,  # Country-level aggregates for maps/charts with coordinates
     countries = countries,
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,
+    country_coordinates = country_coords,  # Separate coordinates dataset
     column_labels = column_labels,  # Raw extracted labels from Stata file
     label_mapping = label_mapping,  # Comprehensive label mapping (extracted + manual)
     metadata = list(
@@ -326,6 +341,23 @@ process_microdata <- function(data) {
       # Crime and security
       crime_obstacle_pct = coalesce_num(get0("crime8", ifnotfound = NULL)),
       security_costs_pct = coalesce_num(get0("crime2", ifnotfound = NULL))
+    ) |>
+    mutate(
+      # Add IC.FRM.* aliases for compatibility with downstream modules
+      IC.FRM.CORR.ZS = corruption_obstacle_pct,
+      IC.FRM.BRIB.ZS = bribery_incidence_pct,
+      IC.FRM.CAPU.ZS = capacity_utilization_pct,
+      IC.FRM.OUTG.ZS = power_outages_per_month,
+      IC.FRM.FINA.ZS = coalesce_num(get0("fin14", ifnotfound = NULL)),  # Finance obstacle
+      IC.FRM.BANK.ZS = firms_with_bank_account_pct,
+      IC.FRM.CRED.ZS = loan_rejection_rate_pct,
+      IC.FRM.FEMO.ZS = female_ownership_pct,
+      IC.FRM.FEMW.ZS = female_workers_pct,
+      IC.FRM.EXPRT.ZS = export_firms_pct,
+      IC.FRM.CRIM.ZS = crime_obstacle_pct,
+      IC.FRM.SECU.ZS = security_costs_pct,
+      IC.FRM.ELEC.ZS = coalesce_num(get0("elec", ifnotfound = NULL)),  # Electricity obstacle
+      IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL))  # Infrastructure obstacle
     ) |>
     mutate(region = ifelse(region == "Aggregates", NA_character_, region))
 
@@ -418,6 +450,102 @@ extract_years_from_microdata <- function(data) {
     }
   }
   integer(0)
+}
+
+#' Get country coordinates for mapping
+#' @return Data frame with country names and coordinates
+#' @export
+get_country_coordinates <- function() {
+  # Comprehensive country coordinates (capital cities or geographic centers)
+  coords <- data.frame(
+    country = c(
+      "Afghanistan", "Albania", "Algeria", "Angola", "Argentina", "Armenia", "Australia",
+      "Austria", "Azerbaijan", "Bahamas", "Bangladesh", "Barbados", "Belarus", "Belgium",
+      "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil",
+      "Bulgaria", "Burkina Faso", "Burundi", "Cambodia", "Cameroon", "Canada", "Cape Verde",
+      "Central African Republic", "Chad", "Chile", "China", "Colombia", "Congo, Dem. Rep.",
+      "Congo, Rep.", "Costa Rica", "Cote d'Ivoire", "Croatia", "Czech Republic", "Denmark",
+      "Djibouti", "Dominican Republic", "Ecuador", "Egypt, Arab Rep.", "El Salvador",
+      "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland",
+      "France", "Gabon", "Gambia, The", "Georgia", "Germany", "Ghana", "Greece", "Guatemala",
+      "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hong Kong SAR, China",
+      "Hungary", "Iceland", "India", "Indonesia", "Iran, Islamic Rep.", "Iraq", "Ireland",
+      "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Korea, Rep.",
+      "Kosovo", "Kuwait", "Kyrgyz Republic", "Lao PDR", "Latvia", "Lebanon", "Lesotho",
+      "Liberia", "Libya", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia",
+      "Mali", "Malta", "Mauritania", "Mauritius", "Mexico", "Moldova", "Mongolia", "Montenegro",
+      "Morocco", "Mozambique", "Myanmar", "Namibia", "Nepal", "Netherlands", "New Zealand",
+      "Nicaragua", "Niger", "Nigeria", "North Macedonia", "Norway", "Oman", "Pakistan",
+      "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+      "Puerto Rico", "Qatar", "Romania", "Russian Federation", "Rwanda", "Samoa", "Senegal",
+      "Serbia", "Sierra Leone", "Singapore", "Slovak Republic", "Slovenia", "Solomon Islands",
+      "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname",
+      "Sweden", "Switzerland", "Syrian Arab Republic", "Tajikistan", "Tanzania", "Thailand",
+      "Timor-Leste", "Togo", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+      "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States",
+      "Uruguay", "Uzbekistan", "Vanuatu", "Venezuela, RB", "Vietnam", "West Bank and Gaza",
+      "Yemen, Rep.", "Zambia", "Zimbabwe"
+    ),
+    lat = c(
+      34.52, 41.33, 28.03, -11.20, -38.42, 40.18, -25.27,
+      48.21, 40.41, 25.03, 23.81, 13.10, 53.90, 50.85,
+      17.25, 9.31, 27.47, -16.29, 43.86, -22.33, -14.24,
+      42.70, 12.37, -3.37, 12.57, 7.37, 56.13, 14.93,
+      6.61, 15.45, -35.68, 35.86, 4.57, -4.04,
+      -4.26, 9.75, 7.54, 45.10, 49.82, 55.68,
+      11.83, 18.74, -1.83, 26.82, 13.79,
+      1.65, 15.18, 59.44, -26.52, 9.15, -18.14, 61.92,
+      46.23, -0.80, 13.45, 42.32, 51.17, 7.95, 39.07, 15.78,
+      9.95, 11.80, 4.86, 18.97, 15.00, 22.40,
+      47.16, 64.96, 20.59, -0.79, 32.43, 33.22, 53.41,
+      31.05, 41.87, 18.11, 36.20, 30.59, 48.02, -0.02, 37.57,
+      42.66, 29.31, 41.20, 19.86, 56.88, 33.89, -29.61,
+      6.43, 26.34, 55.17, 49.82, -18.77, -13.25, 4.21,
+      17.57, 35.88, 18.07, -20.35, 23.63, 47.01, 46.86, 42.71,
+      31.79, -18.67, 21.91, -22.96, 27.70, 52.13, -40.90,
+      12.87, 17.61, 9.08, 41.61, 60.47, 21.51, 30.38,
+      8.54, -6.31, -23.44, -9.19, 12.88, 51.92, 39.40,
+      18.22, 25.35, 45.94, 61.52, -1.94, -13.76, 14.50,
+      44.02, 8.46, 1.35, 48.67, 46.15, -9.65,
+      5.15, -30.56, 4.85, 40.46, 7.87, 12.86, 3.92,
+      60.13, 46.82, 34.80, 38.86, -6.37, 15.87,
+      -8.87, 8.62, 10.69, 33.89, 38.96, 37.97,
+      1.37, 48.38, 23.42, 55.38, 37.09,
+      -32.52, 41.38, 17.68, 10.39, 14.06, 31.77,
+      15.55, -13.13, -19.02
+    ),
+    lng = c(
+      69.17, 19.82, 1.66, 17.87, -63.62, 44.51, 133.78,
+      16.37, 49.87, -77.40, 90.36, -59.54, 27.57, 4.35,
+      -88.50, 2.32, 90.43, -63.59, 17.68, 24.68, -51.93,
+      25.49, -1.52, 29.92, 104.99, 12.35, -106.35, -23.51,
+      20.94, 18.73, -71.54, 104.20, -74.30, 21.76,
+      15.83, -83.75, -5.55, 15.98, 15.47, 12.57,
+      43.15, -70.16, -78.18, 30.80, -88.90,
+      10.27, 38.93, 24.75, 31.47, 38.76, 178.07, 25.75,
+      2.21, 11.61, -15.31, 43.36, 10.45, -1.02, 21.82, -90.23,
+      -9.70, -15.18, -58.93, -72.29, -86.24, 114.11,
+      19.50, -19.02, 78.96, 113.92, 53.69, 43.68, -8.24,
+      34.85, 12.57, -77.30, 138.25, 35.95, 66.92, 37.91, 127.77,
+      20.90, 47.98, 74.77, 102.60, 24.60, 35.86, 28.23,
+      -9.43, 17.23, 23.88, 6.13, 46.87, 33.79, 101.98,
+      -3.00, 14.51, -10.94, 57.55, -102.55, 28.86, 106.92, 19.26,
+      -7.09, 35.53, 95.96, 18.42, 85.32, 5.29, 174.89,
+      -85.21, 8.08, 8.68, 21.75, 10.75, 55.92, 69.35,
+      -80.78, 143.95, -58.44, -75.02, 121.77, 19.15, -8.22,
+      -66.59, 51.18, 24.97, 105.32, 29.87, -172.10, -14.45,
+      20.46, -11.78, 103.82, 19.70, 14.99, 159.96,
+      46.20, 22.94, 31.58, -3.75, 80.77, 32.35, -56.03,
+      18.64, 8.23, 36.31, 68.78, 34.89, 100.99,
+      125.73, 1.17, -61.28, 9.54, 35.24, 59.56,
+      0.35, 30.37, 54.37, -3.44, -95.71,
+      -55.77, 64.59, 166.96, -66.59, 108.28, 35.23,
+      48.52, 27.85, -18.91
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  return(coords)
 }
 
 #' Generate data quality documentation

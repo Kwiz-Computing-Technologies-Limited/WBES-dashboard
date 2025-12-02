@@ -275,26 +275,30 @@ server <- function(id, wbes_data) {
    # World Map
    output$world_map <- renderLeaflet({
      req(filtered_data())
-     
-     # Sample coordinates for demo
-     coords <- data.frame(
-       country = c("Kenya", "Nigeria", "South Africa", "India", "Brazil", "Mexico"),
-       lat = c(-1.28, 9.08, -30.56, 20.59, -14.24, 23.63),
-       lng = c(36.82, 7.40, 22.94, 78.96, -51.93, -102.55)
-     )
-     
+
+     # Get data with coordinates (already merged in wbes_data)
      data <- filtered_data()
-     data <- merge(data, coords, by = "country", all.x = TRUE)
-     data <- data[!is.na(data$lat), ]
-     
+
+     # Filter to only countries with valid coordinates and indicator data
      indicator <- input$map_indicator
-     
+
+     if (!is.null(data$lat) && !is.null(data$lng)) {
+       data <- data[!is.na(data$lat) & !is.na(data$lng), ]
+
+       # Filter to countries with non-NA indicator values
+       if (indicator %in% names(data)) {
+         data <- data[!is.na(data[[indicator]]), ]
+       }
+     }
+
      if (nrow(data) > 0 && indicator %in% names(data)) {
+       # Create color palette
        pal <- colorNumeric(
          palette = c("#2E7D32", "#F4A460", "#dc3545"),
-         domain = data[[indicator]]
+         domain = data[[indicator]],
+         na.color = "#808080"
        )
-       
+
        leaflet(data) |>
          addTiles() |>
          setView(lng = 20, lat = 10, zoom = 2) |>
@@ -303,10 +307,20 @@ server <- function(id, wbes_data) {
            radius = 8,
            color = ~pal(get(indicator)),
            fillOpacity = 0.8,
+           stroke = TRUE,
+           weight = 1,
+           opacity = 0.9,
            popup = ~paste0(
              "<strong>", country, "</strong><br>",
              indicator, ": ", round(get(indicator), 1)
            )
+         ) |>
+         addLegend(
+           "bottomright",
+           pal = pal,
+           values = ~get(indicator),
+           title = "Value",
+           opacity = 0.8
          )
      } else {
        leaflet() |>
@@ -317,92 +331,202 @@ server <- function(id, wbes_data) {
    
    # Obstacles Chart
    output$obstacles_chart <- renderPlotly({
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Calculate average values for major obstacles from actual data
      obstacles <- data.frame(
-       obstacle = c("Access to Finance", "Electricity", "Informal Competition",
-                    "Tax Rates", "Corruption", "Political Instability",
-                    "Inadequately Educated Workforce", "Tax Administration"),
-       pct = c(23.5, 19.2, 17.8, 14.5, 12.3, 11.8, 9.5, 8.2)
+       obstacle = character(),
+       pct = numeric(),
+       stringsAsFactors = FALSE
      )
-     
-     obstacles <- arrange(obstacles, pct)
-     obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
-     
-     plot_ly(obstacles, 
-             y = ~obstacle, 
-             x = ~pct, 
-             type = "bar",
-             orientation = "h",
-             marker = list(
-               color = "#1B6B5F",
-               line = list(color = "#145449", width = 1)
-             ),
-             hovertemplate = "%{y}: %{x}%<extra></extra>") |>
-       layout(
-         xaxis = list(title = "% of Firms", ticksuffix = "%"),
-         yaxis = list(title = ""),
-         margin = list(l = 150),
-         plot_bgcolor = "rgba(0,0,0,0)",
-         paper_bgcolor = "rgba(0,0,0,0)"
-       ) |>
-       config(displayModeBar = FALSE)
+
+     # Add obstacles if columns exist in data
+     if ("IC.FRM.FINA.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Access to Finance",
+         pct = mean(data$IC.FRM.FINA.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.ELEC.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Electricity",
+         pct = mean(data$IC.FRM.ELEC.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.CORR.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Corruption",
+         pct = mean(data$IC.FRM.CORR.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.INFRA.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Infrastructure",
+         pct = mean(data$IC.FRM.INFRA.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.CRIM.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Crime",
+         pct = mean(data$IC.FRM.CRIM.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.WKFC.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Workforce Quality",
+         pct = mean(data$IC.FRM.WKFC.ZS, na.rm = TRUE)
+       ))
+     }
+
+     # Remove rows with NA values
+     obstacles <- obstacles[!is.na(obstacles$pct), ]
+
+     if (nrow(obstacles) > 0) {
+       # Sort and prepare for plotting
+       obstacles <- arrange(obstacles, pct)
+       obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
+
+       plot_ly(obstacles,
+               y = ~obstacle,
+               x = ~pct,
+               type = "bar",
+               orientation = "h",
+               marker = list(
+                 color = "#1B6B5F",
+                 line = list(color = "#145449", width = 1)
+               ),
+               hovertemplate = "%{y}: %{x:.1f}%<extra></extra>") |>
+         layout(
+           xaxis = list(title = "% of Firms", ticksuffix = "%"),
+           yaxis = list(title = ""),
+           margin = list(l = 150),
+           plot_bgcolor = "rgba(0,0,0,0)",
+           paper_bgcolor = "rgba(0,0,0,0)"
+         ) |>
+         config(displayModeBar = FALSE)
+     } else {
+       # Return empty plot if no data
+       plot_ly() |>
+         layout(
+           xaxis = list(title = ""),
+           yaxis = list(title = ""),
+           annotations = list(
+             text = "No obstacle data available",
+             xref = "paper",
+             yref = "paper",
+             x = 0.5,
+             y = 0.5,
+             showarrow = FALSE
+           )
+         )
+     }
    })
    
    # Regional Comparison
    output$regional_comparison <- renderPlotly({
      req(wbes_data())
-     
-     regional <- wbes_data()$regional
-     if (is.null(regional)) {
-       regional <- data.frame(
-         region = c("Sub-Saharan Africa", "South Asia", "East Asia & Pacific",
-                    "Latin America & Caribbean", "Europe & Central Asia"),
-         power_outages_per_month = c(8.5, 6.2, 3.1, 4.2, 2.8),
-         firms_with_credit_line_pct = c(22, 28, 35, 42, 48),
-         bribery_incidence_pct = c(24, 28, 18, 15, 12)
-       )
+
+     # Get the latest country data
+     data <- wbes_data()$latest
+
+     # Calculate regional aggregates
+     if (!is.null(data) && "region" %in% names(data)) {
+       regional <- data |>
+         filter(!is.na(region)) |>
+         group_by(region) |>
+         summarise(
+           power_outages_per_month = mean(power_outages_per_month, na.rm = TRUE),
+           firms_with_credit_line_pct = mean(firms_with_credit_line_pct, na.rm = TRUE),
+           bribery_incidence_pct = mean(bribery_incidence_pct, na.rm = TRUE),
+           .groups = "drop"
+         )
+
+       if (nrow(regional) > 0) {
+         plot_ly(regional) |>
+           add_trace(
+             x = ~region,
+             y = ~power_outages_per_month,
+             type = "bar",
+             name = "Power Outages/Month",
+             marker = list(color = "#1B6B5F")
+           ) |>
+           add_trace(
+             x = ~region,
+             y = ~firms_with_credit_line_pct,
+             type = "bar",
+             name = "Credit Access (%)",
+             marker = list(color = "#F49B7A")
+           ) |>
+           add_trace(
+             x = ~region,
+             y = ~bribery_incidence_pct,
+             type = "bar",
+             name = "Bribery Incidence (%)",
+             marker = list(color = "#6C757D")
+           ) |>
+           layout(
+             barmode = "group",
+             xaxis = list(title = "", tickangle = -45),
+             yaxis = list(title = "Value"),
+             legend = list(orientation = "h", y = -0.2),
+             margin = list(b = 100),
+             plot_bgcolor = "rgba(0,0,0,0)",
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       } else {
+         # Empty plot if no regional data
+         plot_ly() |>
+           layout(
+             annotations = list(
+               text = "No regional data available",
+               xref = "paper",
+               yref = "paper",
+               x = 0.5,
+               y = 0.5,
+               showarrow = FALSE
+             )
+           )
+       }
+     } else {
+       # Empty plot if no data
+       plot_ly() |>
+         layout(
+           annotations = list(
+             text = "No regional data available",
+             xref = "paper",
+             yref = "paper",
+             x = 0.5,
+             y = 0.5,
+             showarrow = FALSE
+           )
+         )
      }
-     
-     plot_ly(regional) |>
-       add_trace(
-         x = ~region, 
-         y = ~power_outages_per_month,
-         type = "bar",
-         name = "Power Outages/Month",
-         marker = list(color = "#1B6B5F")
-       ) |>
-       add_trace(
-         x = ~region, 
-         y = ~firms_with_credit_line_pct,
-         type = "bar",
-         name = "Credit Access (%)",
-         marker = list(color = "#F49B7A")
-       ) |>
-       add_trace(
-         x = ~region, 
-         y = ~bribery_incidence_pct,
-         type = "bar",
-         name = "Bribery Incidence (%)",
-         marker = list(color = "#6C757D")
-       ) |>
-       layout(
-         barmode = "group",
-         xaxis = list(title = "", tickangle = -45),
-         yaxis = list(title = "Value"),
-         legend = list(orientation = "h", y = -0.2),
-         margin = list(b = 100),
-         plot_bgcolor = "rgba(0,0,0,0)",
-         paper_bgcolor = "rgba(0,0,0,0)"
-       ) |>
-       config(displayModeBar = FALSE)
    })
    
    # Infrastructure Gauge
    output$infrastructure_gauge <- renderPlotly({
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Calculate infrastructure quality index from actual data
+     # Higher power outages = worse infrastructure, so invert the scale
+     # Scale: 100 - (average power outages * 10) or use capacity utilization as proxy
+     infra_score <- 50  # default
+
+     if ("power_outages_per_month" %in% names(data)) {
+       avg_outages <- mean(data$power_outages_per_month, na.rm = TRUE)
+       # Convert outages to a 0-100 score (fewer outages = better score)
+       # Assume 0 outages = 100, 10+ outages = 0
+       infra_score <- max(0, min(100, 100 - (avg_outages * 10)))
+     }
+
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = 62,
-       title = list(text = "Regional Average Score"),
+       value = round(infra_score, 1),
+       title = list(text = "Infrastructure Quality Index"),
        gauge = list(
          axis = list(range = list(0, 100)),
          bar = list(color = "#1B6B5F"),
@@ -424,13 +548,23 @@ server <- function(id, wbes_data) {
        ) |>
        config(displayModeBar = FALSE)
    })
-   
+
    # Finance Gauge
    output$finance_gauge <- renderPlotly({
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Calculate financial access index from actual data
+     finance_score <- 50  # default
+
+     if ("firms_with_credit_line_pct" %in% names(data)) {
+       finance_score <- mean(data$firms_with_credit_line_pct, na.rm = TRUE)
+     }
+
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = 38,
+       value = round(finance_score, 1),
        title = list(text = "Credit Access Index"),
        gauge = list(
          axis = list(range = list(0, 100)),

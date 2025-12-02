@@ -332,23 +332,48 @@ server <- function(id, wbes_data) {
     })
     
     output$finance_chart2 <- renderPlotly({
-      plot_ly(
-        type = "indicator",
-        mode = "gauge+number",
-        value = 185,
-        title = list(text = "Avg Collateral (% of Loan)"),
-        gauge = list(
-          axis = list(range = list(0, 300)),
-          bar = list(color = "#F49B7A"),
-          steps = list(
-            list(range = c(0, 100), color = "#e8f5e9"),
-            list(range = c(100, 200), color = "#fff3e0"),
-            list(range = c(200, 300), color = "#ffebee")
+      req(country_data())
+      d <- country_data()
+
+      # Get collateral required percentage from actual data
+      collateral_val <- if ("collateral_required_pct" %in% names(d) && !is.na(d$collateral_required_pct[1])) {
+        d$collateral_required_pct[1]
+      } else {
+        NA
+      }
+
+      if (!is.na(collateral_val)) {
+        plot_ly(
+          type = "indicator",
+          mode = "gauge+number",
+          value = round(collateral_val, 1),
+          title = list(text = "Avg Collateral (% of Loan)"),
+          gauge = list(
+            axis = list(range = list(0, 300)),
+            bar = list(color = "#F49B7A"),
+            steps = list(
+              list(range = c(0, 100), color = "#e8f5e9"),
+              list(range = c(100, 200), color = "#fff3e0"),
+              list(range = c(200, 300), color = "#ffebee")
+            )
           )
-        )
-      ) |>
-        layout(paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+        ) |>
+          layout(paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No collateral data available",
+              xref = "paper",
+              yref = "paper",
+              x = 0.5,
+              y = 0.5,
+              showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
     
     # Governance Charts
