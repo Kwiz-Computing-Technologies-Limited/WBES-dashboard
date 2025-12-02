@@ -267,26 +267,57 @@ server <- function(id, wbes_data) {
    })
 
    output$kpi_firms <- renderUI({
+     req(filtered_data())
+     # Calculate total firms surveyed from filtered data
+     total_firms <- sum(filtered_data()$sample_size, na.rm = TRUE)
+     # Format with K for thousands
+     firms_display <- if (total_firms >= 1000) {
+       paste0(round(total_firms / 1000, 1), "K")
+     } else {
+       as.character(total_firms)
+     }
      tags$div(
        class = "kpi-box kpi-box-coral",
-       tags$div(class = "kpi-value", "253K+"),
+       tags$div(class = "kpi-value", firms_display),
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
    })
 
    output$kpi_years <- renderUI({
      req(wbes_data())
+     # Use country_panel which has year data, apply same filters
+     panel_data <- wbes_data()$country_panel
+     if (input$region_filter != "all") {
+       panel_data <- filter(panel_data, region == input$region_filter)
+     }
+     if (input$income_filter != "all") {
+       panel_data <- filter(panel_data, income_group == input$income_filter)
+     }
+     # Count unique years
+     n_years <- length(unique(panel_data$year[!is.na(panel_data$year)]))
+     # If no years in filtered data, show from full dataset
+     if (n_years == 0 && !is.null(wbes_data()$years)) {
+       n_years <- length(wbes_data()$years)
+     }
      tags$div(
        class = "kpi-box kpi-box-success",
-       tags$div(class = "kpi-value", length(wbes_data()$years)),
+       tags$div(class = "kpi-value", n_years),
        tags$div(class = "kpi-label", "Survey Years")
      )
    })
 
    output$kpi_indicators <- renderUI({
+     req(wbes_data())
+     # Count available metric columns from the data
+     # Get all numeric columns that represent indicators (exclude metadata columns)
+     exclude_cols <- c("country", "country_code", "region", "income_group", "sector",
+                      "sample_size", "lat", "lng", "year")
+     data_cols <- names(wbes_data()$latest)
+     indicator_cols <- setdiff(data_cols, exclude_cols)
+     n_indicators <- length(indicator_cols)
      tags$div(
        class = "kpi-box kpi-box-warning",
-       tags$div(class = "kpi-value", "150+"),
+       tags$div(class = "kpi-value", n_indicators),
        tags$div(class = "kpi-label", "Indicators")
      )
    })

@@ -367,7 +367,13 @@ process_microdata <- function(data) {
       ),
       year = get0("year", ifnotfound = NA_integer_),
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
-      income_group = if ("income" %in% names(data)) as.character(as_factor(income)) else NA_character_,
+      # Try multiple possible income group variable names
+      income_group = coalesce_chr(
+        if ("income_group" %in% names(data)) as.character(as_factor(get0("income_group", ifnotfound = NULL))) else NULL,
+        if ("income" %in% names(data)) as.character(as_factor(get0("income", ifnotfound = NULL))) else NULL,
+        if ("inc" %in% names(data)) as.character(as_factor(get0("inc", ifnotfound = NULL))) else NULL,
+        if ("wbincome" %in% names(data)) as.character(as_factor(get0("wbincome", ifnotfound = NULL))) else NULL
+      ),
       sector = if ("stra_sector" %in% names(data)) as.character(as_factor(stra_sector)) else NA_character_,
       sample_weight = get0("wt", ifnotfound = NA_real_),
 
