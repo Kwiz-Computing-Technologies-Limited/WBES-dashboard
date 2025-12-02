@@ -203,42 +203,68 @@ server <- function(id, wbes_data) {
    
    # Data Source Indicator
    output$data_source_badge <- renderUI({
-     req(wbes_data())
-     data <- wbes_data()
+     message("DEBUG: data_source_badge rendering...")
 
-     source_info <- data$metadata$source
-     is_real_data <- grepl("Microdata|API", source_info, ignore.case = TRUE)
-
-     badge_class <- if (is_real_data) "alert-success" else "alert-warning"
-     icon_name <- if (is_real_data) "check-circle" else "exclamation-triangle"
-
-     div(
-       class = paste("alert", badge_class, "mb-3"),
-       role = "alert",
-       tags$strong(icon(icon_name), " Data Source: "),
-       source_info,
-       if (!is_real_data) {
-         span(
-           " | ",
-           tags$strong("Note: "),
-           "Using simulated data for demonstration. ",
-           "Download actual WBES data from ",
-           a(
-             href = "https://www.enterprisesurveys.org/en/survey-datasets",
-             target = "_blank",
-             "enterprisesurveys.org"
-           ),
-           " and save as data/assets.zip"
-         )
-       } else {
-         span(
-           " | ",
-           "Observations: ", format(data$metadata$observations, big.mark = ","),
-           " | Countries: ", length(data$countries),
-           " | Loaded: ", format(data$metadata$loaded_at, "%Y-%m-%d %H:%M")
-         )
+     tryCatch({
+       if (is.null(wbes_data())) {
+         message("DEBUG: wbes_data() is NULL")
+         return(div(
+           class = "alert alert-info mb-3",
+           tags$strong(icon("info-circle"), " Loading WBES data...")
+         ))
        }
-     )
+
+       data <- wbes_data()
+       message("DEBUG: data loaded, names: ", paste(names(data), collapse = ", "))
+
+       source_info <- if (!is.null(data$metadata) && !is.null(data$metadata$source)) {
+         data$metadata$source
+       } else {
+         "Unknown Source"
+       }
+
+       message("DEBUG: source_info = ", source_info)
+
+       is_real_data <- grepl("Microdata|API", source_info, ignore.case = TRUE)
+
+       badge_class <- if (is_real_data) "alert-success" else "alert-warning"
+       icon_name <- if (is_real_data) "check-circle" else "exclamation-triangle"
+
+       div(
+         class = paste("alert", badge_class, "mb-3"),
+         role = "alert",
+         tags$strong(icon(icon_name), " Data Source: "),
+         source_info,
+         if (!is_real_data) {
+           span(
+             " | ",
+             tags$strong("Note: "),
+             "Using simulated data for demonstration. ",
+             "Download actual WBES data from ",
+             a(
+               href = "https://www.enterprisesurveys.org/en/survey-datasets",
+               target = "_blank",
+               "enterprisesurveys.org"
+             ),
+             " and save as data/assets.zip"
+           )
+         } else {
+           span(
+             " | ",
+             "Observations: ", format(data$metadata$observations, big.mark = ","),
+             " | Countries: ", length(data$countries),
+             " | Loaded: ", format(data$metadata$loaded_at, "%Y-%m-%d %H:%M")
+           )
+         }
+       )
+     }, error = function(e) {
+       message("DEBUG ERROR in data_source_badge: ", e$message)
+       div(
+         class = "alert alert-danger mb-3",
+         tags$strong(icon("exclamation-circle"), " Error loading data source: "),
+         e$message
+       )
+     })
    })
 
    # Update filter choices when data loads
