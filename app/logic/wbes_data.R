@@ -11,6 +11,7 @@ box::use(
   logger[log_info, log_warn, log_error],
   utils[unzip],
   stats[runif, setNames, na.omit],
+  here[here],
   app/logic/column_labels[extract_column_labels, create_wbes_label_mapping]
 )
 
@@ -26,12 +27,12 @@ RAW_DTA_FILENAME <- "ES-Indicators-Database-Global-Methodology_November_24_2025.
 #'
 #' IMPORTANT: Real data is REQUIRED. The app will fail if data is not found.
 #'
-#' @param data_path Path to data directory (default: "data/")
+#' @param data_path Path to data directory (default: here::here("data"))
 #' @param use_cache Whether to use cached data (default: TRUE)
 #' @param cache_hours Hours before cache expires (default: 24)
 #' @return List with WBES data components
 #' @export
-load_wbes_data <- function(data_path = "data/", use_cache = TRUE, cache_hours = 24) {
+load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hours = 24) {
 
   log_info("Loading WBES data...")
 

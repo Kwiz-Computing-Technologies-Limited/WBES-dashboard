@@ -222,9 +222,9 @@ ui <- function(request) {
   # Initialize data loading with improved error handling
   shiny::observe({
     tryCatch({
-      # Load data from assets.zip, .dta files, or sample data
+      # Load data from assets.zip or .dta files (real data required)
       data <- load_wbes_data(
-        data_path = "data/",
+        data_path = here("data"),
         use_cache = TRUE,
         cache_hours = 24
       )
@@ -232,9 +232,7 @@ ui <- function(request) {
 
     }, error = function(e) {
       message("Error loading WBES data: ", e$message)
-      # Load sample data as fallback
-      data <- load_wbes_data()  # Will fallback to sample data
-      wbes_data(data)
+      stop("Failed to load WBES data. Please ensure data/assets.zip is present.")
     })
 
     # Hide waiter after data loads
