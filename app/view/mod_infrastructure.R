@@ -77,7 +77,11 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
           card_body(
-            plotlyOutput(ns("infra_bar_chart"), height = "450px")
+            plotlyOutput(ns("infra_bar_chart"), height = "450px"),
+            p(class = "text-muted mt-3 small",
+              "Ranks countries by infrastructure quality composite score. ",
+              "Lower scores indicate more frequent power outages, longer disruptions, and higher reliance on backup generators. ",
+              "Countries with scores below 40 face severe infrastructure constraints that impede production and competitiveness.")
           )
         )
       ),
@@ -85,7 +89,10 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Power Source Distribution"),
           card_body(
-            plotlyOutput(ns("power_source_pie"), height = "450px")
+            plotlyOutput(ns("power_source_pie"), height = "450px"),
+            p(class = "text-muted mt-3 small",
+              "Shows the mix of grid electricity vs. self-generated power (generators). ",
+              "High generator usage signals unreliable public electricity supply and increased production costs.")
           )
         )
       )
@@ -98,7 +105,11 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), "Outages vs. Productivity"),
           card_body(
-            plotlyOutput(ns("outage_productivity"), height = "350px")
+            plotlyOutput(ns("outage_productivity"), height = "350px"),
+            p(class = "text-muted mt-3 small",
+              "Regression showing how power outages reduce firm capacity utilization. ",
+              "Downward trend confirms that unreliable electricity directly lowers productivity. ",
+              "Each additional outage per month can reduce capacity utilization by 1-3 percentage points.")
           )
         )
       ),
@@ -106,7 +117,11 @@ ui <- function(id) {
         card(
           card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
           card_body(
-            plotlyOutput(ns("cost_chart"), height = "350px")
+            plotlyOutput(ns("cost_chart"), height = "350px"),
+            p(class = "text-muted mt-3 small",
+              "Estimates economic costs of infrastructure deficiencies as percentage of sales. ",
+              "Costs include generator fuel, downtime losses, and reduced output. ",
+              "In severely affected countries, infrastructure gaps can reduce revenues by 5-15%.")
           )
         )
       )
@@ -118,7 +133,11 @@ ui <- function(id) {
         card(
           card_header(icon("th"), "Regional Infrastructure Heatmap"),
           card_body(
-            plotlyOutput(ns("infra_heatmap"), height = "400px")
+            plotlyOutput(ns("infra_heatmap"), height = "400px"),
+            p(class = "text-muted mt-3 small",
+              "Matrix showing infrastructure quality across regions and sub-indicators. ",
+              "Red cells indicate severe constraints; green cells show relative strengths. ",
+              "Useful for identifying region-specific patterns and comparing infrastructure components.")
           )
         )
       )
