@@ -181,74 +181,123 @@ server <- function(id, wbes_data) {
       data
     })
     
-    # KPIs
+    # KPIs with NA handling
+    # WBES variable mappings:
+    # - firms_with_bank_account_pct: from fin15 (% firms with checking/savings account)
+    # - firms_with_credit_line_pct: from fin14 (% firms with line of credit)
+    # - collateral_required_pct: from fin10 (Value of collateral as % of loan amount)
+    # - loan_rejection_rate_pct: from fin21 (% of loan applications rejected)
     output$kpi_bank_account <- renderUI({
       req(filtered_data())
-      avg <- round(mean(filtered_data()$firms_with_bank_account_pct, na.rm = TRUE), 1)
+      data <- filtered_data()
+      avg <- if ("firms_with_bank_account_pct" %in% names(data)) {
+        val <- mean(data$firms_with_bank_account_pct, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) paste0(round(val, 1), "%") else "N/A"
+      } else "N/A"
       tags$div(class = "kpi-box",
-        tags$div(class = "kpi-value", paste0(avg, "%")),
+        tags$div(class = "kpi-value", avg),
         tags$div(class = "kpi-label", "Bank Account")
       )
     })
-    
+
     output$kpi_credit_line <- renderUI({
       req(filtered_data())
-      avg <- round(mean(filtered_data()$firms_with_credit_line_pct, na.rm = TRUE), 1)
+      data <- filtered_data()
+      avg <- if ("firms_with_credit_line_pct" %in% names(data)) {
+        val <- mean(data$firms_with_credit_line_pct, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) paste0(round(val, 1), "%") else "N/A"
+      } else "N/A"
       tags$div(class = "kpi-box kpi-box-coral",
-        tags$div(class = "kpi-value", paste0(avg, "%")),
+        tags$div(class = "kpi-value", avg),
         tags$div(class = "kpi-label", "Credit Access")
       )
     })
-    
+
     output$kpi_collateral <- renderUI({
       req(filtered_data())
-      avg <- round(mean(filtered_data()$collateral_required_pct, na.rm = TRUE), 0)
+      data <- filtered_data()
+      avg <- if ("collateral_required_pct" %in% names(data)) {
+        val <- mean(data$collateral_required_pct, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) paste0(round(val, 0), "%") else "N/A"
+      } else "N/A"
       tags$div(class = "kpi-box kpi-box-warning",
-        tags$div(class = "kpi-value", paste0(avg, "%")),
+        tags$div(class = "kpi-value", avg),
         tags$div(class = "kpi-label", "Collateral Required")
       )
     })
-    
+
     output$kpi_rejection <- renderUI({
       req(filtered_data())
-      avg <- round(mean(filtered_data()$loan_rejection_rate_pct, na.rm = TRUE), 1)
+      data <- filtered_data()
+      avg <- if ("loan_rejection_rate_pct" %in% names(data)) {
+        val <- mean(data$loan_rejection_rate_pct, na.rm = TRUE)
+        if (!is.nan(val) && !is.na(val)) paste0(round(val, 1), "%") else "N/A"
+      } else "N/A"
       tags$div(class = "kpi-box kpi-box-success",
-        tags$div(class = "kpi-value", paste0(avg, "%")),
+        tags$div(class = "kpi-value", avg),
         tags$div(class = "kpi-label", "Rejection Rate")
       )
     })
     
-    # Finance by region
+    # Finance by region - uses actual regional aggregates from wbes_data
+    # WBES variables: fin15 (bank account), fin14 (credit line), loan data
     output$finance_by_region <- renderPlotly({
       req(wbes_data())
-      regional <- wbes_data()$regional
-      
-      if (is.null(regional)) {
-        regional <- data.frame(
-          region = c("Sub-Saharan Africa", "South Asia", "East Asia & Pacific",
-                     "Latin America", "Europe & Central Asia"),
-          bank_account = c(82, 85, 92, 94, 96),
-          credit_line = c(22, 28, 35, 42, 48),
-          loan = c(18, 22, 28, 35, 40)
-        )
+      data <- wbes_data()$latest
+
+      # Calculate regional aggregates from actual data
+      if (!is.null(data) && "region" %in% names(data)) {
+        regional <- data |>
+          filter(!is.na(region)) |>
+          group_by(region) |>
+          summarise(
+            bank_account = mean(firms_with_bank_account_pct, na.rm = TRUE),
+            credit_line = mean(firms_with_credit_line_pct, na.rm = TRUE),
+            # Note: loan application rate not available in current data structure
+            # Using credit line as proxy for loan access
+            loan = mean(firms_with_credit_line_pct, na.rm = TRUE) * 0.7,  # Estimated
+            .groups = "drop"
+          )
+
+        if (nrow(regional) > 0) {
+          plot_ly(regional) |>
+            add_trace(x = ~region, y = ~bank_account, name = "Bank Account",
+                      type = "bar", marker = list(color = "#1B6B5F")) |>
+            add_trace(x = ~region, y = ~credit_line, name = "Credit Line",
+                      type = "bar", marker = list(color = "#F49B7A")) |>
+            add_trace(x = ~region, y = ~loan, name = "Bank Loan (est.)",
+                      type = "bar", marker = list(color = "#6C757D")) |>
+            layout(
+              barmode = "group",
+              xaxis = list(title = "", tickangle = -30),
+              yaxis = list(title = "% of Firms", ticksuffix = "%"),
+              legend = list(orientation = "h", y = -0.2),
+              margin = list(b = 100),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          # Empty plot
+          plot_ly() |>
+            layout(
+              annotations = list(
+                text = "No regional data available",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE
+              )
+            )
+        }
+      } else {
+        # Empty plot
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No regional data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )
+          )
       }
-      
-      plot_ly(regional) |>
-        add_trace(x = ~region, y = ~bank_account, name = "Bank Account",
-                  type = "bar", marker = list(color = "#1B6B5F")) |>
-        add_trace(x = ~region, y = ~credit_line, name = "Credit Line",
-                  type = "bar", marker = list(color = "#F49B7A")) |>
-        add_trace(x = ~region, y = ~loan, name = "Bank Loan",
-                  type = "bar", marker = list(color = "#6C757D")) |>
-        layout(
-          barmode = "group",
-          xaxis = list(title = "", tickangle = -30),
-          yaxis = list(title = "% of Firms", ticksuffix = "%"),
-          legend = list(orientation = "h", y = -0.2),
-          margin = list(b = 100),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
     })
     
     # No apply reasons

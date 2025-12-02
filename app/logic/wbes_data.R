@@ -236,10 +236,12 @@ load_microdata <- function(dta_files) {
     "collateral_required_pct", "bribery_incidence_pct", "corruption_obstacle_pct",
     "capacity_utilization_pct", "export_share_pct", "export_firms_pct",
     "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct",
+    "annual_sales_growth_pct",  # Added: from perf1 or d2 (Real annual sales growth)
     # Add IC.FRM.* aliases (only those that exist)
     "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS", "IC.FRM.CAPU.ZS", "IC.FRM.OUTG.ZS",
     "IC.FRM.FINA.ZS", "IC.FRM.BANK.ZS", "IC.FRM.CRED.ZS", "IC.FRM.FEMO.ZS",
-    "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS"
+    "IC.FRM.FEMW.ZS", "IC.FRM.EXPRT.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.INFRA.ZS",
+    "IC.FRM.CRIM.ZS"  # Added: crime as major constraint (from crime8)
   )
 
   # Filter for valid columns that exist in the data
@@ -257,6 +259,20 @@ load_microdata <- function(dta_files) {
       sample_size = n(),
       .groups = "drop"
     )
+
+  # Create country panel (time series data by country and year)
+  log_info("Creating country panel for time series analysis...")
+  country_panel <- processed |>
+    filter(!is.na(country) & !is.na(year)) |>
+    group_by(country, year) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first_non_na(region),
+      income_group = first_non_na(income_group),
+      sample_size = n(),
+      .groups = "drop"
+    )
+  log_info(sprintf("Country panel created: %d country-year observations", nrow(country_panel)))
 
   # Get country coordinates and merge with aggregates
   country_coords <- get_country_coordinates()
@@ -300,6 +316,7 @@ load_microdata <- function(dta_files) {
     raw = combined,
     processed = processed,
     latest = country_aggregates_with_coords,  # Country-level aggregates for maps/charts with coordinates
+    country_panel = country_panel,  # Time series data by country and year
     countries = countries,
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,
@@ -371,6 +388,7 @@ process_microdata <- function(data) {
       capacity_utilization_pct = coalesce_num(get0("t3", ifnotfound = NULL)),
       export_firms_pct = coalesce_num(get0("tr10", ifnotfound = NULL)),
       export_share_pct = compute_export_share(data),
+      annual_sales_growth_pct = coalesce_num(get0("perf1", ifnotfound = NULL), get0("d2", ifnotfound = NULL)),
 
       # Crime and security
       crime_obstacle_pct = coalesce_num(get0("crime8", ifnotfound = NULL)),
@@ -378,18 +396,20 @@ process_microdata <- function(data) {
     ) |>
     mutate(
       # Add IC.FRM.* aliases for compatibility with downstream modules
-      IC.FRM.CORR.ZS = corruption_obstacle_pct,
-      IC.FRM.BRIB.ZS = bribery_incidence_pct,
-      IC.FRM.CAPU.ZS = capacity_utilization_pct,
-      IC.FRM.OUTG.ZS = power_outages_per_month,
+      # These World Bank indicator codes map to WBES microdata variables
+      IC.FRM.CORR.ZS = corruption_obstacle_pct,     # Corruption as obstacle
+      IC.FRM.BRIB.ZS = bribery_incidence_pct,        # Bribery incidence
+      IC.FRM.CAPU.ZS = capacity_utilization_pct,     # Capacity utilization
+      IC.FRM.OUTG.ZS = power_outages_per_month,      # Power outages
       IC.FRM.FINA.ZS = coalesce_num(get0("fin14", ifnotfound = NULL)),  # Finance obstacle
-      IC.FRM.BANK.ZS = firms_with_bank_account_pct,
-      IC.FRM.CRED.ZS = loan_rejection_rate_pct,
-      IC.FRM.FEMO.ZS = female_ownership_pct,
-      IC.FRM.FEMW.ZS = female_workers_pct,
-      IC.FRM.EXPRT.ZS = export_firms_pct,
-      IC.FRM.ELEC.ZS = coalesce_num(get0("elec", ifnotfound = NULL)),  # Electricity obstacle
-      IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL))  # Infrastructure obstacle
+      IC.FRM.BANK.ZS = firms_with_bank_account_pct,  # Bank account access
+      IC.FRM.CRED.ZS = loan_rejection_rate_pct,      # Credit constraints
+      IC.FRM.FEMO.ZS = female_ownership_pct,         # Female ownership
+      IC.FRM.FEMW.ZS = female_workers_pct,           # Female workforce
+      IC.FRM.EXPRT.ZS = export_firms_pct,            # Export orientation
+      IC.FRM.ELEC.ZS = coalesce_num(get0("elec", ifnotfound = NULL)),    # Electricity obstacle
+      IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL)),  # Infrastructure obstacle
+      IC.FRM.CRIM.ZS = crime_obstacle_pct            # Crime as obstacle (from crime8)
     ) |>
     mutate(region = ifelse(region == "Aggregates", NA_character_, region))
 
@@ -429,11 +449,17 @@ coalesce_chr <- function(...) {
   NA_character_
 }
 
-coalesce_num <- function(x) {
-  if (is.null(x)) {
-    return(NA_real_)
+coalesce_num <- function(...) {
+  vals <- list(...)
+  for (x in vals) {
+    if (!is.null(x)) {
+      num_val <- as.numeric(x)
+      if (any(!is.na(num_val))) {
+        return(num_val)
+      }
+    }
   }
-  as.numeric(x)
+  NA_real_
 }
 
 weighted_mean_safe <- function(x, w = NULL) {
