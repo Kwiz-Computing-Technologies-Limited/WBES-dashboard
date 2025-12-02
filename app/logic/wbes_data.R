@@ -350,11 +350,17 @@ process_microdata <- function(data) {
 
   processed <- data |>
     mutate(
-      country = coalesce_chr(
+      # Extract country name and clean year suffixes
+      country_raw = coalesce_chr(
+        get0("economy", ifnotfound = NULL),          # Try economy first (often cleanest)
+        get0("a2", ifnotfound = NULL),               # Try a2 (country name in questionnaire)
         get0("country_official", ifnotfound = NULL),
         get0("country2", ifnotfound = NULL),
         get0("country", ifnotfound = NULL)
       ),
+      # Clean country name by removing year suffixes (e.g., "Afghanistan2008" -> "Afghanistan")
+      country = gsub("\\d{4}$", "", country_raw),    # Remove 4-digit year at end
+      country = trimws(country),                      # Remove any trailing whitespace
       country_code = coalesce_chr(
         get0("wbcode", ifnotfound = NULL),
         get0("country_abr", ifnotfound = NULL)
