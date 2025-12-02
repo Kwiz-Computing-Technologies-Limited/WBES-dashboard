@@ -9,23 +9,23 @@ box::use(
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
- stats[setNames]
+ stats[setNames, na.omit]
 )
 
 #' @export
 ui <- function(id) {
  ns <- NS(id)
- 
+
  tags$div(
    class = "overview-container",
-   
+
    # Header Section
    fluidRow(
      column(12,
        tags$div(
          class = "page-header mb-4",
          h2(
-           icon("globe"), 
+           icon("globe"),
            "Global Business Environment Overview",
            class = "text-primary-teal"
          ),
@@ -36,7 +36,7 @@ ui <- function(id) {
        )
      )
    ),
-   
+
    # KPI Value Boxes
    fluidRow(
      class = "mb-4",
@@ -45,7 +45,7 @@ ui <- function(id) {
      column(3, uiOutput(ns("kpi_years"))),
      column(3, uiOutput(ns("kpi_indicators")))
    ),
-   
+
    # Filters Row
    fluidRow(
      class = "mb-4",
@@ -95,7 +95,7 @@ ui <- function(id) {
        )
      )
    ),
-   
+
    # Main Content - Map and Top Constraints
    fluidRow(
      class = "mb-4",
@@ -135,7 +135,7 @@ ui <- function(id) {
       )
     )
   ),
-   
+
    # Regional Comparison
    fluidRow(
      class = "mb-4",
@@ -152,7 +152,7 @@ ui <- function(id) {
       )
     )
   ),
-   
+
    # Bottom Row - Quick Stats
    fluidRow(
      column(6,
@@ -194,7 +194,7 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
  moduleServer(id, function(input, output, session) {
-   
+
    # Update filter choices when data loads
    observeEvent(wbes_data(), {
      req(wbes_data())
@@ -231,39 +231,39 @@ server <- function(id, wbes_data) {
        )
      }
    })
-   
+
    # Reset filters
    observeEvent(input$reset_filters, {
      shiny::updateSelectInput(session, "region_filter", selected = "all")
      shiny::updateSelectInput(session, "income_filter", selected = "all")
      shiny::updateSelectInput(session, "year_filter", selected = "latest")
    })
-   
+
    # Filtered data reactive
    filtered_data <- reactive({
      req(wbes_data())
      data <- wbes_data()$latest
-     
+
      if (input$region_filter != "all") {
        data <- filter(data, region == input$region_filter)
      }
      if (input$income_filter != "all") {
        data <- filter(data, income_group == input$income_filter)
      }
-     
+
      data
    })
-   
+
    # KPI Boxes
    output$kpi_countries <- renderUI({
      req(wbes_data())
      tags$div(
        class = "kpi-box",
-       tags$div(class = "kpi-value", length(wbes_data()$countries)),
+       tags$div(class = "kpi-value", length(unique(wbes_data()$country))),
        tags$div(class = "kpi-label", "Countries Covered")
      )
    })
-   
+
    output$kpi_firms <- renderUI({
      tags$div(
        class = "kpi-box kpi-box-coral",
@@ -271,7 +271,7 @@ server <- function(id, wbes_data) {
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
    })
-   
+
    output$kpi_years <- renderUI({
      req(wbes_data())
      tags$div(
@@ -280,7 +280,7 @@ server <- function(id, wbes_data) {
        tags$div(class = "kpi-label", "Survey Years")
      )
    })
-   
+
    output$kpi_indicators <- renderUI({
      tags$div(
        class = "kpi-box kpi-box-warning",
@@ -288,7 +288,7 @@ server <- function(id, wbes_data) {
        tags$div(class = "kpi-label", "Indicators")
      )
    })
-   
+
    # World Map
    output$world_map <- renderLeaflet({
      req(filtered_data())
@@ -355,7 +355,7 @@ server <- function(id, wbes_data) {
          setView(lng = 20, lat = 10, zoom = 2)
      }
    })
-   
+
    # Obstacles Chart
    output$obstacles_chart <- renderPlotly({
      req(filtered_data())
@@ -449,7 +449,7 @@ server <- function(id, wbes_data) {
          )
      }
    })
-   
+
    # Regional Comparison
    output$regional_comparison <- renderPlotly({
      req(wbes_data())
@@ -531,7 +531,7 @@ server <- function(id, wbes_data) {
          )
      }
    })
-   
+
    # Infrastructure Gauge
    output$infrastructure_gauge <- renderPlotly({
      req(filtered_data())
@@ -614,6 +614,6 @@ server <- function(id, wbes_data) {
        ) |>
        config(displayModeBar = FALSE)
    })
-   
+
  })
 }

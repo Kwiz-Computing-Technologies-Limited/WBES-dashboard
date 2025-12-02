@@ -9,7 +9,7 @@ box::use(
   readr[read_csv, write_csv],
   haven[read_dta, as_factor],
   logger[log_info, log_warn, log_error],
-  utils[unzip],
+  utils[unzip, head],
   stats[runif, setNames, na.omit],
   here[here],
   app/logic/column_labels[extract_column_labels, create_wbes_label_mapping]
@@ -37,7 +37,7 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
   log_info("Loading WBES data...")
 
   # Check for cached processed data first (fastest)
-  cache_file <- file.path(data_path, "wbes_processed.rds")
+  cache_file <- here(data_path, "wbes_processed.rds")
   if (use_cache && file.exists(cache_file)) {
     cache_age <- difftime(Sys.time(), file.mtime(cache_file), units = "hours")
     if (cache_age < cache_hours) {
@@ -47,7 +47,7 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
   }
 
   # Check for assets.zip (combined microdata) - PREFERRED METHOD
-  assets_zip <- file.path(data_path, "assets.zip")
+  assets_zip <- here(data_path, "assets.zip")
   if (file.exists(assets_zip)) {
     log_info("Found assets.zip - loading combined microdata")
     result <- load_from_zip(assets_zip, data_path)
@@ -456,14 +456,13 @@ first_non_na <- function(x) {
 #' @return Vector of countries
 extract_countries_from_microdata <- function(data) {
   # Try different country variable names, prioritizing country_official
-  for (var in c("country_official", "country2", "country", "wbcode", "country_abr", "economy", "countryname")) {
-    if (var %in% names(data)) {
-      countries <- unique(data[[var]]) |>
-        na.omit() |>
-        as.character()
-      return(countries)
-    }
+  if ("country" %in% names(data)) {
+    countries <- unique(data$country) |>
+      na.omit() |>
+      as.character()
+    return(countries)
   }
+
   character(0)
 }
 

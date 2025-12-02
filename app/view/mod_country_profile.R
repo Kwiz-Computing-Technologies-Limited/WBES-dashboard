@@ -13,21 +13,21 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   tags$div(
     class = "country-profile-container",
-    
+
     fluidRow(
       column(12,
         tags$div(
           class = "page-header mb-4",
           h2(icon("flag"), "Country Profile", class = "text-primary-teal"),
-          p(class = "lead text-muted", 
+          p(class = "lead text-muted",
             "In-depth analysis of business environment indicators for individual countries")
         )
       )
     ),
-    
+
     # Country Selector
     fluidRow(
       class = "mb-4",
@@ -47,7 +47,7 @@ ui <- function(id) {
         uiOutput(ns("country_summary"))
       )
     ),
-    
+
     # Radar Chart + Key Metrics
     fluidRow(
       class = "mb-4",
@@ -72,13 +72,13 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Detailed Tabs
     fluidRow(
       column(12,
         navset_card_tab(
           id = ns("detail_tabs"),
-          
+
           nav_panel(
             title = "Infrastructure",
             icon = icon("bolt"),
@@ -103,7 +103,7 @@ ui <- function(id) {
               )
             )
           ),
-          
+
           nav_panel(
             title = "Finance",
             icon = icon("university"),
@@ -128,7 +128,7 @@ ui <- function(id) {
               )
             )
           ),
-          
+
           nav_panel(
             title = "Governance",
             icon = icon("balance-scale"),
@@ -153,7 +153,7 @@ ui <- function(id) {
               )
             )
           ),
-          
+
           nav_panel(
             title = "Time Series",
             icon = icon("chart-line"),
@@ -174,7 +174,7 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
   moduleServer(id, function(input, output, session) {
-    
+
     # Update country choices
     observeEvent(wbes_data(), {
       req(wbes_data())
@@ -185,19 +185,19 @@ server <- function(id, wbes_data) {
         selected = countries[1]
       )
     })
-    
+
     # Selected country data
     country_data <- reactive({
       req(wbes_data(), input$country_select)
       data <- wbes_data()$latest
       filter(data, country == input$country_select)
     })
-    
+
     # Country summary card
     output$country_summary <- renderUI({
       req(country_data())
       d <- country_data()
-      
+
       tags$div(
         class = "card h-100",
         tags$div(
@@ -225,12 +225,12 @@ server <- function(id, wbes_data) {
         )
       )
     })
-    
+
     # Radar Chart
     output$radar_chart <- renderPlotly({
       req(country_data())
       d <- country_data()
-      
+
       # Normalize to 0-100 scale
       indicators <- c(
         "Infrastructure" = 100 - min(d$power_outages_per_month * 5, 100),
@@ -240,7 +240,7 @@ server <- function(id, wbes_data) {
         "Export Orient." = d$export_firms_pct * 2,
         "Gender Equity" = d$female_ownership_pct * 2
       )
-      
+
       plot_ly(
         type = "scatterpolar",
         r = as.numeric(indicators),
@@ -258,12 +258,12 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Key Metrics
     output$key_metrics <- renderUI({
       req(country_data())
       d <- country_data()
-      
+
       metrics <- list(
         list("Power Outages/Month", round(d$power_outages_per_month, 1), "bolt"),
         list("Outage Duration (hrs)", round(d$avg_outage_duration_hrs, 1), "clock"),
@@ -272,7 +272,7 @@ server <- function(id, wbes_data) {
         list("Capacity Utilization (%)", round(d$capacity_utilization_pct, 1), "industry"),
         list("Female Ownership (%)", round(d$female_ownership_pct, 1), "female")
       )
-      
+
       tags$div(
         class = "metrics-list",
         lapply(metrics, function(m) {
@@ -284,7 +284,7 @@ server <- function(id, wbes_data) {
         })
       )
     })
-    
+
     # Infrastructure Charts
     output$infra_chart1 <- renderPlotly({
       plot_ly(
@@ -300,7 +300,7 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     output$infra_chart2 <- renderPlotly({
       plot_ly(
         labels = c("Generator", "Grid Only", "Mixed"),
@@ -314,7 +314,7 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Finance Charts
     output$finance_chart1 <- renderPlotly({
       plot_ly(
@@ -330,7 +330,7 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     output$finance_chart2 <- renderPlotly({
       req(country_data())
       d <- country_data()
@@ -375,7 +375,7 @@ server <- function(id, wbes_data) {
           )
       }
     })
-    
+
     # Governance Charts
     output$gov_chart1 <- renderPlotly({
       plot_ly(
@@ -391,7 +391,7 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     output$gov_chart2 <- renderPlotly({
       plot_ly(
         x = c("Regulations", "Taxes", "Licenses", "Inspections"),
@@ -406,14 +406,14 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Time Series
     output$time_series <- renderPlotly({
       req(wbes_data(), input$country_select)
-      
+
       panel <- wbes_data()$country_panel
       panel <- filter(panel, country == input$country_select)
-      
+
       plot_ly(panel, x = ~year) |>
         add_trace(y = ~power_outages_per_month, name = "Power Outages",
                   type = "scatter", mode = "lines+markers",
@@ -433,6 +433,6 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
   })
 }
