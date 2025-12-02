@@ -114,7 +114,11 @@ ui <- function(id) {
              ),
              width = "300px"
            ),
-           leafletOutput(ns("world_map"), height = "450px")
+           leafletOutput(ns("world_map"), height = "450px"),
+           p(class = "text-muted mt-3 small",
+             "This interactive map visualizes business environment conditions across surveyed countries. ",
+             "Circle size represents sample size, while color intensity indicates the severity of the selected obstacle. ",
+             "Hover over countries to see detailed indicator values. Darker shades indicate worse business conditions.")
          )
        )
      ),
@@ -122,7 +126,11 @@ ui <- function(id) {
        card(
          card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
          card_body(
-           plotlyOutput(ns("obstacles_chart"), height = "500px")
+           plotlyOutput(ns("obstacles_chart"), height = "500px"),
+           p(class = "text-muted mt-3 small",
+             "Shows the most commonly reported obstacles to business operations across all surveyed firms. ",
+             "Bar height indicates the percentage of firms rating each factor as a major or severe constraint. ",
+             "Infrastructure, finance access, and corruption typically rank as top concerns in developing economies.")
          )
        )
      )
@@ -135,7 +143,12 @@ ui <- function(id) {
        card(
          card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
          card_body(
-           plotlyOutput(ns("regional_comparison"), height = "400px")
+           plotlyOutput(ns("regional_comparison"), height = "400px"),
+           p(class = "text-muted mt-3 small",
+             "Compares average indicator values across geographic regions. ",
+             "Sub-Saharan Africa typically shows higher infrastructure and corruption obstacles, ",
+             "while Latin America and East Asia demonstrate relatively better business environments. ",
+             "Regional patterns reflect economic development levels and governance quality.")
          )
        )
      )
@@ -146,24 +159,30 @@ ui <- function(id) {
      column(6,
        card(
          card_header(
-           icon("bolt"), 
+           icon("bolt"),
            "Infrastructure Quality Index",
            class = "card-header-secondary"
          ),
          card_body(
-           plotlyOutput(ns("infrastructure_gauge"), height = "250px")
+           plotlyOutput(ns("infrastructure_gauge"), height = "250px"),
+           p(class = "text-muted mt-2 small",
+             "Composite index combining power outages, electricity reliability, and infrastructure obstacles. ",
+             "Higher scores indicate better infrastructure quality. Scores below 50 suggest significant constraints.")
          )
        )
      ),
      column(6,
        card(
          card_header(
-           icon("university"), 
+           icon("university"),
            "Financial Access Index",
            class = "card-header-secondary"
          ),
          card_body(
-           plotlyOutput(ns("finance_gauge"), height = "250px")
+           plotlyOutput(ns("finance_gauge"), height = "250px"),
+           p(class = "text-muted mt-2 small",
+             "Measures ease of access to finance based on bank account ownership, credit availability, and loan approval rates. ",
+             "Higher scores indicate better financial inclusion. Scores below 50 suggest credit constraints are binding.")
          )
        )
      )
