@@ -199,15 +199,32 @@ server <- function(id, wbes_data) {
    observeEvent(wbes_data(), {
      req(wbes_data())
      data <- wbes_data()
-     
-     if (!is.null(data$regions)) {
+
+     # Update region filter
+     if (!is.null(data$regions) && length(data$regions) > 0) {
        shiny::updateSelectInput(
          session, "region_filter",
          choices = c("All Regions" = "all", setNames(data$regions, data$regions))
        )
      }
-     
-     if (!is.null(data$years)) {
+
+     # Update income filter
+     if (!is.null(data$latest) && "income_group" %in% names(data$latest)) {
+       income_groups <- data$latest$income_group |>
+         unique() |>
+         na.omit() |>
+         as.character() |>
+         sort()
+       if (length(income_groups) > 0) {
+         shiny::updateSelectInput(
+           session, "income_filter",
+           choices = c("All Income Groups" = "all", setNames(income_groups, income_groups))
+         )
+       }
+     }
+
+     # Update year filter
+     if (!is.null(data$years) && length(data$years) > 0) {
        shiny::updateSelectInput(
          session, "year_filter",
          choices = c("Latest Available" = "latest", setNames(data$years, data$years))

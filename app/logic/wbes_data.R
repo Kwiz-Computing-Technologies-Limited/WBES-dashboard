@@ -217,7 +217,9 @@ load_microdata <- function(dta_files) {
 
   # Extract metadata
   countries <- extract_countries_from_microdata(combined)
+  log_info(sprintf("Extracted %d countries: %s...", length(countries), paste(head(countries, 5), collapse = ", ")))
   years <- extract_years_from_microdata(combined)
+  log_info(sprintf("Extracted %d years: %s", length(years), paste(years, collapse = ", ")))
 
   # EXTRACT COLUMN LABELS from Stata file
   log_info("Extracting variable labels from microdata...")
@@ -265,9 +267,34 @@ load_microdata <- function(dta_files) {
     all.x = TRUE
   )
 
+  # Log countries without coordinates for debugging
+  countries_without_coords <- country_aggregates_with_coords |>
+    filter(is.na(lat)) |>
+    pull(country)
+  if (length(countries_without_coords) > 0) {
+    log_warn(sprintf("%d countries without coordinates: %s",
+                     length(countries_without_coords),
+                     paste(head(countries_without_coords, 10), collapse = ", ")))
+  }
+  log_info(sprintf("%d countries with coordinates", sum(!is.na(country_aggregates_with_coords$lat))))
+
   # Extract unique regions and sectors
-  regions <- processed$region |> unique() |> na.omit() |> as.character() |> sort()
+  # Try to get regions from processed data, if empty try raw data
+  regions <- processed$region |> unique() |> na.omit() |> as.character()
+  if (length(regions) == 0 && "region" %in% names(combined)) {
+    log_info("Regions empty in processed data, extracting from raw data")
+    # Fallback: extract directly from raw data with labels
+    regions <- combined$region |>
+      as_factor() |>
+      unique() |>
+      na.omit() |>
+      as.character()
+  }
+  regions <- sort(regions)
+  log_info(sprintf("Extracted %d unique regions: %s", length(regions), paste(head(regions, 5), collapse = ", ")))
+
   sectors <- processed$sector |> unique() |> na.omit() |> as.character() |> sort()
+  log_info(sprintf("Extracted %d unique sectors: %s", length(sectors), paste(head(sectors, 5), collapse = ", ")))
 
   result <- list(
     raw = combined,
