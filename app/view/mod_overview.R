@@ -25,7 +25,7 @@ ui <- function(id) {
        tags$div(
          class = "page-header mb-4",
          h2(
-           icon("globe"), 
+           icon("globe"),
            "Global Business Environment Overview",
            class = "text-primary-teal"
          ),
@@ -36,7 +36,14 @@ ui <- function(id) {
        )
      )
    ),
-   
+
+   # Data Source Indicator
+   fluidRow(
+     column(12,
+       uiOutput(ns("data_source_badge"))
+     )
+   ),
+
    # KPI Value Boxes
    fluidRow(
      class = "mb-4",
@@ -194,18 +201,58 @@ ui <- function(id) {
 server <- function(id, wbes_data) {
  moduleServer(id, function(input, output, session) {
    
+   # Data Source Indicator
+   output$data_source_badge <- renderUI({
+     req(wbes_data())
+     data <- wbes_data()
+
+     source_info <- data$metadata$source
+     is_real_data <- grepl("Microdata|API", source_info, ignore.case = TRUE)
+
+     badge_class <- if (is_real_data) "alert-success" else "alert-warning"
+     icon_name <- if (is_real_data) "check-circle" else "exclamation-triangle"
+
+     tags$div(
+       class = paste("alert", badge_class, "mb-3"),
+       role = "alert",
+       tags$strong(icon(icon_name), " Data Source: "),
+       source_info,
+       if (!is_real_data) {
+         span(
+           " | ",
+           tags$strong("Note: "),
+           "Using simulated data for demonstration. ",
+           "Download actual WBES data from ",
+           tags$a(
+             href = "https://www.enterprisesurveys.org/en/survey-datasets",
+             target = "_blank",
+             "enterprisesurveys.org"
+           ),
+           " and save as data/assets.zip"
+         )
+       } else {
+         span(
+           " | ",
+           "Observations: ", format(data$metadata$observations, big.mark = ","),
+           " | Countries: ", length(data$countries),
+           " | Loaded: ", format(data$metadata$loaded_at, "%Y-%m-%d %H:%M")
+         )
+       }
+     )
+   })
+
    # Update filter choices when data loads
    observeEvent(wbes_data(), {
      req(wbes_data())
      data <- wbes_data()
-     
+
      if (!is.null(data$regions)) {
        shiny::updateSelectInput(
          session, "region_filter",
          choices = c("All Regions" = "all", setNames(data$regions, data$regions))
        )
      }
-     
+
      if (!is.null(data$years)) {
        shiny::updateSelectInput(
          session, "year_filter",
@@ -213,7 +260,7 @@ server <- function(id, wbes_data) {
        )
      }
    })
-   
+
    # Reset filters
    observeEvent(input$reset_filters, {
      shiny::updateSelectInput(session, "region_filter", selected = "all")
