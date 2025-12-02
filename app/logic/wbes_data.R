@@ -235,11 +235,14 @@ load_microdata <- function(dta_files) {
     "female_ownership_pct", "female_workers_pct", "crime_obstacle_pct", "security_costs_pct"
   )
 
+  # Filter for valid columns that exist in the data
+  available_metric_cols <- metric_cols[metric_cols %in% names(processed)]
+
   country_aggregates <- processed |>
     filter(!is.na(country) & !is.na(country_code)) |>
     group_by(country, country_code) |>
     summarise(
-      across(all_of(metric_cols), ~weighted_mean_safe(.x, sample_weight), .names = "{.col}"),
+      across(all_of(available_metric_cols), ~weighted_mean_safe(.x, sample_weight[1]), .names = "{.col}"),
       region = first_non_na(region),
       income_group = first_non_na(income_group),
       sample_size = n(),
