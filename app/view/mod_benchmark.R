@@ -178,13 +178,15 @@ server <- function(id, wbes_data) {
       req(wbes_data(), input$countries_compare)
       data <- wbes_data()$latest
       data <- filter(data, country %in% input$countries_compare)
-      
+
+      if (is.null(data) || !input$indicator_select %in% names(data)) return(NULL)
+
       if (input$sort_order == "desc") {
         data <- arrange(data, desc(.data[[input$indicator_select]]))
       } else {
         data <- arrange(data, .data[[input$indicator_select]])
       }
-      
+
       data
     }) |> shiny::bindEvent(input$compare_btn, ignoreNULL = FALSE)
     

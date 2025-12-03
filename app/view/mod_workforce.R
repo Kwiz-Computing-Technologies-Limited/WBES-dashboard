@@ -256,6 +256,8 @@ server <- function(id, wbes_data) {
       d <- filtered()
       indicator <- input$indicator
 
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {

@@ -138,6 +138,9 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
       indicator <- input$indicator
+
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       d <- arrange(d, desc(.data[[indicator]]))[1:15, ]
       d$country <- factor(d$country, levels = rev(d$country))
       

@@ -6,7 +6,7 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when],
+  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head]
 )
@@ -259,6 +259,8 @@ server <- function(id, wbes_data) {
       d <- filtered()
       indicator <- input$indicator
 
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -437,6 +439,8 @@ server <- function(id, wbes_data) {
     output$risk_distribution <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d)) return(NULL)
 
       d <- d |>
         mutate(
