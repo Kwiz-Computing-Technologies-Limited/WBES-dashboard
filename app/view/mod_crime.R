@@ -40,7 +40,7 @@ ui <- function(id) {
               column(3, selectInput(ns("indicator"), "Indicator",
                 choices = c("Crime as Obstacle" = "IC.FRM.CRIM.ZS",
                            "Security Costs" = "IC.FRM.SECU.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -112,12 +112,12 @@ ui <- function(id) {
       class = "mb-4",
       column(6,
         card(
-          card_header(icon("layer-group"), " Security by Income Group"),
+          card_header(icon("layer-group"), " Security by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_security"), height = "350px"),
+            plotlyOutput(ns("firm_size_security"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Box plots summarize crime and security costs across income tiers, highlighting risk dispersion."
+              "Box plots summarize crime and security costs across firm sizes, highlighting risk dispersion."
             )
           )
         )
@@ -185,13 +185,13 @@ server <- function(id, wbes_data) {
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      # Filter out NA values from region and income
+      # Filter out NA values from region and firm_size
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
-      incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
     # Filtered data
@@ -201,8 +201,8 @@ server <- function(id, wbes_data) {
       if (input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
-      if (input$income != "all" && !is.na(input$income)) {
-        d <- d |> filter(!is.na(income) & income == input$income)
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d
     })
@@ -366,18 +366,18 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Income security
-    output$income_security <- renderPlotly({
+    # Firm size security
+    output$firm_size_security <- renderPlotly({
       req(filtered())
       d <- filtered()
 
       if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d) |>
-        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~income, type = "box",
+        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~firm_size, type = "box",
                  name = "Crime Obstacle",
                  marker = list(color = "#dc3545")) |>
-        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~income, type = "box",
+        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~firm_size, type = "box",
                  name = "Security Costs (x10)",
                  marker = list(color = "#F4A460")) |>
         layout(
@@ -424,7 +424,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 10,
-                           color = ~income,
+                           color = ~firm_size,
                            opacity = 0.7)) |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),

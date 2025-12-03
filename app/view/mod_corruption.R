@@ -41,7 +41,7 @@ ui <- function(id) {
               column(3, selectInput(ns("indicator"), "Indicator",
                 choices = c("Corruption as Obstacle" = "IC.FRM.CORR.ZS",
                            "Bribery Incidence" = "IC.FRM.BRIB.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -113,12 +113,12 @@ ui <- function(id) {
       class = "mb-4",
       column(6,
         card(
-          card_header(icon("layer-group"), " Corruption by Income Group"),
+          card_header(icon("layer-group"), " Corruption by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_box"), height = "350px"),
+            plotlyOutput(ns("firm_size_box"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Box plots summarize corruption responses by income tier, showing typical levels and variability."
+              "Box plots summarize corruption responses by firm size, showing typical levels and variability."
             )
           )
         )
@@ -159,13 +159,13 @@ server <- function(id, wbes_data) {
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      # Filter out NA values from region and income_group
+      # Filter out NA values from region and firm_size
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
-      incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
     # Filtered data
@@ -175,8 +175,8 @@ server <- function(id, wbes_data) {
       if (input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
-      if (input$income != "all" && !is.na(input$income)) {
-        d <- d |> filter(!is.na(income) & income == input$income)
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d
     })
@@ -332,12 +332,12 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Box plot by income
-    output$income_box <- renderPlotly({
+    # Box plot by firm size
+    output$firm_size_box <- renderPlotly({
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~income, type = "box",
+      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~firm_size, type = "box",
               marker = list(color = "#1B6B5F"),
               line = list(color = "#1B6B5F")) |>
         layout(
@@ -358,7 +358,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
-                           color = ~income,
+                           color = ~firm_size,
                            opacity = 0.7,
                            line = list(color = "white", width = 1))) |>
         layout(
