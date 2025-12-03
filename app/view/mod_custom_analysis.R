@@ -57,7 +57,7 @@ ui <- function(id) {
                 ),
                 fluidRow(
                   column(6,
-                    selectInput(ns("incomes"), "Income Groups",
+                    selectInput(ns("firm_sizes"), "Firm Sizes",
                       choices = c("All" = "all"),
                       multiple = TRUE,
                       selected = "all")
@@ -125,7 +125,7 @@ ui <- function(id) {
                   choices = c(
                     "Country Comparison" = "country_comparison",
                     "Regional Analysis" = "regional",
-                    "Income Group Analysis" = "income",
+                    "Firm Size Analysis" = "firm_size",
                     "Time Trend Analysis" = "trend",
                     "Correlation Analysis" = "correlation",
                     "Baseline Profile" = "baseline"
@@ -221,14 +221,14 @@ server <- function(id, wbes_data) {
       # Filter out NA values before creating dropdown choices
       countries_vec <- unique(d$country) |> stats::na.omit() |> as.character() |> sort()
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
       countries <- c("All" = "all", setNames(countries_vec, countries_vec))
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
-      incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
 
       shiny::updateSelectInput(session, "countries", choices = countries)
       shiny::updateSelectInput(session, "regions", choices = regions)
-      shiny::updateSelectInput(session, "incomes", choices = incomes)
+      shiny::updateSelectInput(session, "firm_sizes", choices = firm_sizes)
     })
 
     # Filtered data based on user selection
@@ -243,8 +243,8 @@ server <- function(id, wbes_data) {
       if (!("all" %in% input$regions) && length(input$regions) > 0) {
         d <- d |> filter(!is.na(region) & region %in% input$regions)
       }
-      if (!("all" %in% input$incomes) && length(input$incomes) > 0) {
-        d <- d |> filter(!is.na(income) & income %in% input$incomes)
+      if (!("all" %in% input$firm_sizes) && length(input$firm_sizes) > 0) {
+        d <- d |> filter(!is.na(firm_size) & firm_size %in% input$firm_sizes)
       }
 
       d
@@ -395,7 +395,7 @@ server <- function(id, wbes_data) {
       })
 
       output$data_table_output <- renderDataTable({
-        cols <- c("country", "region", "income", indicators)
+        cols <- c("country", "region", "firm_size", indicators)
         cols <- cols[cols %in% names(data)]
         datatable(
           data[, cols],
@@ -526,7 +526,7 @@ server <- function(id, wbes_data) {
       content = function(file) {
         d <- filtered_data()
         indicators <- selected_indicators()
-        cols <- c("country", "region", "income", indicators)
+        cols <- c("country", "region", "firm_size", indicators)
         cols <- cols[cols %in% names(d)]
         write.csv(d[, cols], file, row.names = FALSE)
       }

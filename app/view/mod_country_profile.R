@@ -212,12 +212,6 @@ server <- function(id, wbes_data) {
         "N/A"
       }
 
-      income_val <- if (!is.null(d$income) && length(d$income) > 0 && !is.na(d$income[1])) {
-        as.character(d$income[1])
-      } else {
-        "N/A"
-      }
-
       # For firms surveyed, use sample_size from the aggregated data
       # Note: sample_size represents the number of firms in this country's latest survey
       firms_val <- if (!is.null(d$sample_size) && length(d$sample_size) > 0 && !is.na(d$sample_size[1])) {
@@ -231,19 +225,13 @@ server <- function(id, wbes_data) {
         tags$div(
           class = "card-body",
           fluidRow(
-            column(4,
+            column(6,
               tags$div(class = "kpi-box",
                 tags$div(class = "kpi-value", region_val),
                 tags$div(class = "kpi-label", "Region")
               )
             ),
-            column(4,
-              tags$div(class = "kpi-box kpi-box-coral",
-                tags$div(class = "kpi-value", income_val),
-                tags$div(class = "kpi-label", "Income Group")
-              )
-            ),
-            column(4,
+            column(6,
               tags$div(class = "kpi-box kpi-box-success",
                 tags$div(class = "kpi-value", firms_val),
                 tags$div(class = "kpi-label", "Firms Surveyed")

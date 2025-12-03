@@ -250,9 +250,20 @@ server <- function(id, wbes_data) {
    })
 
    output$kpi_firms <- renderUI({
+     req(filtered_data())
+     # Count firms in filtered data
+     n_firms <- nrow(filtered_data())
+     # Format with K or M suffix
+     firms_label <- if (n_firms >= 1000000) {
+       paste0(round(n_firms / 1000000, 1), "M+")
+     } else if (n_firms >= 1000) {
+       paste0(round(n_firms / 1000, 1), "K+")
+     } else {
+       as.character(n_firms)
+     }
      tags$div(
        class = "kpi-box kpi-box-coral",
-       tags$div(class = "kpi-value", "253K+"),
+       tags$div(class = "kpi-value", firms_label),
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
    })
@@ -437,12 +448,12 @@ server <- function(id, wbes_data) {
 
    # Regional Comparison
    output$regional_comparison <- renderPlotly({
-     req(wbes_data())
+     req(filtered_data())
 
-     # Get the latest country data
-     data <- wbes_data()$latest
+     # Use filtered data (respects region and firm_size filters)
+     data <- filtered_data()
 
-     # Calculate regional aggregates
+     # Calculate regional aggregates from filtered data
      if (!is.null(data) && "region" %in% names(data)) {
        regional <- data |>
          filter(!is.na(region)) |>

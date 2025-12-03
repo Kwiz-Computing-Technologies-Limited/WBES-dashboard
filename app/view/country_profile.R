@@ -91,15 +91,11 @@ server <- function(id, wbes_data) {
       div(class = "card h-100",
         div(class = "card-body",
           fluidRow(
-            column(4, div(class = "text-center",
+            column(6, div(class = "text-center",
               h4(d$region[1], class = "text-primary"),
               p(class = "text-muted mb-0", "Region")
             )),
-            column(4, div(class = "text-center",
-              h4(d$income[1], class = "text-secondary"),
-              p(class = "text-muted mb-0", "Income Group")
-            )),
-            column(4, div(class = "text-center",
+            column(6, div(class = "text-center",
               h4(d$sample_size[1], class = "text-success"),
               p(class = "text-muted mb-0", "Firms Surveyed")
             ))

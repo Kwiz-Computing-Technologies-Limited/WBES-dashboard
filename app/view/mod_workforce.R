@@ -137,7 +137,7 @@ ui <- function(id) {
       )
     ),
 
-    # Income Group Comparison
+    # Firm Size Comparison
     fluidRow(
       class = "mb-4",
       column(6,

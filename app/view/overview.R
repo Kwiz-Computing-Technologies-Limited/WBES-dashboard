@@ -50,7 +50,7 @@ ui <- function(id) {
             class = "py-2",
             fluidRow(
               column(3, selectInput(ns("region"), "Region", choices = c("All" = "all"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("indicator"), "Map Indicator",
                 choices = c(
                   "Power Outages" = "IC.FRM.OUTG.ZS",
@@ -103,14 +103,14 @@ server <- function(id, wbes_data) {
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      # Filter out NA values from region and income before creating dropdown choices
+      # Filter out NA values from region and firm_size before creating dropdown choices
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
-      incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
 
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
     # Filtered data
@@ -120,8 +120,8 @@ server <- function(id, wbes_data) {
       if (input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
-      if (input$income != "all" && !is.na(input$income)) {
-        d <- d |> filter(!is.na(income) & income == input$income)
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d
     })
@@ -129,7 +129,7 @@ server <- function(id, wbes_data) {
     # Reset filters
     observeEvent(input$reset, {
       shiny::updateSelectInput(session, "region", selected = "all")
-      shiny::updateSelectInput(session, "income", selected = "all")
+      shiny::updateSelectInput(session, "firm_size", selected = "all")
     })
 
     # KPIs

@@ -108,7 +108,7 @@ ui <- function(id) {
       )
     ),
 
-    # Income Group Analysis
+    # Firm Size Analysis
     fluidRow(
       class = "mb-4",
       column(6,
