@@ -96,7 +96,7 @@ server <- function(id, wbes_data) {
               p(class = "text-muted mb-0", "Region")
             )),
             column(4, div(class = "text-center",
-              h4(d$income_group[1], class = "text-secondary"),
+              h4(d$income[1], class = "text-secondary"),
               p(class = "text-muted mb-0", "Income Group")
             )),
             column(4, div(class = "text-center",

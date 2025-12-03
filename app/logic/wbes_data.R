@@ -254,7 +254,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
-      income_group = first_non_na(income_group),
+      income = first_non_na(income),
       sector = first_non_na(sector),
       sample_size = n(),
       .groups = "drop"
@@ -268,7 +268,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
-      income_group = first_non_na(income_group),
+      income = first_non_na(income),
       sample_size = n(),
       .groups = "drop"
     )
@@ -372,9 +372,9 @@ process_microdata <- function(data) {
       year = get0("year", ifnotfound = NA_integer_),
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
       # Try multiple possible income group variable names
-      income_group = coalesce_chr(
-        if ("income_group" %in% names(data)) as.character(as_factor(get0("income_group", ifnotfound = NULL))) else NULL,
+      income = coalesce_chr(
         if ("income" %in% names(data)) as.character(as_factor(get0("income", ifnotfound = NULL))) else NULL,
+        if ("income_group" %in% names(data)) as.character(as_factor(get0("income_group", ifnotfound = NULL))) else NULL,
         if ("inc" %in% names(data)) as.character(as_factor(get0("inc", ifnotfound = NULL))) else NULL,
         if ("wbincome" %in% names(data)) as.character(as_factor(get0("wbincome", ifnotfound = NULL))) else NULL
       ),

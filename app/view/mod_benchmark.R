@@ -15,10 +15,10 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   tags$div(
     class = "benchmark-container",
-    
+
     fluidRow(
       column(12,
         tags$div(
@@ -29,7 +29,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Selection Panel
     fluidRow(
       class = "mb-4",
@@ -71,7 +71,7 @@ ui <- function(id) {
               column(2,
                 tags$div(
                   class = "d-flex align-items-end h-100 pb-3",
-                  actionButton(ns("compare_btn"), "Compare", 
+                  actionButton(ns("compare_btn"), "Compare",
                                icon = icon("exchange-alt"),
                                class = "btn-kwiz-primary w-100")
                 )
@@ -81,7 +81,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Main Comparison Chart
     fluidRow(
       class = "mb-4",
@@ -98,7 +98,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Secondary Comparisons
     fluidRow(
       class = "mb-4",
@@ -143,7 +143,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Data Table
     fluidRow(
       column(12,
@@ -161,7 +161,7 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
   moduleServer(id, function(input, output, session) {
-    
+
     # Update country choices
     observeEvent(wbes_data(), {
       req(wbes_data())
@@ -172,7 +172,7 @@ server <- function(id, wbes_data) {
         selected = countries[1:min(5, length(countries))]
       )
     })
-    
+
     # Comparison data
     comparison_data <- reactive({
       req(wbes_data(), input$countries_compare)
@@ -189,13 +189,13 @@ server <- function(id, wbes_data) {
 
       data
     }) |> shiny::bindEvent(input$compare_btn, ignoreNULL = FALSE)
-    
+
     # Main comparison bar chart
     output$comparison_bar <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
       indicator <- input$indicator_select
-      
+
       # Color by region
       colors <- c(
         "Sub-Saharan Africa" = "#1B6B5F",
@@ -204,10 +204,10 @@ server <- function(id, wbes_data) {
         "Latin America & Caribbean" = "#17a2b8",
         "Europe & Central Asia" = "#6C757D"
       )
-      
+
       data$color <- colors[data$region]
       data$country <- factor(data$country, levels = data$country)
-      
+
       plot_ly(data,
               x = ~country,
               y = ~get(indicator),
@@ -225,15 +225,15 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Regional distribution pie
     output$regional_pie <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      
+
       regional_counts <- as.data.frame(table(data$region))
       names(regional_counts) <- c("region", "count")
-      
+
       plot_ly(regional_counts,
               labels = ~region,
               values = ~count,
@@ -246,12 +246,12 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Scatter plot
     output$scatter_plot <- renderPlotly({
       req(wbes_data())
       data <- wbes_data()$latest
-      
+
       plot_ly(data,
               x = ~get(input$scatter_x),
               y = ~get(input$scatter_y),
@@ -270,19 +270,19 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Comparison table
     output$comparison_table <- renderDT({
       req(comparison_data())
       data <- comparison_data()
-      
-      display_cols <- c("country", "region", "income_group",
+
+      display_cols <- c("country", "region", "income",
                         "power_outages_per_month", "firms_with_credit_line_pct",
                         "bribery_incidence_pct", "capacity_utilization_pct",
                         "female_ownership_pct", "data_quality_score")
-      
+
       data <- select(data, any_of(display_cols))
-      
+
       datatable(
         data,
         options = list(
@@ -297,6 +297,6 @@ server <- function(id, wbes_data) {
         rownames = FALSE
       )
     })
-    
+
   })
 }

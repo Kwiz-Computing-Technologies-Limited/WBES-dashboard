@@ -158,7 +158,7 @@ load_sample_data <- function() {
     rep("Europe & Central Asia", 5)
   )
 
-  income_groups <- c(
+  income <- c(
     "Lower middle income", "Lower middle income", "Upper middle income",
     "Lower middle income", "Low income", "Lower middle income",
     "Low income", "Low income", "Lower middle income", "Lower middle income",
@@ -178,7 +178,7 @@ load_sample_data <- function() {
   country_data <- data.frame(
     country = rep(countries, each = length(years)),
     region = rep(regions, each = length(years)),
-    income_group = rep(income_groups, each = length(years)),
+    income = rep(income, each = length(years)),
     year = rep(years, length(countries)),
     stringsAsFactors = FALSE
   )

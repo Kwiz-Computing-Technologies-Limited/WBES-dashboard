@@ -57,7 +57,7 @@ ui <- function(id) {
                 ),
                 fluidRow(
                   column(6,
-                    selectInput(ns("income_groups"), "Income Groups",
+                    selectInput(ns("incomes"), "Income Groups",
                       choices = c("All" = "all"),
                       multiple = TRUE,
                       selected = "all")
@@ -221,11 +221,11 @@ server <- function(id, wbes_data) {
 
       countries <- c("All" = "all", setNames(unique(d$country), unique(d$country)))
       regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
+      incomes <- c("All" = "all", setNames(unique(d$income), unique(d$income)))
 
       shiny::updateSelectInput(session, "countries", choices = countries)
       shiny::updateSelectInput(session, "regions", choices = regions)
-      shiny::updateSelectInput(session, "income_groups", choices = incomes)
+      shiny::updateSelectInput(session, "incomes", choices = incomes)
     })
 
     # Filtered data based on user selection
@@ -240,8 +240,8 @@ server <- function(id, wbes_data) {
       if (!("all" %in% input$regions) && length(input$regions) > 0) {
         d <- filter(d, region %in% input$regions)
       }
-      if (!("all" %in% input$income_groups) && length(input$income_groups) > 0) {
-        d <- filter(d, income_group %in% input$income_groups)
+      if (!("all" %in% input$incomes) && length(input$incomes) > 0) {
+        d <- filter(d, income %in% input$incomes)
       }
 
       d
@@ -392,7 +392,7 @@ server <- function(id, wbes_data) {
       })
 
       output$data_table_output <- renderDataTable({
-        cols <- c("country", "region", "income_group", indicators)
+        cols <- c("country", "region", "income", indicators)
         cols <- cols[cols %in% names(data)]
         datatable(
           data[, cols],
@@ -523,7 +523,7 @@ server <- function(id, wbes_data) {
       content = function(file) {
         d <- filtered_data()
         indicators <- selected_indicators()
-        cols <- c("country", "region", "income_group", indicators)
+        cols <- c("country", "region", "income", indicators)
         cols <- cols[cols %in% names(d)]
         write.csv(d[, cols], file, row.names = FALSE)
       }
