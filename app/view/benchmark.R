@@ -13,14 +13,14 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   div(
     class = "container-fluid py-4",
-    
+
     fluidRow(
       column(12, h2(icon("chart-bar"), " Cross-Country Benchmarking", class = "text-primary mb-4"))
     ),
-    
+
     # Selection Panel
     fluidRow(
       class = "mb-4",
@@ -46,7 +46,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Main Chart
     fluidRow(
       class = "mb-4",
@@ -57,7 +57,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Scatter and Table
     fluidRow(
       column(6,
@@ -79,24 +79,24 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
   moduleServer(id, function(input, output, session) {
-    
+
     observeEvent(wbes_data(), {
       req(wbes_data())
       countries <- sort(wbes_data()$countries)
       # Pre-select some African countries
       selected <- intersect(c("Kenya", "Nigeria", "South Africa", "Ghana", "Ethiopia"), countries)
       if (length(selected) == 0) selected <- countries[1:min(5, length(countries))]
-      
+
       shiny::updateSelectizeInput(session, "countries",
         choices = setNames(countries, countries),
         selected = selected)
     })
-    
+
     # Comparison data
     comparison_data <- reactive({
       req(wbes_data(), input$countries)
       d <- filter(wbes_data()$latest, country %in% input$countries)
-      
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[input$indicator]]))
       } else {
@@ -104,15 +104,15 @@ server <- function(id, wbes_data) {
       }
       d
     }) |> shiny::bindEvent(input$compare, ignoreNULL = FALSE)
-    
+
     # Bar chart
     output$comparison_bar <- renderPlotly({
       req(comparison_data())
       d <- comparison_data()
       indicator <- input$indicator
-      
+
       d$country <- factor(d$country, levels = d$country)
-      
+
       colors <- c(
         "Sub-Saharan Africa" = "#1B6B5F",
         "South Asia" = "#F49B7A",
@@ -120,7 +120,7 @@ server <- function(id, wbes_data) {
         "Latin America & Caribbean" = "#17a2b8",
         "Europe & Central Asia" = "#6C757D"
       )
-      
+
       plot_ly(d, x = ~country, y = ~get(indicator), type = "bar",
               color = ~region, colors = colors) |>
         layout(
@@ -132,12 +132,12 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Scatter plot
     output$scatter_plot <- renderPlotly({
       req(wbes_data())
       d <- wbes_data()$latest
-      
+
       plot_ly(d, x = ~IC.FRM.OUTG.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
               color = ~region, text = ~country,
@@ -150,21 +150,21 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Data table
     output$comparison_table <- renderDT({
       req(comparison_data())
-      
+
       d <- comparison_data() |>
-        select(any_of(c("country", "region", "income_group",
+        select(any_of(c("country", "region", "income",
                         "IC.FRM.OUTG.ZS", "IC.FRM.FINA.ZS",
                         "IC.FRM.CORR.ZS", "IC.FRM.CAPU.ZS")))
-      
+
       names(d) <- c("Country", "Region", "Income", "Power", "Finance", "Corruption", "Capacity")
-      
+
       datatable(d, options = list(pageLength = 10, scrollX = TRUE, dom = 'tip'),
                 class = "display compact", rownames = FALSE)
     })
-    
+
   })
 }

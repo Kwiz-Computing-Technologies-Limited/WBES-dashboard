@@ -212,8 +212,8 @@ server <- function(id, wbes_data) {
         "N/A"
       }
 
-      income_val <- if (!is.null(d$income_group) && length(d$income_group) > 0 && !is.na(d$income_group[1])) {
-        as.character(d$income_group[1])
+      income_val <- if (!is.null(d$income) && length(d$income) > 0 && !is.na(d$income[1])) {
+        as.character(d$income[1])
       } else {
         "N/A"
       }

@@ -161,7 +161,7 @@ server <- function(id, wbes_data) {
       d <- wbes_data()$latest
       # Filter out NA values from region and income_group
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income_group) |> stats::na.omit() |> as.character() |> sort()
+      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
       incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
@@ -176,7 +176,7 @@ server <- function(id, wbes_data) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
       if (input$income != "all" && !is.na(input$income)) {
-        d <- d |> filter(!is.na(income_group) & income_group == input$income)
+        d <- d |> filter(!is.na(income) & income == input$income)
       }
       d
     })
@@ -337,7 +337,7 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~income_group, type = "box",
+      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~income, type = "box",
               marker = list(color = "#1B6B5F"),
               line = list(color = "#1B6B5F")) |>
         layout(
@@ -358,7 +358,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
-                           color = ~income_group,
+                           color = ~income,
                            opacity = 0.7,
                            line = list(color = "white", width = 1))) |>
         layout(

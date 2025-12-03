@@ -8,7 +8,7 @@ box::use(
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
- dplyr[filter, arrange, desc, mutate, summarise, group_by, n, pull],
+ dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
  stats[setNames, na.omit]
 )
 
@@ -209,16 +209,16 @@ server <- function(id, wbes_data) {
      }
 
      # Update income filter
-     if (!is.null(data$latest) && "income_group" %in% names(data$latest)) {
-       income_groups <- data$latest$income_group |>
+     if (!is.null(data$latest) && "income" %in% names(data$latest)) {
+       income <- data$latest$income |>
          unique() |>
          na.omit() |>
          as.character() |>
          sort()
-       if (length(income_groups) > 0) {
+       if (length(income) > 0) {
          shiny::updateSelectInput(
            session, "income_filter",
-           choices = c("All Income Groups" = "all", setNames(income_groups, income_groups))
+           choices = c("All Income Groups" = "all", setNames(income, income))
          )
        }
      }
@@ -244,16 +244,11 @@ server <- function(id, wbes_data) {
      req(wbes_data())
      data <- wbes_data()$latest
 
-     # Ensure data is not NULL before filtering
-     if (is.null(data) || nrow(data) == 0) {
-       return(NULL)
+     if (input$region_filter != "all") {
+       data <- filter(data, region == input$region_filter)
      }
-
-     if (input$region_filter != "all" && !is.na(input$region_filter)) {
-       data <- data |> filter(!is.na(region) & region == input$region_filter)
-     }
-     if (input$income_filter != "all" && !is.na(input$income_filter)) {
-       data <- data |> filter(!is.na(income_group) & income_group == input$income_filter)
+     if (input$income_filter != "all") {
+       data <- filter(data, income == input$income_filter)
      }
 
      data
@@ -272,57 +267,26 @@ server <- function(id, wbes_data) {
    })
 
    output$kpi_firms <- renderUI({
-     req(filtered_data())
-     # Calculate total firms surveyed from filtered data
-     total_firms <- sum(filtered_data()$sample_size, na.rm = TRUE)
-     # Format with K for thousands
-     firms_display <- if (total_firms >= 1000) {
-       paste0(round(total_firms / 1000, 1), "K")
-     } else {
-       as.character(total_firms)
-     }
      tags$div(
        class = "kpi-box kpi-box-coral",
-       tags$div(class = "kpi-value", firms_display),
+       tags$div(class = "kpi-value", "253K+"),
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
    })
 
    output$kpi_years <- renderUI({
      req(wbes_data())
-     # Use country_panel which has year data, apply same filters
-     panel_data <- wbes_data()$country_panel
-     if (input$region_filter != "all") {
-       panel_data <- filter(panel_data, region == input$region_filter)
-     }
-     if (input$income_filter != "all") {
-       panel_data <- filter(panel_data, income_group == input$income_filter)
-     }
-     # Count unique years
-     n_years <- length(unique(panel_data$year[!is.na(panel_data$year)]))
-     # If no years in filtered data, show from full dataset
-     if (n_years == 0 && !is.null(wbes_data()$years)) {
-       n_years <- length(wbes_data()$years)
-     }
      tags$div(
        class = "kpi-box kpi-box-success",
-       tags$div(class = "kpi-value", n_years),
+       tags$div(class = "kpi-value", length(wbes_data()$years)),
        tags$div(class = "kpi-label", "Survey Years")
      )
    })
 
    output$kpi_indicators <- renderUI({
-     req(wbes_data())
-     # Count available metric columns from the data
-     # Get all numeric columns that represent indicators (exclude metadata columns)
-     exclude_cols <- c("country", "country_code", "region", "income_group", "sector",
-                      "sample_size", "lat", "lng", "year")
-     data_cols <- names(wbes_data()$latest)
-     indicator_cols <- setdiff(data_cols, exclude_cols)
-     n_indicators <- length(indicator_cols)
      tags$div(
        class = "kpi-box kpi-box-warning",
-       tags$div(class = "kpi-value", n_indicators),
+       tags$div(class = "kpi-value", "150+"),
        tags$div(class = "kpi-label", "Indicators")
      )
    })

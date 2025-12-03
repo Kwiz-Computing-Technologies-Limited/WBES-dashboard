@@ -185,9 +185,9 @@ server <- function(id, wbes_data) {
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      # Filter out NA values from region and income_group
+      # Filter out NA values from region and income
       regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      incomes_vec <- unique(d$income_group) |> stats::na.omit() |> as.character() |> sort()
+      incomes_vec <- unique(d$income) |> stats::na.omit() |> as.character() |> sort()
       regions <- c("All" = "all", setNames(regions_vec, regions_vec))
       incomes <- c("All" = "all", setNames(incomes_vec, incomes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
@@ -202,7 +202,7 @@ server <- function(id, wbes_data) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
       if (input$income != "all" && !is.na(input$income)) {
-        d <- d |> filter(!is.na(income_group) & income_group == input$income)
+        d <- d |> filter(!is.na(income) & income == input$income)
       }
       d
     })
@@ -374,10 +374,10 @@ server <- function(id, wbes_data) {
       if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d) |>
-        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~income, type = "box",
                  name = "Crime Obstacle",
                  marker = list(color = "#dc3545")) |>
-        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~income, type = "box",
                  name = "Security Costs (x10)",
                  marker = list(color = "#F4A460")) |>
         layout(
@@ -424,7 +424,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 10,
-                           color = ~income_group,
+                           color = ~income,
                            opacity = 0.7)) |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
