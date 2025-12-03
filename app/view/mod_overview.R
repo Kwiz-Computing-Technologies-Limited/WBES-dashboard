@@ -55,7 +55,7 @@ ui <- function(id) {
          card_body(
            class = "py-3",
            fluidRow(
-             column(3,
+             column(4,
                selectInput(
                  ns("region_filter"),
                  "Region",
@@ -63,23 +63,15 @@ ui <- function(id) {
                  selected = "all"
                )
              ),
-             column(3,
+             column(4,
                selectInput(
-                 ns("income_filter"),
-                 "Income Group",
-                 choices = c("All Income Groups" = "all"),
+                 ns("firm_size_filter"),
+                 "Firm Size",
+                 choices = c("All Sizes" = "all"),
                  selected = "all"
                )
              ),
-             column(3,
-               selectInput(
-                 ns("year_filter"),
-                 "Survey Year",
-                 choices = c("Latest Available" = "latest"),
-                 selected = "latest"
-               )
-             ),
-             column(3,
+             column(4,
                tags$div(
                  class = "d-flex align-items-end h-100",
                  actionButton(
@@ -208,35 +200,26 @@ server <- function(id, wbes_data) {
        )
      }
 
-     # Update income filter
-     if (!is.null(data$latest) && "income" %in% names(data$latest)) {
-       income <- data$latest$income |>
+     # Update firm size filter
+     if (!is.null(data$latest) && "firm_size" %in% names(data$latest)) {
+       firm_sizes <- data$latest$firm_size |>
          unique() |>
          na.omit() |>
          as.character() |>
          sort()
-       if (length(income) > 0) {
+       if (length(firm_sizes) > 0) {
          shiny::updateSelectInput(
-           session, "income_filter",
-           choices = c("All Income Groups" = "all", setNames(income, income))
+           session, "firm_size_filter",
+           choices = c("All Sizes" = "all", setNames(firm_sizes, firm_sizes))
          )
        }
-     }
-
-     # Update year filter
-     if (!is.null(data$years) && length(data$years) > 0) {
-       shiny::updateSelectInput(
-         session, "year_filter",
-         choices = c("Latest Available" = "latest", setNames(data$years, data$years))
-       )
      }
    })
 
    # Reset filters
    observeEvent(input$reset_filters, {
      shiny::updateSelectInput(session, "region_filter", selected = "all")
-     shiny::updateSelectInput(session, "income_filter", selected = "all")
-     shiny::updateSelectInput(session, "year_filter", selected = "latest")
+     shiny::updateSelectInput(session, "firm_size_filter", selected = "all")
    })
 
    # Filtered data reactive
@@ -245,10 +228,10 @@ server <- function(id, wbes_data) {
      data <- wbes_data()$latest
 
      if (input$region_filter != "all") {
-       data <- filter(data, region == input$region_filter)
+       data <- filter(data, !is.na(region) & region == input$region_filter)
      }
-     if (input$income_filter != "all") {
-       data <- filter(data, income == input$income_filter)
+     if (input$firm_size_filter != "all") {
+       data <- filter(data, !is.na(firm_size) & firm_size == input$firm_size_filter)
      }
 
      data

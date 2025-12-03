@@ -51,7 +51,7 @@ ui <- function(id) {
                   selected = "all"
                 )
               ),
-              column(4,
+              column(6,
                 selectInput(ns("infra_indicator"), "Indicator",
                   choices = c(
                     "Power Outages" = "power_outages_per_month",
@@ -60,9 +60,6 @@ ui <- function(id) {
                     "Water Issues" = "water_insufficiency_pct"
                   )
                 )
-              ),
-              column(4,
-                selectInput(ns("year_filter"), "Year", choices = c("2023"))
               )
             )
           )
@@ -156,10 +153,6 @@ server <- function(id, wbes_data) {
       regions <- unique(wbes_data()$latest$region)
       shiny::updateSelectInput(session, "region_filter",
         choices = c("All Regions" = "all", setNames(regions, regions)))
-      
-      years <- wbes_data()$years
-      shiny::updateSelectInput(session, "year_filter",
-        choices = setNames(years, years), selected = max(years))
     })
     
     # Filtered data
