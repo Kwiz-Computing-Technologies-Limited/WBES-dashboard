@@ -451,7 +451,7 @@ process_microdata <- function(data) {
       IC.FRM.INFRA.ZS = coalesce_num(get0("infra", ifnotfound = NULL)),  # Infrastructure obstacle
       IC.FRM.CRIM.ZS = crime_obstacle_pct,           # Crime as obstacle (from crime8)
       IC.FRM.SECU.ZS = security_costs_pct,           # Security costs as % of sales (from crime2)
-      IC.FRM.WKFC.ZS = workforce_obstacle_pct        # Workforce quality as obstacle (from l3)
+      IC.FRM.WKFC.ZS = workforce_obstacle_pct        # Workforce quality as obstacle (from wk10)
     ) |>
     mutate(region = ifelse(region == "Aggregates", NA_character_, region))
 
