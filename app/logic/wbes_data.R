@@ -351,11 +351,18 @@ process_microdata <- function(data) {
   processed <- data |>
     mutate(
       # Use country_official as the primary country name source (no year suffixes, clean names)
-      country = coalesce_chr(
-        get0("country_official", ifnotfound = NULL),  # Best: official country name without year
-        get0("economy", ifnotfound = NULL),           # Fallback: economy name
-        gsub("\\d{4}$", "", get0("country", ifnotfound = "")),  # Last resort: strip year from country column
-        get0("country2", ifnotfound = NULL)
+      # Validate that it's not a sector name or invalid data
+      country_official_clean = get0("country_official", ifnotfound = ""),
+      country = if_else(
+        !is.na(country_official_clean) &
+        country_official_clean != "" &
+        !grepl("^(Manufacturing|Services|Other Services|Retail)$", country_official_clean),  # Exclude sector names
+        country_official_clean,
+        coalesce_chr(
+          get0("economy", ifnotfound = NULL),           # Fallback: economy name
+          gsub("\\d{4}$", "", get0("country", ifnotfound = "")),  # Last resort: strip year from country column
+          get0("country2", ifnotfound = NULL)
+        )
       ),
       country = trimws(country),  # Remove any whitespace
       country_code = coalesce_chr(
