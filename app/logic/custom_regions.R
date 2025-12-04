@@ -4,7 +4,8 @@
 box::use(
   shiny[reactiveVal, observeEvent, req, showModal, modalDialog, textInput,
         selectizeInput, actionButton, modalButton, removeModal, icon],
-  dplyr[filter]
+  dplyr[filter],
+  stats[setNames]
 )
 
 #' @export
