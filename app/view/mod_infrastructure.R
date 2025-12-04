@@ -290,6 +290,7 @@ server <- function(id, wbes_data) {
                       newdata = data.frame(power_outages_per_month = c(0, max(data$power_outages_per_month, na.rm = TRUE)))),
           type = "scatter",
           mode = "lines",
+          text = NULL,
           line = list(color = "#6C757D", dash = "dash"),
           showlegend = FALSE,
           hoverinfo = "skip"

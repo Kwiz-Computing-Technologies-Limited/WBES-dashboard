@@ -484,15 +484,23 @@ server <- function(id, wbes_data) {
             names_from = female_ownership,
             values_from = credit_access,
             names_prefix = "female_"
-          ) |>
-          mutate(
-            gap = female_FALSE - female_TRUE,  # Positive = female-owned have less access
-            male_access = coalesce(female_FALSE, 0),
-            female_access = coalesce(female_TRUE, 0)
-          ) |>
-          filter(!is.na(gap)) |>
-          arrange(desc(gap)) |>
-          head(12)
+          )
+
+        # Check if both columns exist before calculating gap
+        if ("female_FALSE" %in% names(gender_data) && "female_TRUE" %in% names(gender_data)) {
+          gender_data <- gender_data |>
+            mutate(
+              gap = female_FALSE - female_TRUE,  # Positive = female-owned have less access
+              male_access = coalesce(female_FALSE, 0),
+              female_access = coalesce(female_TRUE, 0)
+            ) |>
+            filter(!is.na(gap)) |>
+            arrange(desc(gap)) |>
+            head(12)
+        } else {
+          # If columns don't exist, return empty data frame
+          gender_data <- data.frame()
+        }
 
         if (nrow(gender_data) > 0) {
           gender_data$country <- factor(gender_data$country, levels = rev(gender_data$country))
