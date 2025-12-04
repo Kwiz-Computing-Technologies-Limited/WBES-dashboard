@@ -9,7 +9,9 @@ box::use(
   dplyr[filter, arrange, mutate, group_by, summarise, coalesce],
   tidyr[pivot_wider],
   stats[setNames, runif],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -162,41 +164,28 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
-    
-    # Update filters
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      # Use processed firm-level data for filtering
-      data <- wbes_data()$processed
 
-      # Update region filter
-      regions <- unique(data$region) |> stats::na.omit() |> as.character() |> sort()
-      shiny::updateSelectInput(session, "region_filter",
-        choices = c("All Regions" = "all", setNames(regions, regions)))
-
-      # Update firm size filter (check if column exists first)
-      if ("firm_size" %in% names(data)) {
-        sizes <- unique(data$firm_size) |> stats::na.omit() |> as.character() |> sort()
-        if (length(sizes) > 0) {
-          shiny::updateSelectInput(session, "firm_size",
-            choices = c("All Sizes" = "all", setNames(sizes, sizes)))
-        }
-      }
-
-      # Update sector filter
-      sectors <- unique(data$sector) |> stats::na.omit() |> as.character() |> sort()
-      if (length(sectors) > 0) {
-        shiny::updateSelectInput(session, "sector",
-          choices = c("All Sectors" = "all", setNames(sectors, sectors)))
-      }
-    })
-
-    # Filtered data - Use firm-level processed data
+    # Filtered data - Use firm-level processed data with global filters
     filtered_data <- reactive({
       req(wbes_data())
       data <- wbes_data()$processed
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
 
       # Return NULL if data is NULL or empty
       if (is.null(data) || nrow(data) == 0) return(NULL)

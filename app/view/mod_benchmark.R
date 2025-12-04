@@ -9,7 +9,9 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc],
-  stats[setNames]
+  stats[setNames],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -159,13 +161,41 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Update country choices
-    observeEvent(wbes_data(), {
+    # Filtered data with global filters applied
+    filtered_data <- reactive({
       req(wbes_data())
-      countries <- sort(wbes_data()$countries)
+      data <- wbes_data()$latest
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      data
+    })
+
+    # Update country choices from filtered data
+    observeEvent(filtered_data(), {
+      req(filtered_data())
+      countries <- filtered_data()$country |>
+        unique() |>
+        stats::na.omit() |>
+        as.character() |>
+        sort()
+
       shiny::updateSelectizeInput(
         session, "countries_compare",
         choices = setNames(countries, countries),
@@ -175,8 +205,8 @@ server <- function(id, wbes_data) {
 
     # Comparison data
     comparison_data <- reactive({
-      req(wbes_data(), input$countries_compare, input$sort_order)
-      data <- wbes_data()$latest
+      req(filtered_data(), input$countries_compare, input$sort_order)
+      data <- filtered_data()
       data <- filter(data, country %in% input$countries_compare)
 
       # Don't return NULL - let the chart handle missing indicators

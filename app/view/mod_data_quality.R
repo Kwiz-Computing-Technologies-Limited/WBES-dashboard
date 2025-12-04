@@ -705,7 +705,7 @@ https://kwizresearch.com'
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Completeness chart

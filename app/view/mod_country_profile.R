@@ -7,7 +7,9 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate],
-  stats[setNames]
+  stats[setNames],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -172,14 +174,36 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Update country choices
-    observeEvent(wbes_data(), {
+    # Filtered data with global filters applied first
+    filtered_data <- reactive({
       req(wbes_data())
-      # Extract unique countries from the latest dataset (already cleaned, no year suffix)
-      countries <- wbes_data()$latest$country |>
+      data <- wbes_data()$latest
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      data
+    })
+
+    # Update country choices from filtered data
+    observeEvent(filtered_data(), {
+      req(filtered_data())
+      countries <- filtered_data()$country |>
         unique() |>
         stats::na.omit() |>
         as.character() |>
@@ -194,10 +218,8 @@ server <- function(id, wbes_data) {
 
     # Selected country data
     country_data <- reactive({
-      req(wbes_data(), input$country_select)
-      data <- wbes_data()$latest
-      # Filter using the clean country name (year suffix already removed in data processing)
-      data |> filter(!is.na(country) & country == input$country_select)
+      req(filtered_data(), input$country_select)
+      filtered_data() |> filter(!is.na(country) & country == input$country_select)
     })
 
     # Country summary card

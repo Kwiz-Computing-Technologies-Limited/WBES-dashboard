@@ -7,7 +7,9 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, mutate, group_by, summarise],
-  stats[setNames, predict, lm]
+  stats[setNames, predict, lm],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -37,7 +39,7 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_losses")))
     ),
     
-    # Filters
+    # Page-specific filters
     fluidRow(
       class = "mb-4",
       column(12,
@@ -45,12 +47,6 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(4,
-                selectInput(ns("region_filter"), "Region",
-                  choices = c("All Regions" = "all"),
-                  selected = "all"
-                )
-              ),
               column(6,
                 selectInput(ns("infra_indicator"), "Indicator",
                   choices = c(
@@ -144,24 +140,29 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
-    
-    # Update filters
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      regions <- unique(wbes_data()$latest$region)
-      shiny::updateSelectInput(session, "region_filter",
-        choices = c("All Regions" = "all", setNames(regions, regions)))
-    })
-    
-    # Filtered data
+
+    # Filtered data - uses global filters from sidebar
     filtered_data <- reactive({
       req(wbes_data())
       data <- wbes_data()$latest
-      if (input$region_filter != "all") {
-        data <- filter(data, region == input$region_filter)
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
       }
+
       data
     })
     

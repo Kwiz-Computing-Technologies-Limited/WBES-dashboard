@@ -11,8 +11,8 @@ box::use(
          setView, colorNumeric, addLegend],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
  stats[setNames, na.omit],
- app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
-                           manage_regions_modal_ui, custom_regions_storage]
+ app/logic/shared_filters[apply_common_filters],
+ app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -49,73 +49,6 @@ ui <- function(id) {
      column(3, uiOutput(ns("kpi_indicators")))
    ),
 
-   # Filters Row (Sticky)
-   fluidRow(
-     class = "sticky-filters",
-     column(12,
-       card(
-         class = "filter-card",
-         card_header(icon("filter"), "Filters", class = "py-2"),
-         card_body(
-           class = "py-3",
-           fluidRow(
-             column(4,
-               tags$div(
-                 class = "d-flex gap-2",
-                 tags$div(
-                   class = "flex-grow-1",
-                   selectInput(
-                     ns("region_filter"),
-                     "Region",
-                     choices = c("All Regions" = "all"),
-                     selected = "all"
-                   )
-                 ),
-                 tags$div(
-                   class = "d-flex align-items-end pb-3 gap-1",
-                   actionButton(
-                     ns("create_custom_region"),
-                     NULL,
-                     icon = icon("plus-circle"),
-                     class = "btn-sm btn-outline-primary",
-                     title = "Create Custom Region",
-                     style = "height: 38px; margin-bottom: 0;"
-                   ),
-                   actionButton(
-                     ns("manage_custom_regions"),
-                     NULL,
-                     icon = icon("cog"),
-                     class = "btn-sm btn-outline-secondary",
-                     title = "Manage Custom Regions",
-                     style = "height: 38px; margin-bottom: 0;"
-                   )
-                 )
-               )
-             ),
-             column(4,
-               selectInput(
-                 ns("firm_size_filter"),
-                 "Firm Size",
-                 choices = c("All Sizes" = "all"),
-                 selected = "all"
-               )
-             ),
-             column(4,
-               tags$div(
-                 class = "d-flex align-items-end h-100",
-                 actionButton(
-                   ns("reset_filters"),
-                   "Reset Filters",
-                   icon = icon("refresh"),
-                   class = "btn-kwiz-outline w-100"
-                 )
-               )
-             )
-           )
-         )
-       )
-     )
-   ),
 
    # Main Content - Map and Top Constraints
    fluidRow(
@@ -213,103 +146,29 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
  moduleServer(id, function(input, output, session) {
    ns <- session$ns
 
-   # Custom regions storage
-   custom_regions <- shiny::reactiveVal(list())
-
-   # Update filter choices when data loads or custom regions change
-   observeEvent(list(wbes_data(), custom_regions()), {
-     req(wbes_data())
-     data <- wbes_data()
-
-     # Update region filter with custom regions
-     region_choices <- get_region_choices(wbes_data, custom_regions())
-     updateSelectInput(session, "region_filter", choices = region_choices)
-
-     # Update firm size filter
-     if (!is.null(data$latest) && "firm_size" %in% names(data$latest)) {
-       firm_sizes <- data$latest$firm_size |>
-         unique() |>
-         na.omit() |>
-         as.character() |>
-         sort()
-       if (length(firm_sizes) > 0) {
-         updateSelectInput(
-           session, "firm_size_filter",
-           choices = c("All Sizes" = "all", setNames(firm_sizes, firm_sizes))
-         )
-       }
-     }
-   }, ignoreNULL = FALSE)
-
-   # Show modal to create custom region
-   observeEvent(input$create_custom_region, {
-     req(wbes_data())
-     countries <- sort(wbes_data()$countries)
-     showModal(custom_region_modal_ui(ns, countries))
-   })
-
-   # Save custom region
-   observeEvent(input$save_custom_region, {
-     req(input$custom_region_name, input$custom_region_countries)
-
-     region_name <- trimws(input$custom_region_name)
-     if (region_name == "" || length(input$custom_region_countries) == 0) {
-       return(NULL)
-     }
-
-     new_region <- list(
-       name = region_name,
-       countries = input$custom_region_countries,
-       created = Sys.time()
-     )
-
-     current_regions <- custom_regions()
-     current_regions[[region_name]] <- new_region
-     custom_regions(current_regions)
-     custom_regions_storage(current_regions)
-
-     removeModal()
-   })
-
-   # Show modal to manage custom regions
-   observeEvent(input$manage_custom_regions, {
-     showModal(manage_regions_modal_ui(ns, custom_regions()))
-   })
-
-   # Delete custom region
-   observeEvent(input$delete_region_name, {
-     req(input$delete_region_name)
-     region_to_delete <- input$delete_region_name
-
-     current_regions <- custom_regions()
-     current_regions[[region_to_delete]] <- NULL
-     custom_regions(current_regions)
-     custom_regions_storage(current_regions)
-
-     # Refresh the modal
-     showModal(manage_regions_modal_ui(ns, custom_regions()))
-   })
-
-   # Reset filters
-   observeEvent(input$reset_filters, {
-     updateSelectInput(session, "region_filter", selected = "all")
-     updateSelectInput(session, "firm_size_filter", selected = "all")
-   })
-
-   # Filtered data reactive
+   # Filtered data reactive - uses global filters from sidebar
    filtered_data <- reactive({
      req(wbes_data())
      data <- wbes_data()$latest
 
-     # Apply region filter (supports custom regions)
-     data <- filter_by_region(data, input$region_filter, custom_regions())
+     # If global filters are provided, use them
+     if (!is.null(global_filters)) {
+       filters <- global_filters()
 
-     if (input$firm_size_filter != "all") {
-       data <- filter(data, !is.na(firm_size) & firm_size == input$firm_size_filter)
+       data <- apply_common_filters(
+         data,
+         region_value = filters$region,
+         sector_value = filters$sector,
+         firm_size_value = filters$firm_size,
+         income_value = filters$income,
+         year_value = filters$year,
+         custom_regions = filters$custom_regions,
+         filter_by_region_fn = filter_by_region
+       )
      }
 
      data

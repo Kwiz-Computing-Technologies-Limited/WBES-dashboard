@@ -9,7 +9,9 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
   stats[setNames, reorder],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -152,27 +154,31 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Update filters when data changes
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      d <- wbes_data()$latest
-      # Filter out NA values from region and firm_size
-      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
-      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
-      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
-      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
-      shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
-    })
-
-    # Filtered data
+    # Filtered data with global filters
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all" && !is.na(input$region)) {
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        d <- apply_common_filters(
+          d,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      # Apply local module filters if they exist
+      if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
       if (input$firm_size != "all" && !is.na(input$firm_size)) {

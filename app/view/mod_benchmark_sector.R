@@ -9,7 +9,9 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise],
-  stats[setNames]
+  stats[setNames],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -159,8 +161,31 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
+
+    # Filtered data with global filters applied
+    filtered_data <- reactive({
+      req(wbes_data())
+      data <- wbes_data()$latest
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      data
+    })
 
     # Update sector choices
     observeEvent(wbes_data(), {
@@ -175,8 +200,8 @@ server <- function(id, wbes_data) {
 
     # Aggregate sector data
     sector_aggregated <- reactive({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(filtered_data())
+      data <- filtered_data()
 
       # Aggregate by sector
       data |>

@@ -7,7 +7,9 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate, group_by, summarise, n],
-  stats[setNames]
+  stats[setNames],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -172,8 +174,31 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
+
+    # Filtered data with global filters applied
+    filtered_data <- reactive({
+      req(wbes_data())
+      data <- wbes_data()$country_sector
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      data
+    })
 
     # Update sector choices
     observeEvent(wbes_data(), {
@@ -189,8 +214,8 @@ server <- function(id, wbes_data) {
 
     # Selected sector data
     sector_data <- reactive({
-      req(wbes_data(), input$sector_select)
-      data <- wbes_data()$country_sector
+      req(filtered_data(), input$sector_select)
+      data <- filtered_data()
       data |> filter(!is.na(sector) & sector == input$sector_select)
     })
 
