@@ -56,6 +56,61 @@ custom_region_modal_ui <- function(ns, countries) {
   )
 }
 
+#' UI for managing existing custom regions
+#' @export
+manage_regions_modal_ui <- function(ns, custom_regions) {
+  modalDialog(
+    title = tags$div(
+      icon("cog"),
+      " Manage Custom Regions"
+    ),
+    size = "l",
+
+    if (length(custom_regions) == 0) {
+      tags$div(
+        class = "alert alert-info",
+        icon("info-circle"),
+        " No custom regions created yet. Click the '+' button to create one."
+      )
+    } else {
+      tags$div(
+        tags$h5("Your Custom Regions:"),
+        tags$div(
+          class = "list-group mt-3",
+          lapply(names(custom_regions), function(region_name) {
+            region <- custom_regions[[region_name]]
+            tags$div(
+              class = "list-group-item d-flex justify-content-between align-items-start",
+              tags$div(
+                tags$h6(class = "mb-1", icon("map-marked-alt"), " ", region_name),
+                tags$small(
+                  class = "text-muted",
+                  paste(length(region$countries), "countries:",
+                        paste(head(region$countries, 3), collapse = ", "),
+                        if(length(region$countries) > 3) "..." else "")
+                )
+              ),
+              actionButton(
+                ns(paste0("delete_region_", region_name)),
+                NULL,
+                icon = icon("trash"),
+                class = "btn-sm btn-outline-danger",
+                title = "Delete this region",
+                onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                                ns("delete_region_name"), region_name)
+              )
+            )
+          })
+        )
+      )
+    },
+
+    footer = tags$div(
+      modalButton("Close")
+    )
+  )
+}
+
 #' Server logic for managing custom regions
 #' @export
 manage_custom_regions <- function(id, wbes_data) {
@@ -100,13 +155,23 @@ manage_custom_regions <- function(id, wbes_data) {
       removeModal()
     })
 
+    # Show modal to manage custom regions
+    observeEvent(input$manage_custom_regions, {
+      showModal(manage_regions_modal_ui(ns, custom_regions()))
+    })
+
     # Delete custom region
-    observeEvent(input$delete_custom_region, {
-      req(input$region_to_delete)
+    observeEvent(input$delete_region_name, {
+      req(input$delete_region_name)
+      region_to_delete <- input$delete_region_name
+
       current_regions <- custom_regions()
-      current_regions[[input$region_to_delete]] <- NULL
+      current_regions[[region_to_delete]] <- NULL
       custom_regions(current_regions)
       custom_regions_storage(current_regions)
+
+      # Refresh the modal
+      showModal(manage_regions_modal_ui(ns, custom_regions()))
     })
 
     return(custom_regions)

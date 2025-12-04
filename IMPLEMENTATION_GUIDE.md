@@ -30,11 +30,19 @@ Users can now navigate through dropdown menus in the main navigation bar to acce
 ## 2. Custom Regions Feature
 
 ### What It Does:
-Allows users to create custom regional groupings by selecting specific countries. Custom regions appear in all region filter dropdowns throughout the dashboard.
+Allows users to create and manage custom regional groupings by selecting specific countries. Custom regions:
+- Appear in all region filter dropdowns
+- Can be deleted via the "Manage Custom Regions" button (gear icon)
+- Persist across the session
+- Work seamlessly with standard regions
 
 ### Files Created:
 1. **`app/logic/custom_regions.R`** - Core logic for custom region management
-2. **`app/view/comp_region_filter.R`** - Reusable region filter component
+   - `custom_region_modal_ui()` - Modal for creating regions
+   - `manage_regions_modal_ui()` - Modal for viewing/deleting regions
+   - `get_region_choices()` - Combines standard and custom regions
+   - `filter_by_region()` - Filters data by region (supports custom)
+2. **`app/view/comp_region_filter.R`** - Reusable region filter component (optional)
 
 ### How to Implement in Your Module:
 
@@ -44,15 +52,15 @@ box::use(
   shiny[showModal, removeModal, textInput, selectizeInput, modalDialog,
         modalButton, updateSelectInput],
   app/logic/custom_regions[get_region_choices, filter_by_region,
-                            custom_region_modal_ui, custom_regions_storage]
+                            custom_region_modal_ui, manage_regions_modal_ui,
+                            custom_regions_storage]
 )
 ```
 
 #### Step 2: Add UI Components
-In your module's UI function, replace a simple region filter with:
+In your module's UI function, add both create and manage buttons:
 
 ```r
-# Option A: Simple Implementation (add button next to existing filter)
 column(4,
   tags$div(
     class = "d-flex gap-2",
@@ -66,13 +74,21 @@ column(4,
       )
     ),
     tags$div(
-      class = "d-flex align-items-end pb-3",
+      class = "d-flex align-items-end pb-3 gap-1",
       actionButton(
         ns("create_custom_region"),
         NULL,
         icon = icon("plus-circle"),
         class = "btn-sm btn-outline-primary",
         title = "Create Custom Region",
+        style = "height: 38px; margin-bottom: 0;"
+      ),
+      actionButton(
+        ns("manage_custom_regions"),
+        NULL,
+        icon = icon("cog"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Manage Custom Regions",
         style = "height: 38px; margin-bottom: 0;"
       )
     )
@@ -128,6 +144,25 @@ server <- function(id, wbes_data) {
       removeModal()
     })
 
+    # Show modal to manage custom regions
+    observeEvent(input$manage_custom_regions, {
+      showModal(manage_regions_modal_ui(ns, custom_regions()))
+    })
+
+    # Delete custom region
+    observeEvent(input$delete_region_name, {
+      req(input$delete_region_name)
+      region_to_delete <- input$delete_region_name
+
+      current_regions <- custom_regions()
+      current_regions[[region_to_delete]] <- NULL
+      custom_regions(current_regions)
+      custom_regions_storage(current_regions)
+
+      # Refresh the modal
+      showModal(manage_regions_modal_ui(ns, custom_regions()))
+    })
+
     # Use custom region filter in your data filtering
     filtered_data <- reactive({
       req(wbes_data())
@@ -178,11 +213,16 @@ fluidRow(
 ```
 
 ### CSS Classes:
-- `.sticky-filters` - Makes the row sticky at the top
+- `.sticky-filters` - Makes the row sticky at the top (positioned 60px below top to account for navbar)
 - `.filter-card` - Ensures proper z-index for the filter card
 
+### Important Notes:
+- The sticky position is set to `top: 60px` to account for the navbar height
+- Filters will stay visible as you scroll down the page
+- The gradient effect at the top provides a smooth visual transition
+
 ### Files Modified:
-- `app/styles/main.scss` - Added sticky filter styles
+- `app/styles/main.scss` - Added sticky filter styles with proper positioning
 
 ---
 

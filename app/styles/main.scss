@@ -213,13 +213,15 @@ $gray-700: #495057;
 
 // Sticky Filter Panel
 .sticky-filters {
+  position: -webkit-sticky;
   position: sticky;
-  top: 0;
+  top: 60px; // Account for navbar height
   z-index: 1020;
   background: white;
   padding: 1rem 0;
   margin-bottom: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
 
   &::before {
     content: '';
@@ -229,6 +231,7 @@ $gray-700: #495057;
     right: 0;
     height: 10px;
     background: linear-gradient(to bottom, rgba(255,255,255,1), rgba(255,255,255,0));
+    pointer-events: none;
   }
 }
 

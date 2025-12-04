@@ -12,7 +12,7 @@ box::use(
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
  stats[setNames, na.omit],
  app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
-                           custom_regions_storage]
+                           manage_regions_modal_ui, custom_regions_storage]
 )
 
 #' @export
@@ -72,13 +72,21 @@ ui <- function(id) {
                    )
                  ),
                  tags$div(
-                   class = "d-flex align-items-end pb-3",
+                   class = "d-flex align-items-end pb-3 gap-1",
                    actionButton(
                      ns("create_custom_region"),
                      NULL,
                      icon = icon("plus-circle"),
                      class = "btn-sm btn-outline-primary",
                      title = "Create Custom Region",
+                     style = "height: 38px; margin-bottom: 0;"
+                   ),
+                   actionButton(
+                     ns("manage_custom_regions"),
+                     NULL,
+                     icon = icon("cog"),
+                     class = "btn-sm btn-outline-secondary",
+                     title = "Manage Custom Regions",
                      style = "height: 38px; margin-bottom: 0;"
                    )
                  )
@@ -267,6 +275,25 @@ server <- function(id, wbes_data) {
      removeModal()
    })
 
+   # Show modal to manage custom regions
+   observeEvent(input$manage_custom_regions, {
+     showModal(manage_regions_modal_ui(ns, custom_regions()))
+   })
+
+   # Delete custom region
+   observeEvent(input$delete_region_name, {
+     req(input$delete_region_name)
+     region_to_delete <- input$delete_region_name
+
+     current_regions <- custom_regions()
+     current_regions[[region_to_delete]] <- NULL
+     custom_regions(current_regions)
+     custom_regions_storage(current_regions)
+
+     # Refresh the modal
+     showModal(manage_regions_modal_ui(ns, custom_regions()))
+   })
+
    # Reset filters
    observeEvent(input$reset_filters, {
      updateSelectInput(session, "region_filter", selected = "all")
@@ -302,18 +329,18 @@ server <- function(id, wbes_data) {
 
    output$kpi_firms <- renderUI({
      req(filtered_data())
-     # Count firms in filtered data
-     n_firms <- nrow(filtered_data())
+     # Sum actual sample_size to get total firms surveyed
+     n_firms <- sum(filtered_data()$sample_size, na.rm = TRUE)
      # Format with K or M suffix
      firms_label <- if (n_firms >= 1000000) {
-       paste0(round(n_firms / 1000000, 1), "M+")
+       paste0(round(n_firms / 1000000, 1), "M")
      } else if (n_firms >= 1000) {
-       paste0(round(n_firms / 1000, 1), "K+")
+       paste0(round(n_firms / 1000, 1), "K")
      } else {
-       as.character(n_firms)
+       format(n_firms, big.mark = ",")
      }
      tags$div(
-       class = "kpi-box kpi-box-coral",
+       class = "kpi-box kpi-box-info",
        tags$div(class = "kpi-value", firms_label),
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
