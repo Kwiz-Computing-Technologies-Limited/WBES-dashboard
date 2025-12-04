@@ -287,7 +287,49 @@ server <- function(id, wbes_data) {
     output$regional_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.CAPU.ZS", "IC.FRM.EXPRT.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       regional <- regional |>
         mutate(
@@ -423,6 +465,49 @@ server <- function(id, wbes_data) {
     output$export_infra <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      # Check if data exists
+      if (is.null(d) || nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.INFRA.ZS", "IC.FRM.EXPRT.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(d)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(d, x = ~IC.FRM.INFRA.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",

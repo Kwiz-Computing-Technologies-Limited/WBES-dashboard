@@ -211,11 +211,55 @@ server <- function(id, wbes_data) {
       data <- filtered_data()
       indicator <- input$infra_indicator
 
-      if (is.null(data) || !indicator %in% names(data)) return(NULL)
+      # Check if indicator exists in data
+      if (!indicator %in% names(data) || nrow(data) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = if (!indicator %in% names(data)) {
+                    paste0("Missing data: ", indicator, " column not found in dataset")
+                  } else {
+                    "No data available for selected region"
+                  },
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Filter out NA values for the indicator
+      data <- filter(data, !is.na(.data[[indicator]]))
+
+      if (nrow(data) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("No ", gsub("_", " ", indicator), " data available for selected region"),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       data <- arrange(data, desc(.data[[indicator]]))[1:15, ]
       data$country <- factor(data$country, levels = rev(data$country))
-      
+
       plot_ly(data,
               y = ~country,
               x = ~get(indicator),

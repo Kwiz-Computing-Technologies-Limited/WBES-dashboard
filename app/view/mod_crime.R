@@ -278,7 +278,49 @@ server <- function(id, wbes_data) {
     output$regional_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       regional <- regional |>
         mutate(

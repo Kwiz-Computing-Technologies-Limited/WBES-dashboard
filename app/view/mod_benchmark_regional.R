@@ -219,6 +219,55 @@ server <- function(id, wbes_data) {
       data <- comparison_data()
       indicator <- input$indicator_select
 
+      # Check if indicator exists in data
+      if (!indicator %in% names(data) || nrow(data) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = if (!indicator %in% names(data)) {
+                    paste0("Missing data: ", indicator, " column not found in dataset")
+                  } else {
+                    "No data available for selected regions"
+                  },
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Filter out NA values for the indicator
+      data_with_values <- filter(data, !is.na(.data[[indicator]]))
+
+      if (nrow(data_with_values) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("No ", gsub("_", " ", indicator), " data available for selected regions"),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Use data_with_values for plotting
+      data <- data_with_values
+
       # Color by region
       colors <- c(
         "Sub-Saharan Africa" = "#1B6B5F",
