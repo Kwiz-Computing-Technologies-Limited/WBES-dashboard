@@ -152,7 +152,7 @@ $gray-700: #495057;
 
 // KPI Boxes (custom value boxes)
 .kpi-box {
-  background: white;
+  background: linear-gradient(135deg, lighten($primary, 50%) 0%, lighten($primary, 48%) 100%);
   padding: 1.5rem;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -175,26 +175,86 @@ $gray-700: #495057;
   .kpi-label {
     font-size: 0.85rem;
     font-weight: 500;
-    color: $gray-600;
+    color: darken($primary, 10%);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   &.kpi-box-coral {
-    .kpi-value { color: $secondary; }
+    background: linear-gradient(135deg, lighten($secondary, 30%) 0%, lighten($secondary, 28%) 100%);
+    .kpi-value { color: darken($secondary, 10%); }
+    .kpi-label { color: darken($secondary, 15%); }
   }
 
   &.kpi-box-success {
-    .kpi-value { color: $success; }
+    background: linear-gradient(135deg, lighten($success, 45%) 0%, lighten($success, 43%) 100%);
+    .kpi-value { color: darken($success, 5%); }
+    .kpi-label { color: darken($success, 10%); }
   }
 
   &.kpi-box-warning {
-    .kpi-value { color: $warning; }
+    background: linear-gradient(135deg, lighten($warning, 35%) 0%, lighten($warning, 33%) 100%);
+    .kpi-value { color: darken($warning, 20%); }
+    .kpi-label { color: darken($warning, 25%); }
   }
 
   &.kpi-box-info {
-    .kpi-value { color: $info; }
+    background: linear-gradient(135deg, lighten($info, 45%) 0%, lighten($info, 43%) 100%);
+    .kpi-value { color: darken($info, 5%); }
+    .kpi-label { color: darken($info, 10%); }
   }
+
+  &.kpi-box-danger {
+    background: linear-gradient(135deg, lighten($danger, 40%) 0%, lighten($danger, 38%) 100%);
+    .kpi-value { color: darken($danger, 5%); }
+    .kpi-label { color: darken($danger, 10%); }
+  }
+}
+
+// Sticky Filter Panel
+.sticky-filters {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: white;
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 0;
+    right: 0;
+    height: 10px;
+    background: linear-gradient(to bottom, rgba(255,255,255,1), rgba(255,255,255,0));
+  }
+}
+
+// Dropdown Z-index fix
+.selectize-dropdown,
+.selectize-input,
+.bootstrap-select .dropdown-menu,
+.shiny-input-container {
+  z-index: 1030 !important;
+}
+
+.selectize-dropdown {
+  z-index: 1031 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid $gray-300 !important;
+}
+
+.form-group {
+  z-index: auto;
+  position: relative;
+}
+
+// Ensure filter cards have higher z-index
+.filter-card {
+  z-index: 1020;
+  position: relative;
 }
 
 // Utility classes

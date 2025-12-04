@@ -3,13 +3,16 @@
 
 box::use(
  shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
-        fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput],
+        fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput,
+        showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput],
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
- stats[setNames, na.omit]
+ stats[setNames, na.omit],
+ app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
+                           custom_regions_storage]
 )
 
 #' @export
@@ -46,21 +49,39 @@ ui <- function(id) {
      column(3, uiOutput(ns("kpi_indicators")))
    ),
 
-   # Filters Row
+   # Filters Row (Sticky)
    fluidRow(
-     class = "mb-4",
+     class = "sticky-filters",
      column(12,
        card(
+         class = "filter-card",
          card_header(icon("filter"), "Filters", class = "py-2"),
          card_body(
            class = "py-3",
            fluidRow(
              column(4,
-               selectInput(
-                 ns("region_filter"),
-                 "Region",
-                 choices = c("All Regions" = "all"),
-                 selected = "all"
+               tags$div(
+                 class = "d-flex gap-2",
+                 tags$div(
+                   class = "flex-grow-1",
+                   selectInput(
+                     ns("region_filter"),
+                     "Region",
+                     choices = c("All Regions" = "all"),
+                     selected = "all"
+                   )
+                 ),
+                 tags$div(
+                   class = "d-flex align-items-end pb-3",
+                   actionButton(
+                     ns("create_custom_region"),
+                     NULL,
+                     icon = icon("plus-circle"),
+                     class = "btn-sm btn-outline-primary",
+                     title = "Create Custom Region",
+                     style = "height: 38px; margin-bottom: 0;"
+                   )
+                 )
                )
              ),
              column(4,
@@ -186,19 +207,19 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
  moduleServer(id, function(input, output, session) {
+   ns <- session$ns
 
-   # Update filter choices when data loads
-   observeEvent(wbes_data(), {
+   # Custom regions storage
+   custom_regions <- shiny::reactiveVal(list())
+
+   # Update filter choices when data loads or custom regions change
+   observeEvent(list(wbes_data(), custom_regions()), {
      req(wbes_data())
      data <- wbes_data()
 
-     # Update region filter
-     if (!is.null(data$regions) && length(data$regions) > 0) {
-       shiny::updateSelectInput(
-         session, "region_filter",
-         choices = c("All Regions" = "all", setNames(data$regions, data$regions))
-       )
-     }
+     # Update region filter with custom regions
+     region_choices <- get_region_choices(wbes_data, custom_regions())
+     updateSelectInput(session, "region_filter", choices = region_choices)
 
      # Update firm size filter
      if (!is.null(data$latest) && "firm_size" %in% names(data$latest)) {
@@ -208,18 +229,48 @@ server <- function(id, wbes_data) {
          as.character() |>
          sort()
        if (length(firm_sizes) > 0) {
-         shiny::updateSelectInput(
+         updateSelectInput(
            session, "firm_size_filter",
            choices = c("All Sizes" = "all", setNames(firm_sizes, firm_sizes))
          )
        }
      }
+   }, ignoreNULL = FALSE)
+
+   # Show modal to create custom region
+   observeEvent(input$create_custom_region, {
+     req(wbes_data())
+     countries <- sort(wbes_data()$countries)
+     showModal(custom_region_modal_ui(ns, countries))
+   })
+
+   # Save custom region
+   observeEvent(input$save_custom_region, {
+     req(input$custom_region_name, input$custom_region_countries)
+
+     region_name <- trimws(input$custom_region_name)
+     if (region_name == "" || length(input$custom_region_countries) == 0) {
+       return(NULL)
+     }
+
+     new_region <- list(
+       name = region_name,
+       countries = input$custom_region_countries,
+       created = Sys.time()
+     )
+
+     current_regions <- custom_regions()
+     current_regions[[region_name]] <- new_region
+     custom_regions(current_regions)
+     custom_regions_storage(current_regions)
+
+     removeModal()
    })
 
    # Reset filters
    observeEvent(input$reset_filters, {
-     shiny::updateSelectInput(session, "region_filter", selected = "all")
-     shiny::updateSelectInput(session, "firm_size_filter", selected = "all")
+     updateSelectInput(session, "region_filter", selected = "all")
+     updateSelectInput(session, "firm_size_filter", selected = "all")
    })
 
    # Filtered data reactive
@@ -227,9 +278,9 @@ server <- function(id, wbes_data) {
      req(wbes_data())
      data <- wbes_data()$latest
 
-     if (input$region_filter != "all") {
-       data <- filter(data, !is.na(region) & region == input$region_filter)
-     }
+     # Apply region filter (supports custom regions)
+     data <- filter_by_region(data, input$region_filter, custom_regions())
+
      if (input$firm_size_filter != "all") {
        data <- filter(data, !is.na(firm_size) & firm_size == input$firm_size_filter)
      }

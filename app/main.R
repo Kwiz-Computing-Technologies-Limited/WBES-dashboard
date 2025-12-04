@@ -5,7 +5,7 @@
 box::use(
   shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML],
   bslib[
-    bs_theme, bs_add_rules, nav_panel, nav_spacer,
+    bs_theme, bs_add_rules, nav_panel, nav_spacer, nav_menu,
     nav_item, page_navbar, card, card_header, card_body
   ],
   waiter[useWaiter, waiterPreloader, spin_fading_circles, waiter_show, waiter_hide],
@@ -15,7 +15,13 @@ box::use(
 box::use(
   app/view/mod_overview,
   app/view/mod_country_profile,
+  app/view/mod_sector_profile,
+  app/view/mod_regional_profile,
+  app/view/mod_size_profile,
   app/view/mod_benchmark,
+  app/view/mod_benchmark_sector,
+  app/view/mod_benchmark_regional,
+  app/view/mod_benchmark_size,
   app/view/mod_infrastructure,
   app/view/mod_finance_access,
   app/view/mod_corruption,
@@ -79,60 +85,106 @@ ui <- function(request) {
       mod_overview$ui("overview")
     ),
 
-    nav_panel(
-      title = "Country Profile",
-      value = "country_profile",
-      icon = icon("flag"),
-      mod_country_profile$ui("country_profile")
+    # Profiles Menu
+    nav_menu(
+      title = "Profiles",
+      icon = icon("id-card"),
+      nav_panel(
+        title = "Country Profile",
+        value = "country_profile",
+        icon = icon("flag"),
+        mod_country_profile$ui("country_profile")
+      ),
+      nav_panel(
+        title = "Sector Profile",
+        value = "sector_profile",
+        icon = icon("industry"),
+        mod_sector_profile$ui("sector_profile")
+      ),
+      nav_panel(
+        title = "Regional Profile",
+        value = "regional_profile",
+        icon = icon("globe-africa"),
+        mod_regional_profile$ui("regional_profile")
+      ),
+      nav_panel(
+        title = "Size Profile",
+        value = "size_profile",
+        icon = icon("building"),
+        mod_size_profile$ui("size_profile")
+      )
     ),
 
-    nav_panel(
-      title = "Cross-Country Benchmark",
-      value = "benchmark",
+    # Benchmarks Menu
+    nav_menu(
+      title = "Benchmarks",
       icon = icon("chart-bar"),
-      mod_benchmark$ui("benchmark")
+      nav_panel(
+        title = "Cross-Country",
+        value = "benchmark",
+        icon = icon("flag"),
+        mod_benchmark$ui("benchmark")
+      ),
+      nav_panel(
+        title = "Cross-Sector",
+        value = "benchmark_sector",
+        icon = icon("industry"),
+        mod_benchmark_sector$ui("benchmark_sector")
+      ),
+      nav_panel(
+        title = "Cross-Regional",
+        value = "benchmark_regional",
+        icon = icon("globe-africa"),
+        mod_benchmark_regional$ui("benchmark_regional")
+      ),
+      nav_panel(
+        title = "Cross-Size",
+        value = "benchmark_size",
+        icon = icon("building"),
+        mod_benchmark_size$ui("benchmark_size")
+      )
     ),
 
-    nav_panel(
-      title = "Infrastructure",
-      value = "infrastructure",
-      icon = icon("bolt"),
-      mod_infrastructure$ui("infrastructure")
-    ),
-
-    nav_panel(
-      title = "Access to Finance",
-      value = "finance",
-      icon = icon("university"),
-      mod_finance_access$ui("finance")
-    ),
-
-    nav_panel(
-      title = "Corruption",
-      value = "corruption",
-      icon = icon("balance-scale"),
-      mod_corruption$ui("corruption")
-    ),
-
-    nav_panel(
-      title = "Workforce",
-      value = "workforce",
-      icon = icon("users"),
-      mod_workforce$ui("workforce")
-    ),
-
-    nav_panel(
-      title = "Performance",
-      value = "performance",
-      icon = icon("chart-line"),
-      mod_performance$ui("performance")
-    ),
-
-    nav_panel(
-      title = "Crime & Security",
-      value = "crime",
-      icon = icon("shield-alt"),
-      mod_crime$ui("crime")
+    # Domains Menu
+    nav_menu(
+      title = "Domains",
+      icon = icon("layer-group"),
+      nav_panel(
+        title = "Infrastructure",
+        value = "infrastructure",
+        icon = icon("bolt"),
+        mod_infrastructure$ui("infrastructure")
+      ),
+      nav_panel(
+        title = "Access to Finance",
+        value = "finance",
+        icon = icon("university"),
+        mod_finance_access$ui("finance")
+      ),
+      nav_panel(
+        title = "Corruption",
+        value = "corruption",
+        icon = icon("balance-scale"),
+        mod_corruption$ui("corruption")
+      ),
+      nav_panel(
+        title = "Workforce",
+        value = "workforce",
+        icon = icon("users"),
+        mod_workforce$ui("workforce")
+      ),
+      nav_panel(
+        title = "Performance",
+        value = "performance",
+        icon = icon("chart-line"),
+        mod_performance$ui("performance")
+      ),
+      nav_panel(
+        title = "Crime & Security",
+        value = "crime",
+        icon = icon("shield-alt"),
+        mod_crime$ui("crime")
+      )
     ),
 
     nav_panel(
@@ -242,14 +294,28 @@ ui <- function(request) {
 
   # Module servers
   mod_overview$server("overview", wbes_data)
+
+  # Profile modules
   mod_country_profile$server("country_profile", wbes_data)
+  mod_sector_profile$server("sector_profile", wbes_data)
+  mod_regional_profile$server("regional_profile", wbes_data)
+  mod_size_profile$server("size_profile", wbes_data)
+
+  # Benchmark modules
   mod_benchmark$server("benchmark", wbes_data)
+  mod_benchmark_sector$server("benchmark_sector", wbes_data)
+  mod_benchmark_regional$server("benchmark_regional", wbes_data)
+  mod_benchmark_size$server("benchmark_size", wbes_data)
+
+  # Domain modules
   mod_infrastructure$server("infrastructure", wbes_data)
   mod_finance_access$server("finance", wbes_data)
   mod_corruption$server("corruption", wbes_data)
   mod_workforce$server("workforce", wbes_data)
   mod_performance$server("performance", wbes_data)
   mod_crime$server("crime", wbes_data)
+
+  # Other modules
   mod_custom_analysis$server("custom_analysis", wbes_data)
   mod_data_quality$server("data_quality", wbes_data)
   mod_about$server("about")
