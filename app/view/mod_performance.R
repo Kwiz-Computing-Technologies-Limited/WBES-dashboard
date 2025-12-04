@@ -6,7 +6,7 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when],
+  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head]
 )
@@ -40,7 +40,7 @@ ui <- function(id) {
               column(3, selectInput(ns("indicator"), "Indicator",
                 choices = c("Capacity Utilization" = "IC.FRM.CAPU.ZS",
                            "Export Participation" = "IC.FRM.EXPRT.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -124,12 +124,12 @@ ui <- function(id) {
       ),
       column(6,
         card(
-          card_header(icon("chart-area"), " Performance by Income Group"),
+          card_header(icon("chart-area"), " Performance by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_performance"), height = "350px"),
+            plotlyOutput(ns("firm_size_performance"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Box plots summarize performance dispersion within each income tier to reveal variability."
+              "Box plots summarize performance dispersion by firm size to reveal variability."
             )
           )
         )
@@ -178,25 +178,32 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Update filters
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
+      # Filter out NA values from region and firm_size
+      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
+      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
     # Filtered data
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+      if (input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
 
@@ -249,6 +256,8 @@ server <- function(id, wbes_data) {
       d <- filtered()
       indicator <- input$indicator
 
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -278,7 +287,49 @@ server <- function(id, wbes_data) {
     output$regional_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.CAPU.ZS", "IC.FRM.EXPRT.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       regional <- regional |>
         mutate(
@@ -319,7 +370,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
-                           color = ~income_group,
+                           color = ~firm_size,
                            opacity = 0.7,
                            line = list(color = "white", width = 1))) |>
         layout(
@@ -388,16 +439,16 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Income performance
-    output$income_performance <- renderPlotly({
+    # Firm size performance
+    output$firm_size_performance <- renderPlotly({
       req(filtered())
       d <- filtered()
 
       plot_ly(d) |>
-        add_trace(y = ~IC.FRM.CAPU.ZS, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.CAPU.ZS, x = ~firm_size, type = "box",
                  name = "Capacity",
                  marker = list(color = "#1B6B5F")) |>
-        add_trace(y = ~IC.FRM.EXPRT.ZS, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.EXPRT.ZS, x = ~firm_size, type = "box",
                  name = "Exports",
                  marker = list(color = "#F49B7A")) |>
         layout(
@@ -414,6 +465,49 @@ server <- function(id, wbes_data) {
     output$export_infra <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      # Check if data exists
+      if (is.null(d) || nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.INFRA.ZS", "IC.FRM.EXPRT.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(d)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(d, x = ~IC.FRM.INFRA.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",

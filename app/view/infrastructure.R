@@ -12,12 +12,12 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   div(
     class = "container-fluid py-4",
-    
+
     fluidRow(column(12, h2(icon("bolt"), " Infrastructure Constraints", class = "text-primary mb-4"))),
-    
+
     # KPIs
     fluidRow(
       class = "mb-4",
@@ -26,7 +26,7 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_infra"))),
       column(3, uiOutput(ns("kpi_crime")))
     ),
-    
+
     # Filter
     fluidRow(
       class = "mb-4",
@@ -39,13 +39,13 @@ ui <- function(id) {
                 choices = c("Power Outages" = "IC.FRM.OUTG.ZS",
                            "Electricity" = "IC.FRM.ELEC.ZS",
                            "Infrastructure" = "IC.FRM.INFRA.ZS"))),
-              column(4, selectInput(ns("income"), "Income Group", choices = c("All" = "all")))
+              column(4, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all")))
             )
           )
         )
       )
     ),
-    
+
     # Charts
     fluidRow(
       class = "mb-4",
@@ -62,7 +62,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Correlation
     fluidRow(
       column(6,
@@ -84,24 +84,31 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
   moduleServer(id, function(input, output, session) {
-    
+
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
+      # Filter out NA values from region and firm_size before creating dropdown choices
+      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
+      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
-    
+
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+      if (input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
-    
+
     # KPIs
     output$kpi_power <- renderUI({
       req(filtered())
@@ -109,36 +116,41 @@ server <- function(id, wbes_data) {
       div(class = "card bg-primary text-white h-100",
         div(class = "card-body text-center", h2(paste0(val, "%")), p("Power Outages")))
     })
-    
+
     output$kpi_elec <- renderUI({
       req(filtered())
       val <- round(mean(filtered()$IC.FRM.ELEC.ZS, na.rm = TRUE), 1)
       div(class = "card bg-secondary text-white h-100",
         div(class = "card-body text-center", h2(paste0(val, "%")), p("Electricity Obstacle")))
     })
-    
+
     output$kpi_infra <- renderUI({
       req(filtered())
       val <- round(mean(filtered()$IC.FRM.INFRA.ZS, na.rm = TRUE), 1)
       div(class = "card bg-warning text-dark h-100",
         div(class = "card-body text-center", h2(paste0(val, "%")), p("Infrastructure")))
     })
-    
+
     output$kpi_crime <- renderUI({
       req(filtered())
-      val <- round(mean(filtered()$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
+      d <- filtered()
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d)) return(NULL)
+      val <- round(mean(d$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
       div(class = "card bg-danger text-white h-100",
         div(class = "card-body text-center", h2(paste0(val, "%")), p("Crime Obstacle")))
     })
-    
+
     # Bar chart
     output$bar_chart <- renderPlotly({
       req(filtered())
       d <- filtered()
       indicator <- input$indicator
+
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       d <- arrange(d, desc(.data[[indicator]]))[1:15, ]
       d$country <- factor(d$country, levels = rev(d$country))
-      
+
       plot_ly(d, y = ~country, x = ~get(indicator), type = "bar",
               orientation = "h",
               marker = list(color = ~get(indicator),
@@ -151,51 +163,66 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Pie chart
     output$pie_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
       if (is.null(regional)) return(NULL)
-      
+
       plot_ly(regional, labels = ~region, values = ~IC.FRM.OUTG.ZS,
               type = "pie", hole = 0.4,
               marker = list(colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D"))) |>
         layout(showlegend = TRUE, paper_bgcolor = "rgba(0,0,0,0)") |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Scatter
     output$scatter <- renderPlotly({
       req(filtered())
       d <- filtered()
-      
-      plot_ly(d, x = ~IC.FRM.OUTG.ZS, y = ~IC.FRM.CAPU.ZS,
-              type = "scatter", mode = "markers",
-              text = ~country,
-              marker = list(size = 12, color = ~IC.FRM.OUTG.ZS,
-                           colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
-                           opacity = 0.7)) |>
-        layout(
-          xaxis = list(title = "Power Outages (%)"),
-          yaxis = list(title = "Capacity Utilization (%)"),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+
+      # Filter out rows with NA in x or y to avoid Tibble size mismatch
+      d <- d |> filter(!is.na(IC.FRM.OUTG.ZS) & !is.na(IC.FRM.CAPU.ZS))
+
+      if (nrow(d) > 0) {
+        plot_ly(d, x = ~IC.FRM.OUTG.ZS, y = ~IC.FRM.CAPU.ZS,
+                type = "scatter", mode = "markers",
+                text = ~country,
+                marker = list(size = 12, color = ~IC.FRM.OUTG.ZS,
+                             colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
+                             opacity = 0.7)) |>
+          layout(
+            xaxis = list(title = "Power Outages (%)"),
+            yaxis = list(title = "Capacity Utilization (%)"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No data available for scatter plot",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
-    
+
     # Heatmap
     output$heatmap <- renderPlotly({
       regions <- c("Sub-Saharan Africa", "South Asia", "East Asia", "Latin America", "Europe")
       indicators <- c("Power", "Electricity", "Infrastructure", "Crime")
       z <- matrix(c(35, 42, 28, 25, 28, 35, 22, 18, 18, 22, 15, 15, 22, 28, 18, 20, 12, 15, 12, 12),
                   nrow = 5, byrow = TRUE)
-      
+
       plot_ly(x = indicators, y = regions, z = z, type = "heatmap",
               colorscale = list(c(0, "#e8f5e9"), c(0.5, "#fff3e0"), c(1, "#ffebee"))) |>
         layout(paper_bgcolor = "rgba(0,0,0,0)") |>
         config(displayModeBar = FALSE)
     })
-    
+
   })
 }

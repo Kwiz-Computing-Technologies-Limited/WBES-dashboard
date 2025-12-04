@@ -6,9 +6,11 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when],
+  dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -40,7 +42,7 @@ ui <- function(id) {
               column(3, selectInput(ns("indicator"), "Indicator",
                 choices = c("Crime as Obstacle" = "IC.FRM.CRIM.ZS",
                            "Security Costs" = "IC.FRM.SECU.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -81,19 +83,7 @@ ui <- function(id) {
     # Analysis Charts
     fluidRow(
       class = "mb-4",
-      column(6,
-        card(
-          card_header(icon("coins"), " Security Cost Analysis"),
-          card_body(
-            plotlyOutput(ns("cost_analysis"), height = "350px"),
-            p(
-              class = "text-muted small mt-2",
-              "Bars translate security spending into percentage of sales, indicating the financial burden of crime mitigation."
-            )
-          )
-        )
-      ),
-      column(6,
+      column(12,
         card(
           card_header(icon("project-diagram"), " Crime vs. Business Performance"),
           card_body(
@@ -112,12 +102,12 @@ ui <- function(id) {
       class = "mb-4",
       column(6,
         card(
-          card_header(icon("layer-group"), " Security by Income Group"),
+          card_header(icon("layer-group"), " Security by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_security"), height = "350px"),
+            plotlyOutput(ns("firm_size_security"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Box plots summarize crime and security costs across income tiers, highlighting risk dispersion."
+              "Box plots summarize crime and security costs across firm sizes, highlighting risk dispersion."
             )
           )
         )
@@ -178,32 +168,45 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Update filters
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      d <- wbes_data()$latest
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
-      shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
-    })
-
-    # Filtered data
+    # Filtered data with global filters
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        d <- apply_common_filters(
+          d,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      # Apply local module filters if they exist
+      if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (!is.null(input$firm_size) && input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
 
     # KPIs
     output$kpi_crime <- renderUI({
       req(filtered())
-      val <- round(mean(filtered()$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
+      d <- filtered()
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d)) return(NULL)
+      val <- round(mean(d$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
       div(class = "card bg-danger text-white h-100",
         div(class = "card-body text-center",
           h2(paste0(val, "%")),
@@ -212,7 +215,9 @@ server <- function(id, wbes_data) {
 
     output$kpi_security_cost <- renderUI({
       req(filtered())
-      val <- round(mean(filtered()$IC.FRM.SECU.ZS, na.rm = TRUE), 2)
+      d <- filtered()
+      if (is.null(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
+      val <- round(mean(d$IC.FRM.SECU.ZS, na.rm = TRUE), 2)
       div(class = "card bg-warning text-dark h-100",
         div(class = "card-body text-center",
           h2(paste0(val, "%")),
@@ -248,6 +253,8 @@ server <- function(id, wbes_data) {
       d <- filtered()
       indicator <- input$indicator
 
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -277,7 +284,49 @@ server <- function(id, wbes_data) {
     output$regional_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       regional <- regional |>
         mutate(
@@ -300,36 +349,12 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Cost analysis
-    output$cost_analysis <- renderPlotly({
-      req(filtered())
-      d <- filtered()
-
-      d <- d |>
-        arrange(desc(IC.FRM.SECU.ZS)) |>
-        head(15)
-
-      d$country <- factor(d$country, levels = rev(d$country))
-
-      plot_ly(d, y = ~country, x = ~IC.FRM.SECU.ZS, type = "bar",
-              orientation = "h",
-              marker = list(color = "#F49B7A"),
-              text = ~paste0(country, ": ", round(IC.FRM.SECU.ZS, 2), "% of sales"),
-              hoverinfo = "text") |>
-        layout(
-          xaxis = list(title = "Security Costs (% of Sales)"),
-          yaxis = list(title = ""),
-          margin = list(l = 120),
-          paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
-    })
-
     # Crime vs performance
     output$crime_performance <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
@@ -349,16 +374,18 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Income security
-    output$income_security <- renderPlotly({
+    # Firm size security
+    output$firm_size_security <- renderPlotly({
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d) |>
-        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.CRIM.ZS, x = ~firm_size, type = "box",
                  name = "Crime Obstacle",
                  marker = list(color = "#dc3545")) |>
-        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~income_group, type = "box",
+        add_trace(y = ~IC.FRM.SECU.ZS * 10, x = ~firm_size, type = "box",
                  name = "Security Costs (x10)",
                  marker = list(color = "#F4A460")) |>
         layout(
@@ -375,6 +402,8 @@ server <- function(id, wbes_data) {
     output$impact_matrix <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
               type = "scatter", mode = "markers",
@@ -397,11 +426,13 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
 
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CORR.ZS" %in% names(d)) return(NULL)
+
       plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 10,
-                           color = ~income_group,
+                           color = ~firm_size,
                            opacity = 0.7)) |>
         layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
@@ -416,6 +447,8 @@ server <- function(id, wbes_data) {
     output$risk_distribution <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d)) return(NULL)
 
       d <- d |>
         mutate(
@@ -442,6 +475,8 @@ server <- function(id, wbes_data) {
     output$insights <- renderUI({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
 
       avg_crime <- round(mean(d$IC.FRM.CRIM.ZS, na.rm = TRUE), 1)
       avg_security_cost <- round(mean(d$IC.FRM.SECU.ZS, na.rm = TRUE), 2)

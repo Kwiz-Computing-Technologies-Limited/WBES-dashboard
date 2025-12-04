@@ -41,7 +41,7 @@ ui <- function(id) {
                 choices = c("Workforce Obstacle" = "IC.FRM.WKFC.ZS",
                            "Female Workers" = "IC.FRM.FEMW.ZS",
                            "Female Ownership" = "IC.FRM.FEMO.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -137,17 +137,17 @@ ui <- function(id) {
       )
     ),
 
-    # Income Group Comparison
+    # Firm Size Comparison
     fluidRow(
       class = "mb-4",
       column(6,
         card(
-          card_header(icon("coins"), " Workforce Challenge by Income"),
+          card_header(icon("coins"), " Workforce Challenge by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_comparison"), height = "350px"),
+            plotlyOutput(ns("firm_size_comparison"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Income-tier box plots show how workforce obstacles differ between low- and high-income contexts."
+              "Firm size box plots show how workforce obstacles differ by company size."
             )
           )
         )
@@ -179,32 +179,41 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Update filters
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
+      # Filter out NA values from region and firm_size
+      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
+      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
     # Filtered data
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+      if (input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
 
     # KPIs
     output$kpi_workforce <- renderUI({
       req(filtered())
-      val <- round(mean(filtered()$IC.FRM.WKFC.ZS, na.rm = TRUE), 1)
+      d <- filtered()
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d)) return(NULL)
+      val <- round(mean(d$IC.FRM.WKFC.ZS, na.rm = TRUE), 1)
       div(class = "card bg-primary text-white h-100",
         div(class = "card-body text-center",
           h2(paste0(val, "%")),
@@ -246,6 +255,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
       indicator <- input$indicator
+
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
@@ -304,7 +315,49 @@ server <- function(id, wbes_data) {
     output$participation_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(regional, x = ~IC.FRM.FEMW.ZS, y = ~IC.FRM.FEMO.ZS,
               type = "scatter", mode = "markers+text",
@@ -324,6 +377,8 @@ server <- function(id, wbes_data) {
     output$scatter_productivity <- renderPlotly({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
 
       plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
@@ -346,7 +401,49 @@ server <- function(id, wbes_data) {
     output$regional_gender <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+
+      # Check if data exists
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No regional data available",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Check if required columns exist
+      required_cols <- c("IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS")
+      missing_cols <- required_cols[!required_cols %in% names(regional)]
+
+      if (length(missing_cols) > 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(regional) |>
         add_trace(y = ~region, x = ~IC.FRM.FEMW.ZS, type = "bar",
@@ -390,12 +487,14 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Income comparison
-    output$income_comparison <- renderPlotly({
+    # Firm size comparison
+    output$firm_size_comparison <- renderPlotly({
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, y = ~IC.FRM.WKFC.ZS, x = ~income_group, type = "box",
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d)) return(NULL)
+
+      plot_ly(d, y = ~IC.FRM.WKFC.ZS, x = ~firm_size, type = "box",
               marker = list(color = "#1B6B5F")) |>
         layout(
           xaxis = list(title = ""),
@@ -430,6 +529,8 @@ server <- function(id, wbes_data) {
     output$insights <- renderUI({
       req(filtered())
       d <- filtered()
+
+      if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d) || !"IC.FRM.FEMW.ZS" %in% names(d) || !"IC.FRM.FEMO.ZS" %in% names(d)) return(NULL)
 
       avg_workforce <- round(mean(d$IC.FRM.WKFC.ZS, na.rm = TRUE), 1)
       avg_female_workers <- round(mean(d$IC.FRM.FEMW.ZS, na.rm = TRUE), 1)

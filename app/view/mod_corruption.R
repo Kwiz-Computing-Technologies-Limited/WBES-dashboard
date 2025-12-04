@@ -9,7 +9,9 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
   stats[setNames, reorder],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -41,7 +43,7 @@ ui <- function(id) {
               column(3, selectInput(ns("indicator"), "Indicator",
                 choices = c("Corruption as Obstacle" = "IC.FRM.CORR.ZS",
                            "Bribery Incidence" = "IC.FRM.BRIB.ZS"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
@@ -108,17 +110,17 @@ ui <- function(id) {
       )
     ),
 
-    # Income Group Analysis
+    # Firm Size Analysis
     fluidRow(
       class = "mb-4",
       column(6,
         card(
-          card_header(icon("layer-group"), " Corruption by Income Group"),
+          card_header(icon("layer-group"), " Corruption by Firm Size"),
           card_body(
-            plotlyOutput(ns("income_box"), height = "350px"),
+            plotlyOutput(ns("firm_size_box"), height = "350px"),
             p(
               class = "text-muted small mt-2",
-              "Box plots summarize corruption responses by income tier, showing typical levels and variability."
+              "Box plots summarize corruption responses by firm size, showing typical levels and variability."
             )
           )
         )
@@ -152,25 +154,36 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Update filters when data changes
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      d <- wbes_data()$latest
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
-      shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
-    })
-
-    # Filtered data
+    # Filtered data with global filters
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        d <- apply_common_filters(
+          d,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      # Apply local module filters if they exist
+      if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
 
@@ -221,6 +234,8 @@ server <- function(id, wbes_data) {
       req(filtered())
       d <- filtered()
       indicator <- input$indicator
+
+      if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
       # Sort data
       if (input$sort == "desc") {
@@ -323,12 +338,12 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
 
-    # Box plot by income
-    output$income_box <- renderPlotly({
+    # Box plot by firm size
+    output$firm_size_box <- renderPlotly({
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~income_group, type = "box",
+      plot_ly(d, y = ~IC.FRM.CORR.ZS, x = ~firm_size, type = "box",
               marker = list(color = "#1B6B5F"),
               line = list(color = "#1B6B5F")) |>
         layout(
@@ -349,7 +364,7 @@ server <- function(id, wbes_data) {
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
-                           color = ~income_group,
+                           color = ~firm_size,
                            opacity = 0.7,
                            line = list(color = "white", width = 1))) |>
         layout(

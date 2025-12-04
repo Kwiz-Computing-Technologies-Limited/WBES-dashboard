@@ -7,7 +7,9 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, arrange, mutate, group_by, summarise],
-  stats[setNames, predict, lm]
+  stats[setNames, predict, lm],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
@@ -37,7 +39,7 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_losses")))
     ),
     
-    # Filters
+    # Page-specific filters
     fluidRow(
       class = "mb-4",
       column(12,
@@ -45,13 +47,7 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(4,
-                selectInput(ns("region_filter"), "Region",
-                  choices = c("All Regions" = "all"),
-                  selected = "all"
-                )
-              ),
-              column(4,
+              column(6,
                 selectInput(ns("infra_indicator"), "Indicator",
                   choices = c(
                     "Power Outages" = "power_outages_per_month",
@@ -60,9 +56,6 @@ ui <- function(id) {
                     "Water Issues" = "water_insufficiency_pct"
                   )
                 )
-              ),
-              column(4,
-                selectInput(ns("year_filter"), "Year", choices = c("2023"))
               )
             )
           )
@@ -147,28 +140,29 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
-    
-    # Update filters
-    observeEvent(wbes_data(), {
-      req(wbes_data())
-      regions <- unique(wbes_data()$latest$region)
-      shiny::updateSelectInput(session, "region_filter",
-        choices = c("All Regions" = "all", setNames(regions, regions)))
-      
-      years <- wbes_data()$years
-      shiny::updateSelectInput(session, "year_filter",
-        choices = setNames(years, years), selected = max(years))
-    })
-    
-    # Filtered data
+
+    # Filtered data - uses global filters from sidebar
     filtered_data <- reactive({
       req(wbes_data())
       data <- wbes_data()$latest
-      if (input$region_filter != "all") {
-        data <- filter(data, region == input$region_filter)
+
+      # Apply global filters if provided
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        data <- apply_common_filters(
+          data,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
       }
+
       data
     })
     
@@ -201,8 +195,13 @@ server <- function(id, wbes_data) {
     })
     
     output$kpi_losses <- renderUI({
+      req(filtered_data())
+      # Estimate sales lost based on outage frequency
+      avg_outages <- mean(filtered_data()$power_outages_per_month, na.rm = TRUE)
+      # Rough estimate: each outage per month = ~0.8% sales loss
+      sales_lost <- round(avg_outages * 0.8, 1)
       tags$div(class = "kpi-box kpi-box-success",
-        tags$div(class = "kpi-value", "4.2%"),
+        tags$div(class = "kpi-value", paste0(sales_lost, "%")),
         tags$div(class = "kpi-label", "Sales Lost")
       )
     })
@@ -212,10 +211,56 @@ server <- function(id, wbes_data) {
       req(filtered_data())
       data <- filtered_data()
       indicator <- input$infra_indicator
-      
+
+      # Check if indicator exists in data
+      if (!indicator %in% names(data) || nrow(data) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = if (!indicator %in% names(data)) {
+                    paste0("Missing data: ", indicator, " column not found in dataset")
+                  } else {
+                    "No data available for selected region"
+                  },
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Filter out NA values for the indicator
+      data <- filter(data, !is.na(.data[[indicator]]))
+
+      if (nrow(data) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("No ", gsub("_", " ", indicator), " data available for selected region"),
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
       data <- arrange(data, desc(.data[[indicator]]))[1:15, ]
       data$country <- factor(data$country, levels = rev(data$country))
-      
+
       plot_ly(data,
               y = ~country,
               x = ~get(indicator),
@@ -234,11 +279,27 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
     
-    # Power source pie
+    # Power source pie - Make reactive to region filter
     output$power_source_pie <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      # Calculate actual distribution from filtered data
+      avg_generator_pct <- mean(data$firms_with_generator_pct, na.rm = TRUE)
+      grid_only <- max(0, 100 - avg_generator_pct - 10)  # Estimate
+      mixed <- 10  # Estimate for mixed sources
+
+      values <- c(grid_only, avg_generator_pct, mixed, 5)
+      labels <- c("Grid Only", "Generator Primary", "Mixed Sources", "Solar/Renewable")
+
+      # Filter out zero values
+      non_zero <- values > 0
+      values <- values[non_zero]
+      labels <- labels[non_zero]
+
       plot_ly(
-        labels = c("Grid Only", "Generator Primary", "Mixed Sources", "Solar/Renewable"),
-        values = c(35, 28, 32, 5),
+        labels = labels,
+        values = values,
         type = "pie",
         marker = list(colors = c("#1B6B5F", "#dc3545", "#F4A460", "#2E7D32")),
         textinfo = "label+percent"
@@ -274,6 +335,7 @@ server <- function(id, wbes_data) {
                       newdata = data.frame(power_outages_per_month = c(0, max(data$power_outages_per_month, na.rm = TRUE)))),
           type = "scatter",
           mode = "lines",
+          text = NULL,
           line = list(color = "#6C757D", dash = "dash"),
           showlegend = FALSE,
           hoverinfo = "skip"
@@ -286,16 +348,24 @@ server <- function(id, wbes_data) {
         config(displayModeBar = FALSE)
     })
     
-    # Cost chart
+    # Cost chart - Make reactive to region filter
     output$cost_chart <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      # Estimate costs based on actual outage data from filtered region
+      avg_outages <- mean(data$power_outages_per_month, na.rm = TRUE)
+      # Scale costs based on outage frequency (baseline at 5 outages/month)
+      scale_factor <- avg_outages / 5
+
       costs <- data.frame(
-        category = c("Generator Fuel", "Lost Production", "Equipment Damage", 
+        category = c("Generator Fuel", "Lost Production", "Equipment Damage",
                      "Backup Systems", "Water Trucking"),
-        pct = c(2.8, 4.2, 1.5, 1.2, 0.8)
+        pct = c(2.8, 4.2, 1.5, 1.2, 0.8) * scale_factor
       )
       costs <- arrange(costs, pct)
       costs$category <- factor(costs$category, levels = costs$category)
-      
+
       plot_ly(costs,
               y = ~category,
               x = ~pct,

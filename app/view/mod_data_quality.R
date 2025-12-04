@@ -16,10 +16,10 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   tags$div(
     class = "data-quality-container",
-    
+
     # Header
     fluidRow(
       column(12,
@@ -31,7 +31,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Introduction Card
     fluidRow(
       class = "mb-4",
@@ -78,7 +78,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Data Completeness Overview
     fluidRow(
       class = "mb-4",
@@ -107,7 +107,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Documented Issues Section
     fluidRow(
       class = "mb-4",
@@ -122,7 +122,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Filter Logic by Analysis Type
     fluidRow(
       class = "mb-4",
@@ -132,7 +132,7 @@ ui <- function(id) {
           card_body(
             navset_card_tab(
               id = ns("filter_tabs"),
-              
+
               nav_panel(
                 title = "Infrastructure Analysis",
                 icon = icon("bolt"),
@@ -146,9 +146,9 @@ ui <- function(id) {
                   ),
                   h5("Filter Steps:", class = "mt-3"),
                   tags$ol(
-                    tags$li("Exclude firms with missing power outage data (", 
+                    tags$li("Exclude firms with missing power outage data (",
                             tags$span(class = "quality-indicator quality-medium", "12% of records"), ")"),
-                    tags$li("Winsorize extreme outage durations at 48 hours (caps ", 
+                    tags$li("Winsorize extreme outage durations at 48 hours (caps ",
                             tags$span(class = "quality-indicator quality-low", "2.3% outliers"), ")"),
                     tags$li("Apply sampling weights for national representativeness"),
                     tags$li("Flag countries with sample size < 200 for wide confidence intervals")
@@ -161,12 +161,12 @@ ui <- function(id) {
   # Step 1: Remove missing values
 
 filter(!is.na(power_outages_per_month)) |>
-  
+
   # Step 2: Winsorize extreme values
   mutate(
     avg_outage_duration_hrs = pmin(avg_outage_duration_hrs, 48)
   ) |>
-  
+
   # Step 3: Flag low-sample countries
   mutate(
     low_sample_flag = sample_size < 200,
@@ -176,13 +176,13 @@ filter(!is.na(power_outages_per_month)) |>
       TRUE ~ "Low (Use with caution)"
     )
   ) |>
-  
+
   # Step 4: Apply weights for aggregation
   group_by(country, year) |>
   summarise(
     weighted_outages = weighted.mean(
-      power_outages_per_month, 
-      w = sample_weight, 
+      power_outages_per_month,
+      w = sample_weight,
       na.rm = TRUE
     ),
     n_firms = n(),
@@ -193,13 +193,13 @@ filter(!is.na(power_outages_per_month)) |>
                   tags$div(
                     class = "issue-callout issue-info mt-3",
                     tags$div(class = "issue-title", icon("info-circle"), " Methodological Note"),
-                    tags$div(class = "issue-details", 
-                      "Generator ownership is self-reported and may undercount shared/rented generators. 
+                    tags$div(class = "issue-details",
+                      "Generator ownership is self-reported and may undercount shared/rented generators.
                        Fuel cost estimates should be validated against local fuel prices.")
                   )
                 )
               ),
-              
+
               nav_panel(
                 title = "Access to Finance",
                 icon = icon("university"),
@@ -225,7 +225,7 @@ filter(!is.na(power_outages_per_month)) |>
 'wbes_data |>
   # Step 1: Remove logical inconsistencies
   filter(!(has_loan == 1 & has_bank_account == 0)) |>
-  
+
   # Step 2: Winsorize collateral at 99th percentile
   mutate(
     collateral_required_pct = pmin(
@@ -233,7 +233,7 @@ filter(!is.na(power_outages_per_month)) |>
       quantile(collateral_required_pct, 0.99, na.rm = TRUE)
     )
   ) |>
-  
+
   # Step 3: Create firm size categories (World Bank SME definitions)
   mutate(
     size_category = case_when(
@@ -242,7 +242,7 @@ filter(!is.na(power_outages_per_month)) |>
       TRUE ~ "Large (100+)"
     )
   ) |>
-  
+
   # Step 4: Calculate credit gap by size
   group_by(country, size_category) |>
   summarise(
@@ -258,12 +258,12 @@ filter(!is.na(power_outages_per_month)) |>
                     class = "issue-callout issue-warning mt-3",
                     tags$div(class = "issue-title", icon("exclamation-triangle"), " Known Limitation"),
                     tags$div(class = "issue-details",
-                      "Informal credit sources (family, moneylenders) are not fully captured. 
+                      "Informal credit sources (family, moneylenders) are not fully captured.
                        Actual financial constraint may be higher than reported.")
                   )
                 )
               ),
-              
+
               nav_panel(
                 title = "Corruption Analysis",
                 icon = icon("balance-scale"),
@@ -274,7 +274,7 @@ filter(!is.na(power_outages_per_month)) |>
                     class = "filter-description mb-3",
                     p(tags$strong("Purpose:"), " Analyze bribery incidence and regulatory burden"),
                     p(tags$strong("Data Scope:"), " Firms responding to governance module (variables j1-j15)"),
-                    p(class = "text-danger", 
+                    p(class = "text-danger",
                       tags$strong("Caution:"), " Sensitive topic with known underreporting bias")
                   ),
                   h5("Filter Steps:", class = "mt-3"),
@@ -291,7 +291,7 @@ filter(!is.na(power_outages_per_month)) |>
 'wbes_data |>
   # Step 1: Filter on response rate for corruption questions
   filter(corruption_response_rate >= 0.50) |>
-  
+
  # Step 2: Flag potential social desirability bias
   mutate(
     potential_underreport = response_time_seconds < 5,
@@ -301,20 +301,20 @@ filter(!is.na(power_outages_per_month)) |>
       TRUE ~ bribery_incidence
     )
   ) |>
-  
+
   # Step 3: Weighted aggregation
   group_by(country, year) |>
   summarise(
     bribery_incidence_pct = weighted.mean(
-      bribery_adjusted, 
-      w = sample_weight, 
+      bribery_adjusted,
+      w = sample_weight,
       na.rm = TRUE
     ) * 100,
     response_rate = mean(!is.na(bribery_incidence)),
     n_firms = n(),
     .groups = "drop"
   ) |>
-  
+
   # Step 4: Add reliability indicators
   mutate(
     reliability_flag = case_when(
@@ -329,9 +329,9 @@ filter(!is.na(power_outages_per_month)) |>
                     class = "issue-callout issue-critical mt-3",
                     tags$div(class = "issue-title", icon("exclamation-circle"), " Critical Limitation"),
                     tags$div(class = "issue-details",
-                      "Corruption indicators are known to be systematically underreported due to fear 
-                       of reprisal. Cross-country comparisons should focus on relative rankings rather 
-                       than absolute values. Alternative measures (Transparency International CPI, 
+                      "Corruption indicators are known to be systematically underreported due to fear
+                       of reprisal. Cross-country comparisons should focus on relative rankings rather
+                       than absolute values. Alternative measures (Transparency International CPI,
                        World Governance Indicators) recommended for triangulation.")
                   )
                 )
@@ -519,7 +519,7 @@ filter(!is.na(power_outages_per_month)) |>
                       'security_filters <- wbes_data |>
   filter(!(security_costs_pct == 0 & crime_losses_pct > 0)) |>
   mutate(security_costs_pct = pmin(security_costs_pct, 50)) |>
-  group_by(income_group) |>
+  group_by(income) |>
   summarise(
     crime_obstacle = weighted.mean(IC.FRM.CRIM.ZS, w = sample_weight, na.rm = TRUE),
     security_costs = weighted.mean(security_costs_pct, w = sample_weight, na.rm = TRUE),
@@ -530,7 +530,7 @@ filter(!is.na(power_outages_per_month)) |>
                   )
                 )
               ),
-              
+
               nav_panel(
                 title = "Cross-Country Comparison",
                 icon = icon("globe"),
@@ -560,7 +560,7 @@ filter(!is.na(power_outages_per_month)) |>
     year >= 2019,
     survey_methodology == "Global"
   ) |>
-  
+
   # Step 2: Standardize firm size (harmonize country definitions)
   mutate(
     size_standardized = case_when(
@@ -571,14 +571,14 @@ filter(!is.na(power_outages_per_month)) |>
     )
   ) |>
   filter(!is.na(size_standardized)) |>
-  
+
   # Step 3: Weight by sector to ensure comparability
   group_by(country, sector) |>
   mutate(
     sector_weight = sample_weight * sector_adjustment_factor
   ) |>
   ungroup() |>
-  
+
   # Step 4: Calculate indicators with design-based SEs
   group_by(country) |>
   summarise(
@@ -593,7 +593,7 @@ filter(!is.na(power_outages_per_month)) |>
     survey_year = max(year),
     .groups = "drop"
   ) |>
-  
+
   # Step 5: Add confidence intervals
   mutate(
     across(
@@ -611,7 +611,7 @@ filter(!is.na(power_outages_per_month)) |>
                     class = "issue-callout issue-info mt-3",
                     tags$div(class = "issue-title", icon("info-circle"), " Best Practice"),
                     tags$div(class = "issue-details",
-                      "When comparing countries, always report: (1) survey years, (2) sample sizes, 
+                      "When comparing countries, always report: (1) survey years, (2) sample sizes,
                        (3) confidence intervals. Avoid comparing countries with > 3 year survey gap.")
                   )
                 )
@@ -621,7 +621,7 @@ filter(!is.na(power_outages_per_month)) |>
         )
       )
     ),
-    
+
     # Variable Dictionary
     fluidRow(
       class = "mb-4",
@@ -634,7 +634,7 @@ filter(!is.na(power_outages_per_month)) |>
         )
       )
     ),
-    
+
     # Methodology Reference
     fluidRow(
       class = "mb-4",
@@ -644,7 +644,7 @@ filter(!is.na(power_outages_per_month)) |>
           card_body(
             h4("World Bank Enterprise Surveys Methodology"),
             p("The Enterprise Surveys use a ",
-              tags$strong("stratified random sampling"), 
+              tags$strong("stratified random sampling"),
               " methodology with three levels of stratification:"),
             tags$ul(
               tags$li(tags$strong("Sector:"), " Manufacturing, Retail, Other Services"),
@@ -677,7 +677,7 @@ filter(!is.na(power_outages_per_month)) |>
             p("Download complete data quality documentation for your records:"),
             tags$div(
               class = "d-grid gap-2",
-              downloadButton(ns("download_issues"), "Download Issues Log (CSV)", 
+              downloadButton(ns("download_issues"), "Download Issues Log (CSV)",
                              class = "btn-kwiz-primary"),
               br(),
               downloadButton(ns("download_filters"), "Download Filter Logic (R Script)",
@@ -691,7 +691,7 @@ filter(!is.na(power_outages_per_month)) |>
             tags$pre(
               class = "bg-light p-2 rounded",
               style = "font-size: 0.85rem;",
-'World Bank. (2024). Enterprise Surveys. 
+'World Bank. (2024). Enterprise Surveys.
 Available at: https://www.enterprisesurveys.org
 
 Dashboard developed by Kwiz Computing Technologies.
@@ -705,21 +705,21 @@ https://kwizresearch.com'
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
-    
+
     # Completeness chart
     output$completeness_chart <- renderPlotly({
       indicators <- c(
-        "Power Outages", "Credit Access", "Bribery", 
+        "Power Outages", "Credit Access", "Bribery",
         "Capacity Util.", "Female Ownership", "Exports"
       )
       completeness <- c(88, 92, 78, 85, 94, 90)
-      
+
       data <- data.frame(indicator = indicators, pct = completeness)
       data <- arrange(data, pct)
       data$indicator <- factor(data$indicator, levels = data$indicator)
-      
+
       plot_ly(data,
               y = ~indicator,
               x = ~pct,
@@ -744,15 +744,15 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Regional completeness
     output$regional_completeness <- renderPlotly({
       regions <- c("SSA", "SA", "EAP", "LAC", "ECA")
       completeness <- c(82, 85, 91, 88, 94)
       sample_size <- c(45000, 28000, 35000, 42000, 38000)
-      
+
       data <- data.frame(region = regions, pct = completeness, n = sample_size)
-      
+
       plot_ly(data,
               x = ~region,
               y = ~pct,
@@ -767,11 +767,11 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Issues list
     output$issues_list <- renderUI({
       req(wbes_data())
-      
+
       issues <- wbes_data()$quality$issues
       if (is.null(issues)) {
         issues <- list(
@@ -813,7 +813,7 @@ server <- function(id, wbes_data) {
                r_code = "mutate(definition_change_flag = year < 2019)")
         )
       }
-      
+
       severity_class <- function(sev) {
         switch(tolower(sev),
                "high" = "issue-critical",
@@ -821,7 +821,7 @@ server <- function(id, wbes_data) {
                "low" = "issue-info",
                "issue-info")
       }
-      
+
       severity_badge <- function(sev) {
         cls <- switch(tolower(sev),
                       "high" = "quality-low",
@@ -830,7 +830,7 @@ server <- function(id, wbes_data) {
                       "quality-medium")
         tags$span(class = paste("quality-indicator", cls), sev)
       }
-      
+
       tags$div(
         lapply(issues, function(issue) {
           tags$div(
@@ -872,11 +872,11 @@ server <- function(id, wbes_data) {
         })
       )
     })
-    
+
     # Variable dictionary
     output$variable_dictionary <- renderDT({
       dictionary <- data.frame(
-        Variable = c("power_outages_per_month", "avg_outage_duration_hrs", 
+        Variable = c("power_outages_per_month", "avg_outage_duration_hrs",
                      "firms_with_generator_pct", "firms_with_credit_line_pct",
                      "collateral_required_pct", "bribery_incidence_pct",
                      "capacity_utilization_pct", "female_ownership_pct"),
@@ -896,7 +896,7 @@ server <- function(id, wbes_data) {
         `Missing Rate` = c("12%", "15%", "8%", "5%", "18%", "22%", "6%", "4%"),
         stringsAsFactors = FALSE
       )
-      
+
       datatable(
         dictionary,
         options = list(
@@ -910,7 +910,7 @@ server <- function(id, wbes_data) {
         rownames = FALSE
       )
     })
-    
+
     # Download handlers
     output$download_issues <- downloadHandler(
       filename = function() {
@@ -919,7 +919,7 @@ server <- function(id, wbes_data) {
       content = function(file) {
         issues_df <- data.frame(
           ID = c("DQ001", "DQ002", "DQ003", "DQ004", "DQ005", "DQ006"),
-          Category = c("Missing Data", "Outliers", "Temporal Gaps", 
+          Category = c("Missing Data", "Outliers", "Temporal Gaps",
                        "Sample Size", "Response Bias", "Definition Changes"),
           Severity = c("Medium", "High", "Low", "Medium", "Medium", "Low"),
           Indicator = c("power_outages_per_month", "collateral_required_pct",
@@ -944,7 +944,7 @@ server <- function(id, wbes_data) {
         write.csv(issues_df, file, row.names = FALSE)
       }
     )
-    
+
     output$download_filters <- downloadHandler(
       filename = function() {
         paste0("wbes_filter_logic_", Sys.Date(), ".R")
@@ -1025,7 +1025,7 @@ standardize_for_comparison <- function(data) {
         writeLines(filter_code, file)
       }
     )
-    
+
     output$download_dictionary <- downloadHandler(
       filename = function() {
         paste0("wbes_variable_dictionary_", Sys.Date(), ".csv")
@@ -1042,6 +1042,6 @@ standardize_for_comparison <- function(data) {
         write.csv(dictionary, file, row.names = FALSE)
       }
     )
-    
+
   })
 }

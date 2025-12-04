@@ -3,10 +3,12 @@
 # Main Application Entry Point
 
 box::use(
-  shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML],
+  shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML, selectInput,
+        updateSelectInput, observeEvent, reactive, req, div, fluidRow, column,
+        actionButton, selectizeInput, sliderInput],
   bslib[
-    bs_theme, bs_add_rules, nav_panel, nav_spacer,
-    nav_item, page_navbar, card, card_header, card_body
+    bs_theme, bs_add_rules, nav_panel, nav_spacer, nav_menu,
+    nav_item, page_navbar, card, card_header, card_body, sidebar, layout_sidebar
   ],
   waiter[useWaiter, waiterPreloader, spin_fading_circles, waiter_show, waiter_hide],
   here[here]
@@ -15,7 +17,13 @@ box::use(
 box::use(
   app/view/mod_overview,
   app/view/mod_country_profile,
+  app/view/mod_sector_profile,
+  app/view/mod_regional_profile,
+  app/view/mod_size_profile,
   app/view/mod_benchmark,
+  app/view/mod_benchmark_sector,
+  app/view/mod_benchmark_regional,
+  app/view/mod_benchmark_size,
   app/view/mod_infrastructure,
   app/view/mod_finance_access,
   app/view/mod_corruption,
@@ -25,7 +33,10 @@ box::use(
   app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
-  app/logic/wbes_data[load_wbes_data]
+  app/logic/wbes_data[load_wbes_data],
+  app/logic/shared_filters[get_filter_choices, remove_na_columns],
+  app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
+                           manage_regions_modal_ui, custom_regions_storage]
 )
 
 #' @export
@@ -68,7 +79,108 @@ ui <- function(request) {
       tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
       tags$meta(name = "description", content = "World Bank Enterprise Surveys Dashboard"),
       tags$meta(name = "author", content = "Kwiz Computing Technologies"),
-      useWaiter()
+      useWaiter(),
+      tags$style(HTML("
+        .bslib-sidebar-layout { --bslib-sidebar-width: 280px; }
+        .sidebar { background-color: #f8f9fa; border-right: 1px solid #dee2e6; }
+        .sidebar .card { margin-bottom: 1rem; background-color: white; }
+        .sidebar h5 { color: #1B6B5F; font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }
+        .sidebar .form-group { margin-bottom: 0.75rem; }
+        .sidebar .form-label { font-size: 0.85rem; font-weight: 500; margin-bottom: 0.25rem; }
+        .sidebar .form-select { font-size: 0.85rem; padding: 0.375rem 0.75rem; }
+        #sidebar_filters { position: sticky; top: 10px; }
+      "))
+    ),
+    sidebar = sidebar(
+      id = "sidebar_filters",
+      bg = "#f8f9fa",
+      width = 280,
+      tags$div(
+        style = "padding: 0.5rem;",
+        tags$h5(icon("filter"), " Filters", style = "margin-bottom: 1rem; color: #1B6B5F;"),
+
+        # Common Filters (always visible)
+        tags$div(
+          id = "common_filters",
+          tags$div(
+            class = "d-flex gap-2 mb-2",
+            tags$div(
+              class = "flex-grow-1",
+              selectInput(
+                "global_region_filter",
+                "Region",
+                choices = c("All Regions" = "all"),
+                selected = "all",
+                width = "100%"
+              )
+            ),
+            tags$div(
+              class = "d-flex align-items-end pb-3 gap-1",
+              actionButton(
+                "create_custom_region",
+                NULL,
+                icon = icon("plus-circle"),
+                class = "btn-sm btn-outline-primary",
+                title = "Create Custom Region",
+                style = "height: 38px;"
+              ),
+              actionButton(
+                "manage_custom_regions",
+                NULL,
+                icon = icon("cog"),
+                class = "btn-sm btn-outline-secondary",
+                title = "Manage Custom Regions",
+                style = "height: 38px;"
+              )
+            )
+          ),
+          selectInput(
+            "global_sector_filter",
+            "Sector",
+            choices = c("All Sectors" = "all"),
+            selected = "all",
+            width = "100%"
+          ),
+          selectInput(
+            "global_firm_size_filter",
+            "Firm Size",
+            choices = c("All Sizes" = "all"),
+            selected = "all",
+            width = "100%"
+          ),
+          selectInput(
+            "global_income_filter",
+            "Income Group",
+            choices = c("All Income Levels" = "all"),
+            selected = "all",
+            width = "100%"
+          ),
+          selectizeInput(
+            "global_year_filter",
+            "Survey Year",
+            choices = c("All Years" = "all"),
+            selected = "all",
+            multiple = TRUE,
+            options = list(plugins = list('remove_button')),
+            width = "100%"
+          )
+        ),
+
+        # Tab-specific filters placeholder
+        tags$div(
+          id = "tab_specific_filters",
+          style = "margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #dee2e6;"
+        ),
+
+        # Reset button
+        actionButton(
+          "reset_all_filters",
+          "Reset All Filters",
+          icon = icon("refresh"),
+          class = "btn-outline-secondary w-100",
+          style = "margin-top: 1rem;"
+        )
+      )
     ),
 
     # Navigation Panels
@@ -79,60 +191,106 @@ ui <- function(request) {
       mod_overview$ui("overview")
     ),
 
-    nav_panel(
-      title = "Country Profile",
-      value = "country_profile",
-      icon = icon("flag"),
-      mod_country_profile$ui("country_profile")
+    # Profiles Menu
+    nav_menu(
+      title = "Profiles",
+      icon = icon("id-card"),
+      nav_panel(
+        title = "Country Profile",
+        value = "country_profile",
+        icon = icon("flag"),
+        mod_country_profile$ui("country_profile")
+      ),
+      nav_panel(
+        title = "Sector Profile",
+        value = "sector_profile",
+        icon = icon("industry"),
+        mod_sector_profile$ui("sector_profile")
+      ),
+      nav_panel(
+        title = "Regional Profile",
+        value = "regional_profile",
+        icon = icon("globe-africa"),
+        mod_regional_profile$ui("regional_profile")
+      ),
+      nav_panel(
+        title = "Size Profile",
+        value = "size_profile",
+        icon = icon("building"),
+        mod_size_profile$ui("size_profile")
+      )
     ),
 
-    nav_panel(
-      title = "Cross-Country Benchmark",
-      value = "benchmark",
+    # Benchmarks Menu
+    nav_menu(
+      title = "Benchmarks",
       icon = icon("chart-bar"),
-      mod_benchmark$ui("benchmark")
+      nav_panel(
+        title = "Cross-Country",
+        value = "benchmark",
+        icon = icon("flag"),
+        mod_benchmark$ui("benchmark")
+      ),
+      nav_panel(
+        title = "Cross-Sector",
+        value = "benchmark_sector",
+        icon = icon("industry"),
+        mod_benchmark_sector$ui("benchmark_sector")
+      ),
+      nav_panel(
+        title = "Cross-Regional",
+        value = "benchmark_regional",
+        icon = icon("globe-africa"),
+        mod_benchmark_regional$ui("benchmark_regional")
+      ),
+      nav_panel(
+        title = "Cross-Size",
+        value = "benchmark_size",
+        icon = icon("building"),
+        mod_benchmark_size$ui("benchmark_size")
+      )
     ),
 
-    nav_panel(
-      title = "Infrastructure",
-      value = "infrastructure",
-      icon = icon("bolt"),
-      mod_infrastructure$ui("infrastructure")
-    ),
-
-    nav_panel(
-      title = "Access to Finance",
-      value = "finance",
-      icon = icon("university"),
-      mod_finance_access$ui("finance")
-    ),
-
-    nav_panel(
-      title = "Corruption",
-      value = "corruption",
-      icon = icon("balance-scale"),
-      mod_corruption$ui("corruption")
-    ),
-
-    nav_panel(
-      title = "Workforce",
-      value = "workforce",
-      icon = icon("users"),
-      mod_workforce$ui("workforce")
-    ),
-
-    nav_panel(
-      title = "Performance",
-      value = "performance",
-      icon = icon("chart-line"),
-      mod_performance$ui("performance")
-    ),
-
-    nav_panel(
-      title = "Crime & Security",
-      value = "crime",
-      icon = icon("shield-alt"),
-      mod_crime$ui("crime")
+    # Domains Menu
+    nav_menu(
+      title = "Domains",
+      icon = icon("layer-group"),
+      nav_panel(
+        title = "Infrastructure",
+        value = "infrastructure",
+        icon = icon("bolt"),
+        mod_infrastructure$ui("infrastructure")
+      ),
+      nav_panel(
+        title = "Access to Finance",
+        value = "finance",
+        icon = icon("university"),
+        mod_finance_access$ui("finance")
+      ),
+      nav_panel(
+        title = "Corruption",
+        value = "corruption",
+        icon = icon("balance-scale"),
+        mod_corruption$ui("corruption")
+      ),
+      nav_panel(
+        title = "Workforce",
+        value = "workforce",
+        icon = icon("users"),
+        mod_workforce$ui("workforce")
+      ),
+      nav_panel(
+        title = "Performance",
+        value = "performance",
+        icon = icon("chart-line"),
+        mod_performance$ui("performance")
+      ),
+      nav_panel(
+        title = "Crime & Security",
+        value = "crime",
+        icon = icon("shield-alt"),
+        mod_crime$ui("crime")
+      )
     ),
 
     nav_panel(
@@ -229,6 +387,27 @@ ui <- function(request) {
         use_cache = TRUE,
         cache_hours = 24
       )
+
+      # Remove NA columns from all data components
+      if (!is.null(data$latest)) {
+        data$latest <- remove_na_columns(data$latest)
+      }
+      if (!is.null(data$processed)) {
+        data$processed <- remove_na_columns(data$processed)
+      }
+      if (!is.null(data$country_panel)) {
+        data$country_panel <- remove_na_columns(data$country_panel)
+      }
+      if (!is.null(data$country_sector)) {
+        data$country_sector <- remove_na_columns(data$country_sector)
+      }
+      if (!is.null(data$country_size)) {
+        data$country_size <- remove_na_columns(data$country_size)
+      }
+      if (!is.null(data$country_region)) {
+        data$country_region <- remove_na_columns(data$country_region)
+      }
+
       wbes_data(data)
 
     }, error = function(e) {
@@ -240,17 +419,130 @@ ui <- function(request) {
     waiter_hide()
   })
 
-  # Module servers
-  mod_overview$server("overview", wbes_data)
-  mod_country_profile$server("country_profile", wbes_data)
-  mod_benchmark$server("benchmark", wbes_data)
-  mod_infrastructure$server("infrastructure", wbes_data)
-  mod_finance_access$server("finance", wbes_data)
-  mod_corruption$server("corruption", wbes_data)
-  mod_workforce$server("workforce", wbes_data)
-  mod_performance$server("performance", wbes_data)
-  mod_crime$server("crime", wbes_data)
-  mod_custom_analysis$server("custom_analysis", wbes_data)
-  mod_data_quality$server("data_quality", wbes_data)
+  # Custom regions storage
+  custom_regions <- shiny::reactiveVal(list())
+
+  # Update filter choices when data loads or custom regions change
+  observeEvent(list(wbes_data(), custom_regions()), {
+    req(wbes_data())
+    data <- wbes_data()
+
+    # Update region filter with custom regions
+    region_choices <- get_region_choices(wbes_data, custom_regions())
+    updateSelectInput(session, "global_region_filter", choices = region_choices)
+
+    # Update sector filter (exclude NA values)
+    if (!is.null(data$latest)) {
+      sector_choices <- get_filter_choices(data$latest, "sector", add_all = TRUE, all_label = "All Sectors")
+      updateSelectInput(session, "global_sector_filter", choices = sector_choices)
+
+      # Update firm size filter (exclude NA values)
+      size_choices <- get_filter_choices(data$latest, "firm_size", add_all = TRUE, all_label = "All Sizes")
+      updateSelectInput(session, "global_firm_size_filter", choices = size_choices)
+
+      # Update income filter (exclude NA values)
+      income_choices <- get_filter_choices(data$latest, "income", add_all = TRUE, all_label = "All Income Levels")
+      updateSelectInput(session, "global_income_filter", choices = income_choices)
+    }
+
+    # Update year filter (exclude NA values)
+    if (!is.null(data$years) && length(data$years) > 0) {
+      year_choices <- c("All Years" = "all", stats::setNames(as.character(data$years), as.character(data$years)))
+      updateSelectizeInput(session, "global_year_filter", choices = year_choices, selected = "all")
+    }
+  }, ignoreNULL = FALSE)
+
+  # Custom region modal handlers
+  observeEvent(input$create_custom_region, {
+    req(wbes_data())
+    countries <- sort(wbes_data()$countries)
+    shiny::showModal(custom_region_modal_ui(session$ns, countries))
+  })
+
+  observeEvent(input$save_custom_region, {
+    req(input$custom_region_name, input$custom_region_countries)
+
+    region_name <- trimws(input$custom_region_name)
+    if (region_name == "" || length(input$custom_region_countries) == 0) {
+      return(NULL)
+    }
+
+    new_region <- list(
+      name = region_name,
+      countries = input$custom_region_countries,
+      created = Sys.time()
+    )
+
+    current_regions <- custom_regions()
+    current_regions[[region_name]] <- new_region
+    custom_regions(current_regions)
+    custom_regions_storage(current_regions)
+
+    shiny::removeModal()
+  })
+
+  observeEvent(input$manage_custom_regions, {
+    shiny::showModal(manage_regions_modal_ui(session$ns, custom_regions()))
+  })
+
+  observeEvent(input$delete_region_name, {
+    req(input$delete_region_name)
+    region_to_delete <- input$delete_region_name
+
+    current_regions <- custom_regions()
+    current_regions[[region_to_delete]] <- NULL
+    custom_regions(current_regions)
+    custom_regions_storage(current_regions)
+
+    shiny::showModal(manage_regions_modal_ui(session$ns, custom_regions()))
+  })
+
+  # Reset all filters
+  observeEvent(input$reset_all_filters, {
+    updateSelectInput(session, "global_region_filter", selected = "all")
+    updateSelectInput(session, "global_sector_filter", selected = "all")
+    updateSelectInput(session, "global_firm_size_filter", selected = "all")
+    updateSelectInput(session, "global_income_filter", selected = "all")
+    updateSelectizeInput(session, "global_year_filter", selected = "all")
+  })
+
+  # Create reactive for global filter state
+  global_filters <- reactive({
+    list(
+      region = input$global_region_filter,
+      sector = input$global_sector_filter,
+      firm_size = input$global_firm_size_filter,
+      income = input$global_income_filter,
+      year = input$global_year_filter,
+      custom_regions = custom_regions()
+    )
+  })
+
+  # Module servers - pass both raw data and filter state
+  mod_overview$server("overview", wbes_data, global_filters)
+
+  # Profile modules
+  mod_country_profile$server("country_profile", wbes_data, global_filters)
+  mod_sector_profile$server("sector_profile", wbes_data, global_filters)
+  mod_regional_profile$server("regional_profile", wbes_data, global_filters)
+  mod_size_profile$server("size_profile", wbes_data, global_filters)
+
+  # Benchmark modules
+  mod_benchmark$server("benchmark", wbes_data, global_filters)
+  mod_benchmark_sector$server("benchmark_sector", wbes_data, global_filters)
+  mod_benchmark_regional$server("benchmark_regional", wbes_data, global_filters)
+  mod_benchmark_size$server("benchmark_size", wbes_data, global_filters)
+
+  # Domain modules
+  mod_infrastructure$server("infrastructure", wbes_data, global_filters)
+  mod_finance_access$server("finance", wbes_data, global_filters)
+  mod_corruption$server("corruption", wbes_data, global_filters)
+  mod_workforce$server("workforce", wbes_data, global_filters)
+  mod_performance$server("performance", wbes_data, global_filters)
+  mod_crime$server("crime", wbes_data, global_filters)
+
+  # Other modules
+  mod_custom_analysis$server("custom_analysis", wbes_data, global_filters)
+  mod_data_quality$server("data_quality", wbes_data, global_filters)
   mod_about$server("about")
 }

@@ -10,7 +10,12 @@ data/*.dta
 data/*.csv
 # data/assets.zip
 data/*.rds
-data/.extracted/
+data/.extracted/*.dta
+
+# Methodology files
+ES-Indicators-Database-Global-Methodology_November_24_2025.dta
+*.dta
+
 
 # Cache files
 data/wbes_processed.rds

@@ -57,7 +57,7 @@ ui <- function(id) {
                 ),
                 fluidRow(
                   column(6,
-                    selectInput(ns("income_groups"), "Income Groups",
+                    selectInput(ns("firm_sizes"), "Firm Sizes",
                       choices = c("All" = "all"),
                       multiple = TRUE,
                       selected = "all")
@@ -125,7 +125,7 @@ ui <- function(id) {
                   choices = c(
                     "Country Comparison" = "country_comparison",
                     "Regional Analysis" = "regional",
-                    "Income Group Analysis" = "income",
+                    "Firm Size Analysis" = "firm_size",
                     "Time Trend Analysis" = "trend",
                     "Correlation Analysis" = "correlation",
                     "Baseline Profile" = "baseline"
@@ -211,21 +211,24 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Update filter choices when data loads
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-
-      countries <- c("All" = "all", setNames(unique(d$country), unique(d$country)))
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
+      # Filter out NA values before creating dropdown choices
+      countries_vec <- unique(d$country) |> stats::na.omit() |> as.character() |> sort()
+      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
+      countries <- c("All" = "all", setNames(countries_vec, countries_vec))
+      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
 
       shiny::updateSelectInput(session, "countries", choices = countries)
       shiny::updateSelectInput(session, "regions", choices = regions)
-      shiny::updateSelectInput(session, "income_groups", choices = incomes)
+      shiny::updateSelectInput(session, "firm_sizes", choices = firm_sizes)
     })
 
     # Filtered data based on user selection
@@ -233,15 +236,15 @@ server <- function(id, wbes_data) {
       req(wbes_data())
       d <- wbes_data()$latest
 
-      # Apply filters
+      # Apply filters with NA handling
       if (!("all" %in% input$countries) && length(input$countries) > 0) {
-        d <- filter(d, country %in% input$countries)
+        d <- d |> filter(!is.na(country) & country %in% input$countries)
       }
       if (!("all" %in% input$regions) && length(input$regions) > 0) {
-        d <- filter(d, region %in% input$regions)
+        d <- d |> filter(!is.na(region) & region %in% input$regions)
       }
-      if (!("all" %in% input$income_groups) && length(input$income_groups) > 0) {
-        d <- filter(d, income_group %in% input$income_groups)
+      if (!("all" %in% input$firm_sizes) && length(input$firm_sizes) > 0) {
+        d <- d |> filter(!is.na(firm_size) & firm_size %in% input$firm_sizes)
       }
 
       d
@@ -392,7 +395,7 @@ server <- function(id, wbes_data) {
       })
 
       output$data_table_output <- renderDataTable({
-        cols <- c("country", "region", "income_group", indicators)
+        cols <- c("country", "region", "firm_size", indicators)
         cols <- cols[cols %in% names(data)]
         datatable(
           data[, cols],
@@ -523,7 +526,7 @@ server <- function(id, wbes_data) {
       content = function(file) {
         d <- filtered_data()
         indicators <- selected_indicators()
-        cols <- c("country", "region", "income_group", indicators)
+        cols <- c("country", "region", "firm_size", indicators)
         cols <- cols[cols %in% names(d)]
         write.csv(d[, cols], file, row.names = FALSE)
       }

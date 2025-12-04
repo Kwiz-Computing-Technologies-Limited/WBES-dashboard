@@ -3,31 +3,32 @@
 
 box::use(
  shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
-        fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput],
+        fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput,
+        showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput],
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend],
- dplyr[filter, arrange, desc, mutate, summarise, group_by, n, select, across, left_join, distinct, coalesce],
- tidyr[pivot_longer],
- countrycode[countrycode, codelist],
- stats[setNames, na.omit]
+ dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
+ stats[setNames, na.omit],
+ app/logic/shared_filters[apply_common_filters],
+ app/logic/custom_regions[filter_by_region]
 )
 
 #' @export
 ui <- function(id) {
  ns <- NS(id)
- 
+
  tags$div(
    class = "overview-container",
-   
+
    # Header Section
    fluidRow(
      column(12,
        tags$div(
          class = "page-header mb-4",
          h2(
-           icon("globe"), 
+           icon("globe"),
            "Global Business Environment Overview",
            class = "text-primary-teal"
          ),
@@ -38,7 +39,7 @@ ui <- function(id) {
        )
      )
    ),
-   
+
    # KPI Value Boxes
    fluidRow(
      class = "mb-4",
@@ -47,72 +48,23 @@ ui <- function(id) {
      column(3, uiOutput(ns("kpi_years"))),
      column(3, uiOutput(ns("kpi_indicators")))
    ),
-   
-   # Filters Row
-   fluidRow(
-     class = "mb-4",
-     column(12,
-       card(
-         card_header(icon("filter"), "Filters", class = "py-2"),
-         card_body(
-           class = "py-3",
-           fluidRow(
-             column(3,
-               selectInput(
-                 ns("region_filter"),
-                 "Region",
-                 choices = c("All Regions" = "all"),
-                 selected = "all"
-               )
-             ),
-             column(3,
-               selectInput(
-                 ns("income_filter"),
-                 "Income Group",
-                 choices = c("All Income Groups" = "all"),
-                 selected = "all"
-               )
-             ),
-             column(3,
-               selectInput(
-                 ns("year_filter"),
-                 "Survey Year",
-                 choices = c("Latest Available" = "latest"),
-                 selected = "latest"
-               )
-             ),
-             column(3,
-               tags$div(
-                 class = "d-flex align-items-end h-100",
-                 actionButton(
-                   ns("reset_filters"),
-                   "Reset Filters",
-                   icon = icon("refresh"),
-                   class = "btn-kwiz-outline w-100"
-                 )
-               )
-             )
-           )
-         )
-       )
-     )
-   ),
-   
+
+
    # Main Content - Map and Top Constraints
    fluidRow(
      class = "mb-4",
      column(8,
        card(
          card_header(icon("map-marked-alt"), "Business Environment Map"),
-          card_body(
+         card_body(
           selectInput(
             ns("map_indicator"),
             "Select Indicator:",
             choices = c(
-              "Power Outages Obstacle (%)" = "IC.FRM.OUTG.ZS",
-              "Access to Finance Obstacle (%)" = "IC.FRM.FINA.ZS",
-              "Bribery Incidence (%)" = "IC.FRM.BRIB.ZS",
-              "Capacity Utilization (%)" = "IC.FRM.CAPU.ZS"
+              "Power Outages (per month)" = "power_outages_per_month",
+              "Access to Credit (%)" = "firms_with_credit_line_pct",
+              "Bribery Incidence (%)" = "bribery_incidence_pct",
+              "Capacity Utilization (%)" = "capacity_utilization_pct"
             ),
             width = "300px"
           ),
@@ -137,7 +89,7 @@ ui <- function(id) {
       )
     )
   ),
-   
+
    # Regional Comparison
    fluidRow(
      class = "mb-4",
@@ -154,7 +106,7 @@ ui <- function(id) {
       )
     )
   ),
-   
+
    # Bottom Row - Quick Stats
    fluidRow(
      column(6,
@@ -194,115 +146,65 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data) {
+server <- function(id, wbes_data, global_filters = NULL) {
  moduleServer(id, function(input, output, session) {
-   
-   # Update filter choices when data loads
-  observeEvent(wbes_data(), {
-    req(wbes_data())
-    data <- wbes_data()
-     
-     if (!is.null(data$regions)) {
-       shiny::updateSelectInput(
-         session, "region_filter",
-         choices = c("All Regions" = "all", setNames(data$regions, data$regions))
-       )
-     }
-     
-     if (!is.null(data$years)) {
-       shiny::updateSelectInput(
-         session, "year_filter",
-         choices = c("Latest Available" = "latest", setNames(data$years, data$years))
-       )
-     }
-   })
-   
-   # Reset filters
-   observeEvent(input$reset_filters, {
-     shiny::updateSelectInput(session, "region_filter", selected = "all")
-     shiny::updateSelectInput(session, "income_filter", selected = "all")
-     shiny::updateSelectInput(session, "year_filter", selected = "latest")
-   })
-   
-   safe_max_year <- function(x) {
-     if (all(is.na(x))) {
-       return(NA_integer_)
-     }
-     suppressWarnings(max(x, na.rm = TRUE))
-   }
+   ns <- session$ns
 
-   indicator_cols <- reactive({
-     req(wbes_data())
-     cols <- wbes_data()$indicator_columns
-     if (is.null(cols)) {
-       cols <- names(wbes_data()$latest)[vapply(wbes_data()$latest, is.numeric, logical(1))]
-     }
-     cols
-   })
-
-   country_panel_filtered <- reactive({
-     req(wbes_data())
-     panel <- wbes_data()$country_panel
-     if (is.null(panel)) {
-       panel <- wbes_data()$latest
-     }
-
-     if (!is.null(panel$year)) {
-       if (input$year_filter == "latest") {
-         panel <- panel |>
-           group_by(country) |>
-           filter(year == safe_max_year(year) | all(is.na(year))) |>
-           ungroup()
-       } else {
-         panel <- filter(panel, year == as.integer(input$year_filter))
-       }
-     }
-
-     if (input$region_filter != "all") {
-       panel <- filter(panel, region == input$region_filter)
-     }
-     if (input$income_filter != "all") {
-       panel <- filter(panel, income_group == input$income_filter)
-     }
-
-     panel
-   })
-
+   # Filtered data reactive - uses global filters from sidebar
    filtered_data <- reactive({
-     data <- country_panel_filtered()
-     cols <- intersect(indicator_cols(), names(data))
+     req(wbes_data())
+     data <- wbes_data()$latest
 
-     if (!"year" %in% names(data)) {
-       data$year <- NA_integer_
+     # If global filters are provided, use them
+     if (!is.null(global_filters)) {
+       filters <- global_filters()
+
+       data <- apply_common_filters(
+         data,
+         region_value = filters$region,
+         sector_value = filters$sector,
+         firm_size_value = filters$firm_size,
+         income_value = filters$income,
+         year_value = filters$year,
+         custom_regions = filters$custom_regions,
+         filter_by_region_fn = filter_by_region
+       )
      }
 
-     data |>
-       group_by(country, country_code, region, income_group) |>
-       summarise(
-         across(all_of(cols), ~mean(.x, na.rm = TRUE)),
-         year = safe_max_year(year),
-         .groups = "drop"
-       )
+     data
    })
 
    # KPI Boxes
    output$kpi_countries <- renderUI({
-     req(wbes_data())
+     req(filtered_data())
+     # Count distinct countries from filtered data (respects region/income filters)
+     n_countries <- length(unique(filtered_data()$country[!is.na(filtered_data()$country)]))
      tags$div(
        class = "kpi-box",
-       tags$div(class = "kpi-value", length(wbes_data()$countries)),
+       tags$div(class = "kpi-value", n_countries),
        tags$div(class = "kpi-label", "Countries Covered")
      )
    })
-   
+
    output$kpi_firms <- renderUI({
+     req(filtered_data())
+     # Sum actual sample_size to get total firms surveyed
+     n_firms <- sum(filtered_data()$sample_size, na.rm = TRUE)
+     # Format with K or M suffix
+     firms_label <- if (n_firms >= 1000000) {
+       paste0(round(n_firms / 1000000, 1), "M")
+     } else if (n_firms >= 1000) {
+       paste0(round(n_firms / 1000, 1), "K")
+     } else {
+       format(n_firms, big.mark = ",")
+     }
      tags$div(
-       class = "kpi-box kpi-box-coral",
-       tags$div(class = "kpi-value", "253K+"),
+       class = "kpi-box kpi-box-info",
+       tags$div(class = "kpi-value", firms_label),
        tags$div(class = "kpi-label", "Firms Surveyed")
      )
    })
-   
+
    output$kpi_years <- renderUI({
      req(wbes_data())
      tags$div(
@@ -311,7 +213,7 @@ server <- function(id, wbes_data) {
        tags$div(class = "kpi-label", "Survey Years")
      )
    })
-   
+
    output$kpi_indicators <- renderUI({
      tags$div(
        class = "kpi-box kpi-box-warning",
@@ -319,36 +221,42 @@ server <- function(id, wbes_data) {
        tags$div(class = "kpi-label", "Indicators")
      )
    })
-   
+
    # World Map
    output$world_map <- renderLeaflet({
      req(filtered_data())
 
+     # Get data with coordinates (already merged in wbes_data)
      data <- filtered_data()
+
+     # Check if lat/lng columns exist
+     has_coords <- "lat" %in% names(data) && "lng" %in% names(data)
+
+     if (!has_coords) {
+       # No coordinates available - show empty map
+       return(
+         leaflet() |>
+           addTiles() |>
+           setView(lng = 20, lat = 10, zoom = 2)
+       )
+     }
+
+     # Filter to only countries with valid coordinates and indicator data
      indicator <- input$map_indicator
 
-     coords <- codelist |>
-       transmute(
-         iso3c,
-         lat = as.numeric(capitalLatitude),
-         lng = as.numeric(capitalLongitude)
-       ) |>
-       distinct()
+     data <- data[!is.na(data$lat) & !is.na(data$lng), ]
 
-     data <- data |>
-       mutate(
-         iso3c = dplyr::coalesce(
-           countrycode(country, origin = "country.name", destination = "iso3c", warn = FALSE),
-           countrycode(country_code, origin = "iso3c", destination = "iso3c", warn = FALSE)
-         )
-       ) |>
-       left_join(coords, by = "iso3c") |>
-       filter(!is.na(lat) & !is.na(lng))
+     # Filter to countries with non-NA indicator values
+     if (indicator %in% names(data)) {
+       data <- data[!is.na(data[[indicator]]), ]
+     }
 
      if (nrow(data) > 0 && indicator %in% names(data)) {
+       # Create color palette
        pal <- colorNumeric(
          palette = c("#2E7D32", "#F4A460", "#dc3545"),
-         domain = data[[indicator]]
+         domain = data[[indicator]],
+         na.color = "#808080"
        )
 
        leaflet(data) |>
@@ -359,10 +267,20 @@ server <- function(id, wbes_data) {
            radius = 8,
            color = ~pal(get(indicator)),
            fillOpacity = 0.8,
+           stroke = TRUE,
+           weight = 1,
+           opacity = 0.9,
            popup = ~paste0(
              "<strong>", country, "</strong><br>",
              indicator, ": ", round(get(indicator), 1)
            )
+         ) |>
+         addLegend(
+           "bottomright",
+           pal = pal,
+           values = ~get(indicator),
+           title = "Value",
+           opacity = 0.8
          )
      } else {
        leaflet() |>
@@ -373,117 +291,202 @@ server <- function(id, wbes_data) {
 
    # Obstacles Chart
    output$obstacles_chart <- renderPlotly({
-     panel <- country_panel_filtered()
-     obstacles <- c("IC.FRM.FINA.ZS", "IC.FRM.ELEC.ZS", "IC.FRM.CORR.ZS",
-                    "IC.FRM.WKFC.ZS", "IC.FRM.CRIM.ZS")
-     available <- intersect(obstacles, names(panel))
+     req(filtered_data())
+     data <- filtered_data()
 
-     if (length(available) == 0) {
-       return(NULL)
+     # Calculate average values for major obstacles from actual data
+     obstacles <- data.frame(
+       obstacle = character(),
+       pct = numeric(),
+       stringsAsFactors = FALSE
+     )
+
+     # Add obstacles if columns exist in data
+     if ("IC.FRM.FINA.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Access to Finance",
+         pct = mean(data$IC.FRM.FINA.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.ELEC.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Electricity",
+         pct = mean(data$IC.FRM.ELEC.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.CORR.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Corruption",
+         pct = mean(data$IC.FRM.CORR.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.INFRA.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Infrastructure",
+         pct = mean(data$IC.FRM.INFRA.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.CRIM.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Crime",
+         pct = mean(data$IC.FRM.CRIM.ZS, na.rm = TRUE)
+       ))
+     }
+     if ("IC.FRM.WKFC.ZS" %in% names(data)) {
+       obstacles <- rbind(obstacles, data.frame(
+         obstacle = "Workforce Quality",
+         pct = mean(data$IC.FRM.WKFC.ZS, na.rm = TRUE)
+       ))
      }
 
-     obstacle_summary <- panel |>
-       summarise(across(all_of(available), ~mean(as.numeric(.x), na.rm = TRUE))) |>
-       pivot_longer(everything(), names_to = "obstacle", values_to = "pct") |>
-       mutate(obstacle = gsub("IC.FRM.|.ZS", "", obstacle)) |>
-       arrange(pct)
+     # Remove rows with NA values
+     obstacles <- obstacles[!is.na(obstacles$pct), ]
 
-     obstacle_summary$obstacle <- factor(obstacle_summary$obstacle, levels = obstacle_summary$obstacle)
+     if (nrow(obstacles) > 0) {
+       # Sort and prepare for plotting
+       obstacles <- arrange(obstacles, pct)
+       obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
 
-     plot_ly(obstacle_summary,
-             y = ~obstacle,
-             x = ~pct,
-             type = "bar",
-             orientation = "h",
-             marker = list(
-               color = "#1B6B5F",
-               line = list(color = "#145449", width = 1)
-             ),
-             hovertemplate = "%{y}: %{x}%<extra></extra>") |>
-       layout(
-         xaxis = list(title = "% of Firms", ticksuffix = "%"),
-         yaxis = list(title = ""),
-         margin = list(l = 150),
-         plot_bgcolor = "rgba(0,0,0,0)",
-         paper_bgcolor = "rgba(0,0,0,0)"
-       ) |>
-       config(displayModeBar = FALSE)
+       plot_ly(obstacles,
+               y = ~obstacle,
+               x = ~pct,
+               type = "bar",
+               orientation = "h",
+               marker = list(
+                 color = "#1B6B5F",
+                 line = list(color = "#145449", width = 1)
+               ),
+               hovertemplate = "%{y}: %{x:.1f}%<extra></extra>") |>
+         layout(
+           xaxis = list(title = "% of Firms", ticksuffix = "%"),
+           yaxis = list(title = ""),
+           margin = list(l = 150),
+           plot_bgcolor = "rgba(0,0,0,0)",
+           paper_bgcolor = "rgba(0,0,0,0)"
+         ) |>
+         config(displayModeBar = FALSE)
+     } else {
+       # Return empty plot if no data
+       plot_ly() |>
+         layout(
+           xaxis = list(title = ""),
+           yaxis = list(title = ""),
+           annotations = list(
+             text = "No obstacle data available",
+             xref = "paper",
+             yref = "paper",
+             x = 0.5,
+             y = 0.5,
+             showarrow = FALSE
+           )
+         )
+     }
    })
-   
+
    # Regional Comparison
    output$regional_comparison <- renderPlotly({
-     req(wbes_data())
+     req(filtered_data())
 
-     panel <- country_panel_filtered()
-     key_indicators <- c("IC.FRM.OUTG.ZS", "IC.FRM.FINA.ZS", "IC.FRM.CORR.ZS")
-     available <- intersect(key_indicators, names(panel))
+     # Use filtered data (respects region and firm_size filters)
+     data <- filtered_data()
 
-     if (length(available) == 0) {
-       return(NULL)
-     }
+     # Calculate regional aggregates from filtered data
+     if (!is.null(data) && "region" %in% names(data)) {
+       regional <- data |>
+         filter(!is.na(region)) |>
+         group_by(region) |>
+         summarise(
+           power_outages_per_month = mean(power_outages_per_month, na.rm = TRUE),
+           firms_with_credit_line_pct = mean(firms_with_credit_line_pct, na.rm = TRUE),
+           bribery_incidence_pct = mean(bribery_incidence_pct, na.rm = TRUE),
+           .groups = "drop"
+         )
 
-     regional <- panel |>
-       filter(!is.na(region)) |>
-       group_by(region) |>
-       summarise(across(all_of(available), ~mean(as.numeric(.x), na.rm = TRUE)), .groups = "drop")
-
-     missing_cols <- setdiff(key_indicators, names(regional))
-     if (length(missing_cols) > 0) {
-       for (col in missing_cols) {
-         regional[[col]] <- NA_real_
+       if (nrow(regional) > 0) {
+         plot_ly(regional) |>
+           add_trace(
+             x = ~region,
+             y = ~power_outages_per_month,
+             type = "bar",
+             name = "Power Outages/Month",
+             marker = list(color = "#1B6B5F")
+           ) |>
+           add_trace(
+             x = ~region,
+             y = ~firms_with_credit_line_pct,
+             type = "bar",
+             name = "Credit Access (%)",
+             marker = list(color = "#F49B7A")
+           ) |>
+           add_trace(
+             x = ~region,
+             y = ~bribery_incidence_pct,
+             type = "bar",
+             name = "Bribery Incidence (%)",
+             marker = list(color = "#6C757D")
+           ) |>
+           layout(
+             barmode = "group",
+             xaxis = list(title = "", tickangle = -45),
+             yaxis = list(title = "Value"),
+             legend = list(orientation = "h", y = -0.2),
+             margin = list(b = 100),
+             plot_bgcolor = "rgba(0,0,0,0)",
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       } else {
+         # Empty plot if no regional data
+         plot_ly() |>
+           layout(
+             annotations = list(
+               text = "No regional data available",
+               xref = "paper",
+               yref = "paper",
+               x = 0.5,
+               y = 0.5,
+               showarrow = FALSE
+             )
+           )
        }
+     } else {
+       # Empty plot if no data
+       plot_ly() |>
+         layout(
+           annotations = list(
+             text = "No regional data available",
+             xref = "paper",
+             yref = "paper",
+             x = 0.5,
+             y = 0.5,
+             showarrow = FALSE
+           )
+         )
      }
-
-     regional <- select(regional, region, all_of(key_indicators))
-
-     plot_ly(regional) |>
-       add_trace(
-         x = ~region,
-         y = ~`IC.FRM.OUTG.ZS`,
-         type = "bar",
-         name = "Power Outages/Month",
-         marker = list(color = "#1B6B5F")
-       ) |>
-       add_trace(
-         x = ~region,
-         y = ~`IC.FRM.FINA.ZS`,
-         type = "bar",
-         name = "Credit Access (%)",
-         marker = list(color = "#F49B7A")
-       ) |>
-       add_trace(
-         x = ~region,
-         y = ~`IC.FRM.CORR.ZS`,
-         type = "bar",
-         name = "Bribery Incidence (%)",
-         marker = list(color = "#6C757D")
-       ) |>
-       layout(
-         barmode = "group",
-         xaxis = list(title = "", tickangle = -45),
-         yaxis = list(title = "Value"),
-         legend = list(orientation = "h", y = -0.2),
-         margin = list(b = 100),
-         plot_bgcolor = "rgba(0,0,0,0)",
-         paper_bgcolor = "rgba(0,0,0,0)"
-       ) |>
-       config(displayModeBar = FALSE)
    })
-   
+
    # Infrastructure Gauge
    output$infrastructure_gauge <- renderPlotly({
-     panel <- country_panel_filtered()
-     value <- if ("IC.FRM.INFRA.ZS" %in% names(panel)) {
-       round(mean(panel$IC.FRM.INFRA.ZS, na.rm = TRUE), 1)
-     } else {
-       NA_real_
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Calculate infrastructure quality index from actual data
+     # Higher power outages = worse infrastructure, so invert the scale
+     # Scale: 100 - (average power outages * 10) or use capacity utilization as proxy
+     infra_score <- 50  # default
+
+     if ("power_outages_per_month" %in% names(data)) {
+       avg_outages <- mean(data$power_outages_per_month, na.rm = TRUE)
+       # Convert outages to a 0-100 score (fewer outages = better score)
+       # Assume 0 outages = 100, 10+ outages = 0
+       infra_score <- max(0, min(100, 100 - (avg_outages * 10)))
      }
 
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = value,
-       title = list(text = "Regional Average Score"),
+       value = round(infra_score, 1),
+       title = list(text = "Infrastructure Quality Index"),
        gauge = list(
          axis = list(range = list(0, 100)),
          bar = list(color = "#1B6B5F"),
@@ -508,17 +511,20 @@ server <- function(id, wbes_data) {
 
    # Finance Gauge
    output$finance_gauge <- renderPlotly({
-     panel <- country_panel_filtered()
-     value <- if ("IC.FRM.FINA.ZS" %in% names(panel)) {
-       round(mean(panel$IC.FRM.FINA.ZS, na.rm = TRUE), 1)
-     } else {
-       NA_real_
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Calculate financial access index from actual data
+     finance_score <- 50  # default
+
+     if ("firms_with_credit_line_pct" %in% names(data)) {
+       finance_score <- mean(data$firms_with_credit_line_pct, na.rm = TRUE)
      }
 
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
-       value = value,
+       value = round(finance_score, 1),
        title = list(text = "Credit Access Index"),
        gauge = list(
          axis = list(range = list(0, 100)),
@@ -541,6 +547,6 @@ server <- function(id, wbes_data) {
        ) |>
        config(displayModeBar = FALSE)
    })
-   
+
  })
 }

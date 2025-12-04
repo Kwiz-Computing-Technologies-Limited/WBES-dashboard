@@ -1,12 +1,12 @@
-# app/view/mod_country_profile.R
-# Country Profile Deep Dive Module
+# app/view/mod_regional_profile.R
+# Regional Profile Deep Dive Module
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, select, arrange, mutate],
+  dplyr[filter, select, arrange, mutate, group_by, summarise, n],
   stats[setNames],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region]
@@ -17,28 +17,28 @@ ui <- function(id) {
   ns <- NS(id)
 
   tags$div(
-    class = "country-profile-container",
+    class = "regional-profile-container",
 
     fluidRow(
       column(12,
         tags$div(
           class = "page-header mb-4",
-          h2(icon("flag"), "Country Profile", class = "text-primary-teal"),
+          h2(icon("globe-africa"), "Regional Profile", class = "text-primary-teal"),
           p(class = "lead text-muted",
-            "In-depth analysis of business environment indicators for individual countries")
+            "In-depth analysis of business environment indicators across geographic regions")
         )
       )
     ),
 
-    # Country Selector
+    # Region Selector
     fluidRow(
       class = "mb-4",
       column(4,
         card(
           card_body(
             selectInput(
-              ns("country_select"),
-              "Select Country",
+              ns("region_select"),
+              "Select Region",
               choices = NULL,
               width = "100%"
             )
@@ -46,7 +46,7 @@ ui <- function(id) {
         )
       ),
       column(8,
-        uiOutput(ns("country_summary"))
+        uiOutput(ns("region_summary"))
       )
     ),
 
@@ -60,7 +60,7 @@ ui <- function(id) {
             plotlyOutput(ns("radar_chart"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "The radar highlights how the selected country scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
+              "The radar highlights how the selected region scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
             )
           )
         )
@@ -90,7 +90,7 @@ ui <- function(id) {
                   plotlyOutput(ns("infra_chart1"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "Bars rank which infrastructure services firms flag as biggest obstacles, indicating where reliability investments are needed."
+                    "Bars rank which infrastructure services firms in this region flag as biggest obstacles."
                   )
                 )
               ),
@@ -99,7 +99,7 @@ ui <- function(id) {
                   plotlyOutput(ns("infra_chart2"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "The pie shows how firms power operations (grid, generator, mixed), revealing dependence on backup generation."
+                    "The pie shows how firms in this region power operations (grid, generator, mixed)."
                   )
                 )
               )
@@ -115,7 +115,7 @@ ui <- function(id) {
                   plotlyOutput(ns("finance_chart1"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "Financial product uptake across credit and deposit instruments highlights where inclusion gaps remain."
+                    "Financial product uptake across credit and deposit instruments for this region."
                   )
                 )
               ),
@@ -124,7 +124,7 @@ ui <- function(id) {
                   plotlyOutput(ns("finance_chart2"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "The gauge reports average collateral required for loans; higher values signal tighter lending conditions."
+                    "The gauge reports average collateral required for loans in this region."
                   )
                 )
               )
@@ -140,7 +140,7 @@ ui <- function(id) {
                   plotlyOutput(ns("gov_chart1"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "Bribery prevalence by transaction type surfaces which interactions with government most often trigger informal payments."
+                    "Bribery prevalence by transaction type for firms in this region."
                   )
                 )
               ),
@@ -149,7 +149,7 @@ ui <- function(id) {
                   plotlyOutput(ns("gov_chart2"), height = "300px"),
                   p(
                     class = "text-muted small mt-2",
-                    "Management time spent on regulatory tasks highlights the bureaucracy burden affecting daily operations."
+                    "Management time spent on regulatory tasks in this region."
                   )
                 )
               )
@@ -157,13 +157,13 @@ ui <- function(id) {
           ),
 
           nav_panel(
-            title = "Time Series",
-            icon = icon("chart-line"),
+            title = "Country Distribution",
+            icon = icon("flag"),
             tagList(
-              plotlyOutput(ns("time_series"), height = "400px"),
+              plotlyOutput(ns("country_dist"), height = "400px"),
               p(
                 class = "text-muted small mt-2",
-                "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."
+                "Shows the distribution of surveyed firms across countries within this region."
               )
             )
           )
@@ -177,10 +177,10 @@ ui <- function(id) {
 server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Filtered data with global filters applied first
+    # Filtered data with global filters applied
     filtered_data <- reactive({
       req(wbes_data())
-      data <- wbes_data()$latest
+      data <- wbes_data()$country_region
 
       # Apply global filters if provided
       if (!is.null(global_filters)) {
@@ -200,46 +200,41 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data
     })
 
-    # Update country choices from filtered data
-    observeEvent(filtered_data(), {
-      req(filtered_data())
-      countries <- filtered_data()$country |>
-        unique() |>
-        stats::na.omit() |>
-        as.character() |>
-        sort()
+    # Update region choices
+    observeEvent(wbes_data(), {
+      req(wbes_data())
+      regions <- wbes_data()$regions
 
       shiny::updateSelectInput(
-        session, "country_select",
-        choices = setNames(countries, countries),
-        selected = if(length(countries) > 0) countries[1] else NULL
+        session, "region_select",
+        choices = setNames(regions, regions),
+        selected = if(length(regions) > 0) regions[1] else NULL
       )
     })
 
-    # Selected country data
-    country_data <- reactive({
-      req(filtered_data(), input$country_select)
-      filtered_data() |> filter(!is.na(country) & country == input$country_select)
+    # Selected region data
+    region_data <- reactive({
+      req(filtered_data(), input$region_select)
+      data <- filtered_data()
+      data |> filter(!is.na(region) & region == input$region_select)
     })
 
-    # Country summary card
-    output$country_summary <- renderUI({
-      req(country_data())
-      d <- country_data()
+    # Region summary card
+    output$region_summary <- renderUI({
+      req(region_data())
+      d <- region_data()
 
-      # Extract values with fallback handling for NA
-      region_val <- if (!is.null(d$region) && length(d$region) > 0 && !is.na(d$region[1])) {
-        as.character(d$region[1])
+      # Count countries and firms in this region
+      countries_count <- if (!is.null(d$country) && length(d$country) > 0) {
+        length(unique(d$country[!is.na(d$country)]))
       } else {
-        "N/A"
+        0
       }
 
-      # For firms surveyed, use sample_size from the aggregated data
-      # Note: sample_size represents the number of firms in this country's latest survey
-      firms_val <- if (!is.null(d$sample_size) && length(d$sample_size) > 0 && !is.na(d$sample_size[1])) {
-        format(round(d$sample_size[1]), big.mark = ",")
+      firms_count <- if (!is.null(d$sample_size) && length(d$sample_size) > 0) {
+        sum(d$sample_size, na.rm = TRUE)
       } else {
-        "N/A"
+        0
       }
 
       tags$div(
@@ -249,14 +244,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
           fluidRow(
             column(6,
               tags$div(class = "kpi-box",
-                tags$div(class = "kpi-value", region_val),
-                tags$div(class = "kpi-label", "Region")
+                tags$div(class = "kpi-value", countries_count),
+                tags$div(class = "kpi-label", "Countries in Region")
               )
             ),
             column(6,
               tags$div(class = "kpi-box kpi-box-success",
-                tags$div(class = "kpi-value", firms_val),
-                tags$div(class = "kpi-label", "Firms Surveyed")
+                tags$div(class = "kpi-value", format(firms_count, big.mark = ",")),
+                tags$div(class = "kpi-label", "Total Firms Surveyed")
               )
             )
           )
@@ -266,8 +261,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     # Radar Chart
     output$radar_chart <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
       # Check if we have any data at all
       if (nrow(d) == 0) {
@@ -278,7 +273,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
             yaxis = list(visible = FALSE),
             annotations = list(
               list(
-                text = "No data available for this country",
+                text = "No data available for this region",
                 showarrow = FALSE,
                 font = list(size = 14, color = "#666666")
               )
@@ -287,18 +282,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
           ) |>
           config(displayModeBar = FALSE)
       } else {
-        # Helper function to safely extract and normalize values - returns NA if no data
-        # WBES variable mappings:
-        # - power_outages_per_month: from in2 (infrastructure quality, inverted)
-        # - firms_with_credit_line_pct: from fin14 (finance access)
-        # - bribery_incidence_pct: from graft3 (corruption, inverted for "Low Corruption")
-        # - capacity_utilization_pct: from t3 (operational efficiency)
-        # - export_firms_pct: from tr10 (export orientation)
-        # - female_ownership_pct: from gend1 (gender equity)
-        safe_val <- function(col, scale = 1, invert = FALSE) {
-          if (col %in% names(d) && !is.na(d[[col]][1])) {
-            val <- d[[col]][1] * scale
-            if (invert) 100 - min(val, 100) else min(val, 100)
+        # Helper function to safely aggregate values - returns NA if no data
+        safe_mean <- function(col, scale = 1, invert = FALSE) {
+          if (col %in% names(d)) {
+            values <- d[[col]][!is.na(d[[col]])]
+            if (length(values) > 0) {
+              val <- mean(values, na.rm = TRUE) * scale
+              if (invert) 100 - min(val, 100) else min(val, 100)
+            } else {
+              NA_real_
+            }
           } else {
             NA_real_
           }
@@ -306,12 +299,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
         # Calculate indicators - NA when data missing
         indicators <- c(
-          "Infrastructure" = safe_val("power_outages_per_month", scale = 5, invert = TRUE),
-          "Finance Access" = safe_val("firms_with_credit_line_pct"),
-          "Low Corruption" = safe_val("bribery_incidence_pct", invert = TRUE),
-          "Capacity Use" = safe_val("capacity_utilization_pct"),
-          "Export Orient." = safe_val("export_firms_pct", scale = 2),
-          "Gender Equity" = safe_val("female_ownership_pct", scale = 2)
+          "Infrastructure" = safe_mean("power_outages_per_month", scale = 5, invert = TRUE),
+          "Finance Access" = safe_mean("firms_with_credit_line_pct"),
+          "Low Corruption" = safe_mean("bribery_incidence_pct", invert = TRUE),
+          "Capacity Use" = safe_mean("capacity_utilization_pct"),
+          "Export Orient." = safe_mean("export_firms_pct", scale = 2),
+          "Gender Equity" = safe_mean("female_ownership_pct", scale = 2)
         )
 
         # Check if all indicators are NA
@@ -416,25 +409,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     # Key Metrics
     output$key_metrics <- renderUI({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Helper to safely extract metric values with NA handling
       get_metric <- function(col) {
-        if (col %in% names(d) && length(d[[col]]) > 0 && !is.na(d[[col]][1])) {
-          round(d[[col]][1], 1)
+        if (col %in% names(d)) {
+          values <- d[[col]][!is.na(d[[col]])]
+          if (length(values) > 0) {
+            round(mean(values, na.rm = TRUE), 1)
+          } else {
+            "N/A"
+          }
         } else {
           "N/A"
         }
       }
 
-      # WBES variable mappings documented inline:
-      # power_outages_per_month: from in2 (Number of power outages per month)
-      # avg_outage_duration_hrs: from in3 (Average duration of power outages in hours)
-      # firms_with_credit_line_pct: from fin14 (% firms with line of credit)
-      # bribery_incidence_pct: from graft3 (% firms experiencing bribery requests)
-      # capacity_utilization_pct: from t3 (Capacity utilization rate)
-      # female_ownership_pct: from gend1 (% female ownership)
       metrics <- list(
         list("Power Outages/Month", get_metric("power_outages_per_month"), "bolt"),
         list("Outage Duration (hrs)", get_metric("avg_outage_duration_hrs"), "clock"),
@@ -457,24 +447,20 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # Infrastructure Charts
-    # Uses actual WBES data: elec (electricity obstacle), c16 (water), d4 (transport)
     output$infra_chart1 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Extract actual obstacle scores with fallback to 0 if missing
       obstacles <- data.frame(
         category = c("Electricity", "Water", "Transport"),
         severity = c(
-          if ("electricity_obstacle" %in% names(d) && !is.na(d$electricity_obstacle[1])) d$electricity_obstacle[1] else 0,
-          if ("water_obstacle" %in% names(d) && !is.na(d$water_obstacle[1])) d$water_obstacle[1] else 0,
-          if ("transport_obstacle" %in% names(d) && !is.na(d$transport_obstacle[1])) d$transport_obstacle[1] else 0
+          mean(d$electricity_obstacle, na.rm = TRUE),
+          mean(d$water_obstacle, na.rm = TRUE),
+          mean(d$transport_obstacle, na.rm = TRUE)
         ),
         stringsAsFactors = FALSE
       )
-
-      # Only show bars for obstacles with data
-      obstacles <- obstacles[obstacles$severity > 0, ]
+      obstacles <- obstacles[obstacles$severity > 0 & !is.na(obstacles$severity), ]
 
       if (nrow(obstacles) > 0) {
         plot_ly(obstacles,
@@ -484,7 +470,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
                 marker = list(color = "#1B6B5F")) |>
           layout(
             title = list(text = "Infrastructure Obstacles", font = list(size = 14)),
-            yaxis = list(title = "Severity Score (0-10)"),
+            yaxis = list(title = "Avg Severity Score"),
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
@@ -502,39 +488,21 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$infra_chart2 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Calculate power source distribution based on actual data
-      # generator_share_pct (from in7) indicates % electricity from generator
-      # firms_with_generator_pct (from in9) indicates % firms with generator
-      generator_pct <- if ("firms_with_generator_pct" %in% names(d) && !is.na(d$firms_with_generator_pct[1])) {
-        d$firms_with_generator_pct[1]
-      } else 0
+      generator_pct <- mean(d$firms_with_generator_pct, na.rm = TRUE)
+      generator_share <- mean(d$generator_share_pct, na.rm = TRUE)
 
-      generator_share <- if ("generator_share_pct" %in% names(d) && !is.na(d$generator_share_pct[1])) {
-        d$generator_share_pct[1]
-      } else 0
-
-      # Estimate distribution: If generator usage is high, more firms rely on it
-      # This is an estimation based on available data
-      values <- if (generator_pct > 0 || generator_share > 0) {
-        c(
-          max(generator_pct, generator_share),  # Generator primary/heavy use
-          max(0, 100 - max(generator_pct, generator_share) - 10),  # Grid only
-          10  # Mixed (estimated)
-        )
+      values <- if (!is.na(generator_pct) || !is.na(generator_share)) {
+        gen_val <- max(generator_pct, generator_share, na.rm = TRUE)
+        c(gen_val, max(0, 100 - gen_val - 10), 10)
       } else {
-        c(0, 85, 15)  # Default: mostly grid with some mixed
+        c(0, 85, 15)
       }
 
-      # Filter out zero values
       labels <- c("Generator (Primary)", "Grid Only", "Mixed")
-      data_df <- data.frame(
-        labels = labels,
-        values = values,
-        stringsAsFactors = FALSE
-      )
+      data_df <- data.frame(labels = labels, values = values)
       data_df <- data_df[data_df$values > 0, ]
 
       if (nrow(data_df) > 0) {
@@ -563,26 +531,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # Finance Charts
-    # Uses actual WBES data: fin15 (bank account), fin14 (credit line),
-    # fin16 (loan application), fin9 (overdraft)
     output$finance_chart1 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Extract actual financial access data
       products <- list()
-
-      if ("firms_with_bank_account_pct" %in% names(d) && !is.na(d$firms_with_bank_account_pct[1])) {
-        products$`Bank Account` <- d$firms_with_bank_account_pct[1]
+      if ("firms_with_bank_account_pct" %in% names(d)) {
+        val <- mean(d$firms_with_bank_account_pct, na.rm = TRUE)
+        if (!is.na(val)) products$`Bank Account` <- val
       }
-      if ("firms_with_credit_line_pct" %in% names(d) && !is.na(d$firms_with_credit_line_pct[1])) {
-        products$`Credit Line` <- d$firms_with_credit_line_pct[1]
+      if ("firms_with_credit_line_pct" %in% names(d)) {
+        val <- mean(d$firms_with_credit_line_pct, na.rm = TRUE)
+        if (!is.na(val)) products$`Credit Line` <- val
       }
-      if ("loan_application_pct" %in% names(d) && !is.na(d$loan_application_pct[1])) {
-        products$`Applied for Loan` <- d$loan_application_pct[1]
+      if ("loan_application_pct" %in% names(d)) {
+        val <- mean(d$loan_application_pct, na.rm = TRUE)
+        if (!is.na(val)) products$`Applied for Loan` <- val
       }
-      if ("overdraft_facility_pct" %in% names(d) && !is.na(d$overdraft_facility_pct[1])) {
-        products$`Overdraft Facility` <- d$overdraft_facility_pct[1]
+      if ("overdraft_facility_pct" %in% names(d)) {
+        val <- mean(d$overdraft_facility_pct, na.rm = TRUE)
+        if (!is.na(val)) products$`Overdraft Facility` <- val
       }
 
       if (length(products) > 0) {
@@ -618,12 +586,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$finance_chart2 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Get collateral required percentage from actual data
-      collateral_val <- if ("collateral_required_pct" %in% names(d) && !is.na(d$collateral_required_pct[1])) {
-        d$collateral_required_pct[1]
+      collateral_val <- if ("collateral_required_pct" %in% names(d)) {
+        mean(d$collateral_required_pct, na.rm = TRUE)
       } else {
         NA
       }
@@ -651,11 +618,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           layout(
             annotations = list(
               text = "No collateral data available",
-              xref = "paper",
-              yref = "paper",
-              x = 0.5,
-              y = 0.5,
-              showarrow = FALSE
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
             ),
             paper_bgcolor = "rgba(0,0,0,0)"
           )
@@ -663,28 +627,30 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # Governance Charts
-    # Uses actual WBES data: j7a-j7e (bribery for different transaction types)
     output$gov_chart1 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Extract actual bribery data by transaction type
       bribes <- list()
-
-      if ("bribe_for_permit" %in% names(d) && !is.na(d$bribe_for_permit[1])) {
-        bribes$`Construction Permits` <- d$bribe_for_permit[1]
+      if ("bribe_for_permit" %in% names(d)) {
+        val <- mean(d$bribe_for_permit, na.rm = TRUE)
+        if (!is.na(val)) bribes$`Construction Permits` <- val
       }
-      if ("bribe_for_utilities" %in% names(d) && !is.na(d$bribe_for_utilities[1])) {
-        bribes$`Utility Connection` <- d$bribe_for_utilities[1]
+      if ("bribe_for_utilities" %in% names(d)) {
+        val <- mean(d$bribe_for_utilities, na.rm = TRUE)
+        if (!is.na(val)) bribes$`Utility Connection` <- val
       }
-      if ("bribe_for_import" %in% names(d) && !is.na(d$bribe_for_import[1])) {
-        bribes$`Import License` <- d$bribe_for_import[1]
+      if ("bribe_for_import" %in% names(d)) {
+        val <- mean(d$bribe_for_import, na.rm = TRUE)
+        if (!is.na(val)) bribes$`Import License` <- val
       }
-      if ("bribe_for_tax" %in% names(d) && !is.na(d$bribe_for_tax[1])) {
-        bribes$`Tax Assessment` <- d$bribe_for_tax[1]
+      if ("bribe_for_tax" %in% names(d)) {
+        val <- mean(d$bribe_for_tax, na.rm = TRUE)
+        if (!is.na(val)) bribes$`Tax Assessment` <- val
       }
-      if ("bribe_for_contract" %in% names(d) && !is.na(d$bribe_for_contract[1])) {
-        bribes$`Government Contract` <- d$bribe_for_contract[1]
+      if ("bribe_for_contract" %in% names(d)) {
+        val <- mean(d$bribe_for_contract, na.rm = TRUE)
+        if (!is.na(val)) bribes$`Government Contract` <- val
       }
 
       if (length(bribes) > 0) {
@@ -721,18 +687,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$gov_chart2 <- renderPlotly({
-      req(country_data())
-      d <- country_data()
+      req(region_data())
+      d <- region_data()
 
-      # Extract management time spent on regulations (from j2)
-      # Note: WBES typically has one aggregate measure for time spent on regulations
-      mgmt_time <- if ("mgmt_time_regulations_pct" %in% names(d) && !is.na(d$mgmt_time_regulations_pct[1])) {
-        d$mgmt_time_regulations_pct[1]
-      } else 0
+      mgmt_time <- if ("mgmt_time_regulations_pct" %in% names(d)) {
+        mean(d$mgmt_time_regulations_pct, na.rm = TRUE)
+      } else {
+        NA
+      }
 
-      if (mgmt_time > 0) {
-        # Show the aggregate measure
-        # Break it down into estimated components (this is illustrative)
+      if (!is.na(mgmt_time) && mgmt_time > 0) {
         plot_data <- data.frame(
           activity = c("Govt Regulations"),
           pct = c(mgmt_time),
@@ -764,31 +728,54 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
     })
 
-    # Time Series
-    output$time_series <- renderPlotly({
-      req(wbes_data(), input$country_select)
+    # Country Distribution
+    output$country_dist <- renderPlotly({
+      req(region_data())
+      d <- region_data()
 
-      panel <- wbes_data()$country_panel
-      panel <- filter(panel, country == input$country_select)
+      if ("country" %in% names(d) && "sample_size" %in% names(d)) {
+        country_counts <- d |>
+          group_by(country) |>
+          summarise(firms = sum(sample_size, na.rm = TRUE), .groups = "drop") |>
+          arrange(desc(firms)) |>
+          filter(!is.na(country), firms > 0)
 
-      plot_ly(panel, x = ~year) |>
-        add_trace(y = ~power_outages_per_month, name = "Power Outages",
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#1B6B5F")) |>
-        add_trace(y = ~firms_with_credit_line_pct, name = "Credit Access %",
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#F49B7A")) |>
-        add_trace(y = ~bribery_incidence_pct, name = "Bribery %",
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#6C757D")) |>
-        layout(
-          title = list(text = "Indicator Trends Over Time", font = list(size = 16)),
-          xaxis = list(title = "Year"),
-          yaxis = list(title = "Value"),
-          legend = list(orientation = "h", y = -0.15),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+        if (nrow(country_counts) > 0) {
+          plot_ly(country_counts,
+                  x = ~country,
+                  y = ~firms,
+                  type = "bar",
+                  marker = list(color = "#1B6B5F")) |>
+            layout(
+              title = list(text = "Countries in Region by Firm Count", font = list(size = 16)),
+              xaxis = list(title = "", tickangle = -45),
+              yaxis = list(title = "Number of Firms"),
+              margin = list(b = 120),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          plot_ly() |>
+            layout(
+              annotations = list(
+                text = "No country distribution data available",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            )
+        }
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No country distribution data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
     })
 
   })

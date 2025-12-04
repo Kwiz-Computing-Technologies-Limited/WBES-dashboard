@@ -15,10 +15,10 @@ box::use(
 #' @export
 ui <- function(id) {
   ns <- NS(id)
-  
+
   div(
     class = "container-fluid py-4",
-    
+
     # Header
     fluidRow(
       column(12,
@@ -30,7 +30,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # KPI Cards
     fluidRow(
       class = "mb-4",
@@ -39,7 +39,7 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_regions"))),
       column(3, uiOutput(ns("kpi_indicators")))
     ),
-    
+
     # Filters
     fluidRow(
       class = "mb-4",
@@ -50,7 +50,7 @@ ui <- function(id) {
             class = "py-2",
             fluidRow(
               column(3, selectInput(ns("region"), "Region", choices = c("All" = "all"))),
-              column(3, selectInput(ns("income"), "Income Group", choices = c("All" = "all"))),
+              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
               column(3, selectInput(ns("indicator"), "Map Indicator",
                 choices = c(
                   "Power Outages" = "IC.FRM.OUTG.ZS",
@@ -65,7 +65,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Map and Obstacles
     fluidRow(
       class = "mb-4",
@@ -82,7 +82,7 @@ ui <- function(id) {
         )
       )
     ),
-    
+
     # Regional Comparison
     fluidRow(
       column(12,
@@ -98,34 +98,40 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data) {
   moduleServer(id, function(input, output, session) {
-    
+
     # Update filters when data loads
     observeEvent(wbes_data(), {
       req(wbes_data())
       d <- wbes_data()$latest
-      
-      regions <- c("All" = "all", setNames(unique(d$region), unique(d$region)))
-      incomes <- c("All" = "all", setNames(unique(d$income_group), unique(d$income_group)))
-      
+      # Filter out NA values from region and firm_size before creating dropdown choices
+      regions_vec <- unique(d$region) |> stats::na.omit() |> as.character() |> sort()
+      firm_sizes_vec <- unique(d$firm_size) |> stats::na.omit() |> as.character() |> sort()
+      regions <- c("All" = "all", setNames(regions_vec, regions_vec))
+      firm_sizes <- c("All" = "all", setNames(firm_sizes_vec, firm_sizes_vec))
+
       shiny::updateSelectInput(session, "region", choices = regions)
-      shiny::updateSelectInput(session, "income", choices = incomes)
+      shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
-    
+
     # Filtered data
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all") d <- filter(d, region == input$region)
-      if (input$income != "all") d <- filter(d, income_group == input$income)
+      if (input$region != "all" && !is.na(input$region)) {
+        d <- d |> filter(!is.na(region) & region == input$region)
+      }
+      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+        d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
+      }
       d
     })
-    
+
     # Reset filters
     observeEvent(input$reset, {
       shiny::updateSelectInput(session, "region", selected = "all")
-      shiny::updateSelectInput(session, "income", selected = "all")
+      shiny::updateSelectInput(session, "firm_size", selected = "all")
     })
-    
+
     # KPIs
     output$kpi_countries <- renderUI({
       req(wbes_data())
@@ -136,7 +142,7 @@ server <- function(id, wbes_data) {
         )
       )
     })
-    
+
     output$kpi_firms <- renderUI({
       div(class = "card bg-secondary text-white h-100",
         div(class = "card-body text-center",
@@ -145,7 +151,7 @@ server <- function(id, wbes_data) {
         )
       )
     })
-    
+
     output$kpi_regions <- renderUI({
       req(wbes_data())
       div(class = "card bg-success text-white h-100",
@@ -155,7 +161,7 @@ server <- function(id, wbes_data) {
         )
       )
     })
-    
+
     output$kpi_indicators <- renderUI({
       div(class = "card bg-info text-white h-100",
         div(class = "card-body text-center",
@@ -164,11 +170,11 @@ server <- function(id, wbes_data) {
         )
       )
     })
-    
+
     # World Map
     output$world_map <- renderLeaflet({
       req(filtered())
-      
+
       # Country coordinates (sample)
       coords <- data.frame(
         country = c("Kenya", "Nigeria", "South Africa", "Ghana", "Ethiopia",
@@ -178,15 +184,15 @@ server <- function(id, wbes_data) {
         lng = c(36.82, 7.40, 22.94, -0.19, 40.49,
                 78.96, 90.36, -51.93, -102.55, 19.14)
       )
-      
+
       d <- filtered()
       indicator <- input$indicator
       d <- merge(d, coords, by = "country", all.x = TRUE)
       d <- d[!is.na(d$lat), ]
-      
+
       if (nrow(d) > 0 && indicator %in% names(d)) {
         pal <- colorNumeric(c("#2E7D32", "#F4A460", "#dc3545"), domain = d[[indicator]])
-        
+
         leaflet(d) |>
           addTiles() |>
           setView(lng = 20, lat = 10, zoom = 2) |>
@@ -194,15 +200,15 @@ server <- function(id, wbes_data) {
             lng = ~lng, lat = ~lat, radius = 10,
             color = ~pal(get(indicator)),
             fillOpacity = 0.8,
-            popup = ~paste0("<b>", country, "</b><br>", 
-                           gsub("IC.FRM.|.ZS", "", indicator), ": ", 
+            popup = ~paste0("<b>", country, "</b><br>",
+                           gsub("IC.FRM.|.ZS", "", indicator), ": ",
                            round(get(indicator), 1), "%")
           )
       } else {
         leaflet() |> addTiles() |> setView(lng = 20, lat = 10, zoom = 2)
       }
     })
-    
+
     # Obstacles Chart
     output$obstacles_chart <- renderPlotly({
       obstacles <- data.frame(
@@ -212,7 +218,7 @@ server <- function(id, wbes_data) {
       )
       obstacles <- arrange(obstacles, pct)
       obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
-      
+
       plot_ly(obstacles, y = ~obstacle, x = ~pct, type = "bar",
               orientation = "h", marker = list(color = "#1B6B5F")) |>
         layout(
@@ -223,14 +229,14 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
     # Regional Chart
     output$regional_chart <- renderPlotly({
       req(wbes_data())
-      
+
       regional <- wbes_data()$regional
       if (is.null(regional)) return(NULL)
-      
+
       plot_ly(regional) |>
         add_trace(x = ~region, y = ~IC.FRM.OUTG.ZS, name = "Power Issues",
                   type = "bar", marker = list(color = "#1B6B5F")) |>
@@ -248,6 +254,6 @@ server <- function(id, wbes_data) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
   })
 }
