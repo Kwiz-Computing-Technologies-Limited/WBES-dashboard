@@ -247,45 +247,149 @@ server <- function(id, wbes_data) {
       req(country_data())
       d <- country_data()
 
-      # Helper function to safely extract and normalize values
-      safe_val <- function(col, default = 0, scale = 1, invert = FALSE) {
-        val <- if (col %in% names(d) && !is.na(d[[col]][1])) d[[col]][1] * scale else default
-        if (invert) 100 - min(val, 100) else min(val, 100)
+      # Check if we have any data at all
+      if (nrow(d) == 0) {
+        # Create empty plot with message
+        plot_ly() |>
+          layout(
+            xaxis = list(visible = FALSE),
+            yaxis = list(visible = FALSE),
+            annotations = list(
+              list(
+                text = "No data available for this country",
+                showarrow = FALSE,
+                font = list(size = 14, color = "#666666")
+              )
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        # Helper function to safely extract and normalize values - returns NA if no data
+        # WBES variable mappings:
+        # - power_outages_per_month: from in2 (infrastructure quality, inverted)
+        # - firms_with_credit_line_pct: from fin14 (finance access)
+        # - bribery_incidence_pct: from graft3 (corruption, inverted for "Low Corruption")
+        # - capacity_utilization_pct: from t3 (operational efficiency)
+        # - export_firms_pct: from tr10 (export orientation)
+        # - female_ownership_pct: from gend1 (gender equity)
+        safe_val <- function(col, scale = 1, invert = FALSE) {
+          if (col %in% names(d) && !is.na(d[[col]][1])) {
+            val <- d[[col]][1] * scale
+            if (invert) 100 - min(val, 100) else min(val, 100)
+          } else {
+            NA_real_
+          }
+        }
+
+        # Calculate indicators - NA when data missing
+        indicators <- c(
+          "Infrastructure" = safe_val("power_outages_per_month", scale = 5, invert = TRUE),
+          "Finance Access" = safe_val("firms_with_credit_line_pct"),
+          "Low Corruption" = safe_val("bribery_incidence_pct", invert = TRUE),
+          "Capacity Use" = safe_val("capacity_utilization_pct"),
+          "Export Orient." = safe_val("export_firms_pct", scale = 2),
+          "Gender Equity" = safe_val("female_ownership_pct", scale = 2)
+        )
+
+        # Check if all indicators are NA
+        if (all(is.na(indicators))) {
+          # Show message listing missing variables
+          missing_vars <- c(
+            "Infrastructure: power_outages_per_month",
+            "Finance Access: firms_with_credit_line_pct",
+            "Low Corruption: bribery_incidence_pct",
+            "Capacity Use: capacity_utilization_pct",
+            "Export Orient.: export_firms_pct",
+            "Gender Equity: female_ownership_pct"
+          )
+
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = paste0("Missing data for all indicators:<br>",
+                                paste(missing_vars, collapse = "<br>")),
+                  showarrow = FALSE,
+                  font = list(size = 12, color = "#666666"),
+                  xanchor = "center",
+                  yanchor = "middle"
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else if (any(is.na(indicators))) {
+          # Some data available, some missing - show available data with note
+          missing_indicators <- names(indicators[is.na(indicators)])
+          available_indicators <- indicators[!is.na(indicators)]
+
+          # Map indicator names to variable names
+          var_mapping <- c(
+            "Infrastructure" = "power_outages_per_month",
+            "Finance Access" = "firms_with_credit_line_pct",
+            "Low Corruption" = "bribery_incidence_pct",
+            "Capacity Use" = "capacity_utilization_pct",
+            "Export Orient." = "export_firms_pct",
+            "Gender Equity" = "female_ownership_pct"
+          )
+
+          missing_vars <- paste(
+            paste0(missing_indicators, ": ", var_mapping[missing_indicators]),
+            collapse = "<br>"
+          )
+
+          plot_ly(
+            type = "scatterpolar",
+            r = as.numeric(available_indicators),
+            theta = names(available_indicators),
+            fill = "toself",
+            fillcolor = "rgba(27, 107, 95, 0.3)",
+            line = list(color = "#1B6B5F", width = 2)
+          ) |>
+            layout(
+              polar = list(
+                radialaxis = list(visible = TRUE, range = c(0, 100))
+              ),
+              showlegend = FALSE,
+              paper_bgcolor = "rgba(0,0,0,0)",
+              annotations = list(
+                list(
+                  text = paste0("<b>Missing data:</b><br>", missing_vars),
+                  showarrow = FALSE,
+                  font = list(size = 10, color = "#999999"),
+                  xref = "paper",
+                  yref = "paper",
+                  x = 0.5,
+                  y = -0.15,
+                  xanchor = "center",
+                  yanchor = "top"
+                )
+              )
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          # All data available - show normal radar chart
+          plot_ly(
+            type = "scatterpolar",
+            r = as.numeric(indicators),
+            theta = names(indicators),
+            fill = "toself",
+            fillcolor = "rgba(27, 107, 95, 0.3)",
+            line = list(color = "#1B6B5F", width = 2)
+          ) |>
+            layout(
+              polar = list(
+                radialaxis = list(visible = TRUE, range = c(0, 100))
+              ),
+              showlegend = FALSE,
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        }
       }
-
-      # Normalize to 0-100 scale with NA handling
-      # WBES variable mappings:
-      # - power_outages_per_month: from in2 (infrastructure quality, inverted)
-      # - firms_with_credit_line_pct: from fin14 (finance access)
-      # - bribery_incidence_pct: from graft3 (corruption, inverted for "Low Corruption")
-      # - capacity_utilization_pct: from t3 (operational efficiency)
-      # - export_firms_pct: from tr10 (export orientation)
-      # - female_ownership_pct: from gend1 (gender equity)
-      indicators <- c(
-        "Infrastructure" = safe_val("power_outages_per_month", default = 50, scale = 5, invert = TRUE),
-        "Finance Access" = safe_val("firms_with_credit_line_pct", default = 30),
-        "Low Corruption" = safe_val("bribery_incidence_pct", default = 50, invert = TRUE),
-        "Capacity Use" = safe_val("capacity_utilization_pct", default = 50),
-        "Export Orient." = safe_val("export_firms_pct", default = 25, scale = 2),
-        "Gender Equity" = safe_val("female_ownership_pct", default = 25, scale = 2)
-      )
-
-      plot_ly(
-        type = "scatterpolar",
-        r = as.numeric(indicators),
-        theta = names(indicators),
-        fill = "toself",
-        fillcolor = "rgba(27, 107, 95, 0.3)",
-        line = list(color = "#1B6B5F", width = 2)
-      ) |>
-        layout(
-          polar = list(
-            radialaxis = list(visible = TRUE, range = c(0, 100))
-          ),
-          showlegend = FALSE,
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
     })
 
     # Key Metrics
