@@ -469,7 +469,13 @@ ui <- function(request) {
 
     # Update region filter with custom regions
     region_choices <- get_region_choices(wbes_data, custom_regions())
-    updateSelectInput(session, "global_region_filter", choices = region_choices)
+    current_selection <- input$global_region_filter
+    updateSelectInput(
+      session,
+      "global_region_filter",
+      choices = region_choices,
+      selected = if (!is.null(current_selection)) current_selection else "all"
+    )
 
     # Update sector filter (exclude NA values)
     if (!is.null(data$latest)) {
@@ -490,7 +496,7 @@ ui <- function(request) {
       year_choices <- c("All Years" = "all", stats::setNames(as.character(data$years), as.character(data$years)))
       updateSelectizeInput(session, "global_year_filter", choices = year_choices, selected = "all")
     }
-  }, ignoreNULL = FALSE)
+  }, ignoreNULL = FALSE, ignoreInit = FALSE)
 
   # Custom region modal handlers
   observeEvent(input$create_custom_region, {
