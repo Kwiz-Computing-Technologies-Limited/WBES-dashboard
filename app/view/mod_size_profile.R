@@ -196,15 +196,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           return(filters$firm_size)
         }
       }
-      # Default to first size if "all" is selected
-      req(wbes_data())
-      data <- wbes_data()$latest
-      sizes <- data$firm_size |>
-        unique() |>
-        stats::na.omit() |>
-        as.character() |>
-        sort()
-      if (length(sizes) > 0) sizes[1] else NULL
+      # Return "all" when All Sizes is selected
+      return("all")
     })
 
     # Selected size data
@@ -213,23 +206,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data <- filtered_data()
       size_val <- selected_size()
 
-      # If a specific size is selected from sidebar, use it
+      # If a specific size is selected from sidebar, filter to that size
       if (!is.null(size_val) && size_val != "all") {
         data |> filter(!is.na(firm_size) & firm_size == size_val)
       } else {
-        # If "all" is selected, show first size's data
-        req(wbes_data())
-        data_ref <- wbes_data()$latest
-        sizes <- data_ref$firm_size |>
-          unique() |>
-          stats::na.omit() |>
-          as.character() |>
-          sort()
-        if (length(sizes) > 0) {
-          data |> filter(!is.na(firm_size) & firm_size == sizes[1])
-        } else {
-          data
-        }
+        # If "all" is selected, return all data (globally aggregated)
+        data
       }
     })
 
@@ -237,7 +219,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$size_summary <- renderUI({
       req(size_data(), selected_size())
       d <- size_data()
-      size_name <- selected_size()
+      size_val <- selected_size()
+
+      # Display name: "All Sizes (Global)" or the specific size name
+      size_name <- if (size_val == "all") {
+        "All Firm Sizes (Global)"
+      } else {
+        paste0(size_val, " Firms")
+      }
 
       # Count countries and firms in this size category
       countries_count <- if (!is.null(d$country) && length(d$country) > 0) {
@@ -258,13 +247,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
           class = "card-body",
           tags$h4(
             class = "text-primary-teal mb-3",
-            icon("building"), " ", size_name, " Firms"
+            icon("building"), " ", size_name
           ),
           fluidRow(
             column(6,
               tags$div(class = "kpi-box",
                 tags$div(class = "kpi-value", countries_count),
-                tags$div(class = "kpi-label", "Countries Covered")
+                tags$div(class = "kpi-label", if (size_val == "all") "Countries Worldwide" else "Countries Covered")
               )
             ),
             column(6,

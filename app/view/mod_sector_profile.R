@@ -196,10 +196,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           return(filters$sector)
         }
       }
-      # Default to first sector if "all" is selected
-      req(wbes_data())
-      sectors <- wbes_data()$sectors
-      if (length(sectors) > 0) sectors[1] else NULL
+      # Return "all" when All Sectors is selected
+      return("all")
     })
 
     # Selected sector data
@@ -208,18 +206,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data <- filtered_data()
       sector_val <- selected_sector()
 
-      # If a specific sector is selected from sidebar, use it
+      # If a specific sector is selected from sidebar, filter to that sector
       if (!is.null(sector_val) && sector_val != "all") {
         data |> filter(!is.na(sector) & sector == sector_val)
       } else {
-        # If "all" is selected, show first sector's data
-        req(wbes_data())
-        sectors <- wbes_data()$sectors
-        if (length(sectors) > 0) {
-          data |> filter(!is.na(sector) & sector == sectors[1])
-        } else {
-          data
-        }
+        # If "all" is selected, return all data (globally aggregated)
+        data
       }
     })
 
@@ -227,7 +219,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$sector_summary <- renderUI({
       req(sector_data(), selected_sector())
       d <- sector_data()
-      sector_name <- selected_sector()
+      sector_val <- selected_sector()
+
+      # Display name: "All Sectors (Global)" or the specific sector name
+      sector_name <- if (sector_val == "all") {
+        "All Sectors (Global)"
+      } else {
+        sector_val
+      }
 
       # Count countries and firms in this sector
       countries_count <- if (!is.null(d$country) && length(d$country) > 0) {
@@ -254,7 +253,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
             column(6,
               tags$div(class = "kpi-box",
                 tags$div(class = "kpi-value", countries_count),
-                tags$div(class = "kpi-label", "Countries Covered")
+                tags$div(class = "kpi-label", if (sector_val == "all") "Countries Worldwide" else "Countries Covered")
               )
             ),
             column(6,

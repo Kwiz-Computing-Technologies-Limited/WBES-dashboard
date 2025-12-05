@@ -196,10 +196,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           return(filters$region)
         }
       }
-      # Default to first region if "all" is selected
-      req(wbes_data())
-      regions <- wbes_data()$regions
-      if (length(regions) > 0) regions[1] else NULL
+      # Return "all" when All Regions is selected
+      return("all")
     })
 
     # Selected region data
@@ -208,18 +206,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data <- filtered_data()
       region_val <- selected_region()
 
-      # If a specific region is selected from sidebar, use it
+      # If a specific region is selected from sidebar, filter to that region
       if (!is.null(region_val) && region_val != "all") {
         data |> filter(!is.na(region) & region == region_val)
       } else {
-        # If "all" is selected, show first region's data
-        req(wbes_data())
-        regions <- wbes_data()$regions
-        if (length(regions) > 0) {
-          data |> filter(!is.na(region) & region == regions[1])
-        } else {
-          data
-        }
+        # If "all" is selected, return all data (globally aggregated)
+        data
       }
     })
 
@@ -227,7 +219,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$region_summary <- renderUI({
       req(region_data(), selected_region())
       d <- region_data()
-      region_name <- selected_region()
+      region_val <- selected_region()
+
+      # Display name: "All Regions (Global)" or the specific region name
+      region_name <- if (region_val == "all") {
+        "All Regions (Global)"
+      } else {
+        region_val
+      }
 
       # Count countries and firms in this region
       countries_count <- if (!is.null(d$country) && length(d$country) > 0) {
@@ -254,7 +253,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
             column(6,
               tags$div(class = "kpi-box",
                 tags$div(class = "kpi-value", countries_count),
-                tags$div(class = "kpi-label", "Countries in Region")
+                tags$div(class = "kpi-label", if (region_val == "all") "Countries Worldwide" else "Countries in Region")
               )
             ),
             column(6,
