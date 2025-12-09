@@ -29,19 +29,17 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_competitiveness")))
     ),
 
-    # Filters
+    # Tab-specific filters (Region and Firm Size are in sidebar)
     fluidRow(
       class = "mb-4",
       column(12,
         card(
           card_body(class = "py-2",
             fluidRow(
-              column(3, selectInput(ns("region"), "Region", choices = c("All" = "all"))),
-              column(3, selectInput(ns("indicator"), "Indicator",
+              column(6, selectInput(ns("indicator"), "Indicator",
                 choices = c("Capacity Utilization" = "IC.FRM.CAPU.ZS",
                            "Export Participation" = "IC.FRM.EXPRT.ZS"))),
-              column(3, selectInput(ns("firm_size"), "Firm Size", choices = c("All" = "all"))),
-              column(3, selectInput(ns("sort"), "Sort By",
+              column(6, selectInput(ns("sort"), "Sort By",
                 choices = c("Highest First" = "desc", "Lowest First" = "asc")))
             )
           )
