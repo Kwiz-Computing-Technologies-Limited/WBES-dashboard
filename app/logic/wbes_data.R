@@ -12,7 +12,13 @@ box::use(
   utils[unzip, head],
   stats[runif, setNames, na.omit],
   here[here],
-  app/logic/column_labels[extract_column_labels, create_wbes_label_mapping]
+  arrow[as_arrow_table],
+  future[plan, multisession],
+  future.apply[future_lapply],
+  parallel[detectCores],
+  app/logic/column_labels[extract_column_labels, create_wbes_label_mapping],
+  app/logic/wb_integration[get_or_fetch_wb_data, get_wb_income_classifications, enrich_wbes_with_income],
+  app/logic/parquet_cache[is_parquet_cache_fresh, load_wbes_parquet, save_wbes_parquet, to_df]
 )
 
 # Expected filename for the WBES microdata
@@ -36,13 +42,13 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
 
   log_info("Loading WBES data...")
 
-  # Check for cached processed data first (fastest)
-  cache_file <- here(data_path, "wbes_processed.rds")
-  if (use_cache && file.exists(cache_file)) {
-    cache_age <- difftime(Sys.time(), file.mtime(cache_file), units = "hours")
-    if (cache_age < cache_hours) {
-      log_info("Loading from cache (processed data)")
-      return(readRDS(cache_file))
+  # Check for Parquet cache first (fastest and most efficient)
+  if (use_cache && is_parquet_cache_fresh(data_path, cache_hours)) {
+    parquet_data <- load_wbes_parquet(data_path)
+    if (!is.null(parquet_data)) {
+      log_info("Loaded from Parquet cache")
+      gc()  # Explicit memory cleanup
+      return(parquet_data)
     }
   }
 
@@ -52,16 +58,17 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
     log_info("Found assets.zip - loading combined microdata")
     result <- load_from_zip(assets_zip, data_path)
 
-    # Cache the processed result
+    # Cache the processed result as Parquet
     if (use_cache && !is.null(result)) {
       tryCatch({
-        saveRDS(result, cache_file)
-        log_info("Cached processed data for faster future loads")
+        save_wbes_parquet(result, data_path)
+        log_info("Cached processed data as Parquet for faster future loads")
       }, error = function(e) {
-        log_warn(paste("Could not cache data:", e$message))
+        log_warn(paste("Could not cache data as Parquet:", e$message))
       })
     }
 
+    gc()  # Explicit memory cleanup
     return(result)
   } else {
     log_warn("assets.zip not found in data/ directory")
@@ -73,16 +80,17 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
     log_info("Found local .dta files")
     result <- load_microdata(dta_files)
 
-    # Cache the processed result
+    # Cache the processed result as Parquet
     if (use_cache && !is.null(result)) {
       tryCatch({
-        saveRDS(result, cache_file)
-        log_info("Cached processed data")
+        save_wbes_parquet(result, data_path)
+        log_info("Cached processed data as Parquet")
       }, error = function(e) {
-        log_warn(paste("Could not cache data:", e$message))
+        log_warn(paste("Could not cache data as Parquet:", e$message))
       })
     }
 
+    gc()  # Explicit memory cleanup
     return(result)
   } else {
     log_warn("No .dta files found in data/ directory")
@@ -115,22 +123,66 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
   stop(error_msg)
 }
 
-#' Load microdata from ZIP archive
-#' Efficiently extracts and loads .dta file from assets.zip
+#' Load microdata from ZIP archive (zero-extraction for Parquet, temp for .dta)
+#'
+#' This function supports two modes:
+#' 1. PREFERRED: Read .parquet files directly from ZIP (zero extraction, pure in-memory)
+#' 2. FALLBACK: Extract .dta files to tempdir() (required by haven::read_dta limitations)
+#'
 #' @param zip_file Path to assets.zip file
-#' @param data_path Directory to extract to (temporary)
+#' @param data_path Directory path
 #' @return Processed data list
 load_from_zip <- function(zip_file, data_path) {
 
-  log_info(paste("Extracting microdata from:", basename(zip_file)))
-
-  # Create temp extraction directory
-  extract_dir <- file.path(data_path, ".extracted")
-  dir.create(extract_dir, showWarnings = FALSE, recursive = TRUE)
+  log_info(paste("Reading microdata from ZIP:", basename(zip_file)))
 
   tryCatch({
     # List contents of zip
     zip_contents <- unzip(zip_file, list = TRUE)
+
+    # FIRST: Look for .parquet files (can read directly, zero extraction)
+    parquet_files <- zip_contents$Name[grepl("\\.parquet$", zip_contents$Name, ignore.case = TRUE)]
+
+    if (length(parquet_files) > 0) {
+      log_info(paste("Found", length(parquet_files), "Parquet file(s) - reading directly from ZIP (zero extraction)"))
+
+      # Read Parquet files directly from ZIP using raw bytes (NO EXTRACTION)
+      data_list <- lapply(parquet_files, function(pq_file) {
+        log_info(paste("  Reading", basename(pq_file), "from ZIP..."))
+
+        # Create connection to file inside ZIP
+        zip_conn <- unz(zip_file, pq_file)
+
+        # Read raw bytes
+        raw_data <- readBin(zip_conn, "raw", n = 2e9)  # 2GB max per file
+        close(zip_conn)
+
+        # Parse Parquet from raw bytes (in-memory, no disk writes!)
+        arrow_table <- arrow::read_parquet(raw_data, as_data_frame = TRUE)
+
+        rm(raw_data)  # Free memory
+        return(arrow_table)
+      })
+
+      names(data_list) <- tools::file_path_sans_ext(basename(parquet_files))
+
+      # Combine datasets if multiple
+      if (length(data_list) == 1) {
+        raw_data <- data_list[[1]]
+      } else {
+        log_info("Combining multiple Parquet files...")
+        raw_data <- dplyr::bind_rows(data_list)
+      }
+
+      rm(data_list)
+      gc()
+
+      # Process the raw data
+      result <- process_microdata(raw_data)
+      return(result)
+    }
+
+    # FALLBACK: Look for .dta files (requires temp extraction due to haven::read_dta limitation)
     candidate_dta <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
 
     # Prefer the known combined microdata file name if present
@@ -138,31 +190,31 @@ load_from_zip <- function(zip_file, data_path) {
     dta_files_in_zip <- if (length(preferred_match) > 0) preferred_match else candidate_dta
 
     if (length(dta_files_in_zip) == 0) {
-      log_error("No .dta files found in assets.zip")
-      stop("CRITICAL ERROR: assets.zip exists but contains no .dta files. Please ensure the ZIP contains: ", RAW_DTA_FILENAME)
+      log_error("No .parquet or .dta files found in assets.zip")
+      stop("CRITICAL ERROR: assets.zip exists but contains no data files. Please ensure the ZIP contains Parquet or .dta files.")
     }
 
     log_info(paste("Found", length(dta_files_in_zip), ".dta file(s) in archive"))
+    log_warn("NOTE: .dta format requires temporary extraction. Convert to Parquet and re-zip for true zero-extraction reading.")
 
-    # Extract only .dta files
-    unzip(zip_file, files = dta_files_in_zip, exdir = extract_dir, overwrite = TRUE)
-
-    # Get full paths to extracted files
-    extracted_files <- file.path(extract_dir, dta_files_in_zip)
+    # Extract .dta to tempdir (unavoidable for .dta format)
+    temp_dir <- tempdir()
+    unzip(zip_file, files = dta_files_in_zip, exdir = temp_dir, overwrite = TRUE)
+    extracted_files <- file.path(temp_dir, dta_files_in_zip)
 
     # Load the microdata
     result <- load_microdata(extracted_files)
 
-    # Cleanup extraction directory (optional - keep for faster subsequent loads)
-    # unlink(extract_dir, recursive = TRUE)
+    # Cleanup temporary files
+    unlink(extracted_files)
+    gc()  # Explicit memory cleanup after loading
 
-    log_info("Successfully loaded microdata from assets.zip")
+    log_info("Successfully loaded microdata from assets.zip (direct read)")
     return(result)
 
   }, error = function(e) {
-    log_error(paste("Error extracting/loading from zip:", e$message))
-    # Cleanup on error
-    base::unlink(extract_dir, recursive = TRUE)
+    log_error(paste("Error reading from zip:", e$message))
+    gc()  # Cleanup memory on error
     stop("CRITICAL ERROR: Failed to load data from assets.zip: ", e$message)
   })
 }
@@ -209,11 +261,27 @@ load_microdata <- function(dta_files) {
     bind_rows(data_list, .id = "source_file")
   }
 
+  # Clean up data_list to free memory
+  rm(data_list)
+  gc()  # Explicit memory cleanup after combining
+
   log_info(sprintf("Combined dataset: %d observations, %d variables",
                   nrow(combined), ncol(combined)))
 
   # Process and structure the data
   processed <- process_microdata(combined)
+  gc()  # Explicit memory cleanup after processing
+
+  # Enrich with World Bank income classifications
+  log_info("Enriching data with World Bank income classifications...")
+  processed <- tryCatch({
+    enrich_wbes_with_income(processed)
+  }, error = function(e) {
+    log_warn(paste("Failed to enrich with WB income data:", e$message))
+    log_warn("Continuing with original income column (may contain NAs)")
+    processed
+  })
+  gc()  # Explicit memory cleanup after enrichment
 
   # Extract metadata (use processed data to get cleaned country names without year suffixes)
   countries <- extract_countries_from_microdata(processed)
@@ -257,74 +325,101 @@ load_microdata <- function(dta_files) {
   # Filter for valid columns that exist in the data
   available_metric_cols <- metric_cols[metric_cols %in% names(processed)]
 
-  # Create aggregates without using sample_weight in across()
-  country_aggregates <- processed |>
-    filter(!is.na(country) & !is.na(country_code)) |>
-    group_by(country, country_code) |>
-    summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first_non_na(region),
-      firm_size = first_non_na(firm_size),
-      sector = first_non_na(sector),
-      sample_size = n(),
-      .groups = "drop"
-    )
+  # PARALLEL AGGREGATION: Create all aggregates concurrently
+  log_info("Creating aggregates in parallel...")
 
-  # Create country panel (time series data by country and year)
-  log_info("Creating country panel for time series analysis...")
-  country_panel <- processed |>
-    filter(!is.na(country) & !is.na(year)) |>
-    group_by(country, year) |>
-    summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first_non_na(region),
-      firm_size = first_non_na(firm_size),
-      sample_size = n(),
-      .groups = "drop"
-    )
+  # Set up parallel backend (use n-1 cores to leave one for system)
+  n_cores <- max(1, detectCores() - 1)
+  plan(multisession, workers = n_cores)
+  log_info(sprintf("Using %d cores for parallel aggregation", n_cores))
+
+  # Define aggregation tasks
+  agg_tasks <- list(
+    country = function() {
+      processed |>
+        filter(!is.na(country) & !is.na(country_code)) |>
+        group_by(country, country_code) |>
+        summarise(
+          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+          region = first_non_na(region),
+          firm_size = first_non_na(firm_size),
+          sector = first_non_na(sector),
+          sample_size = n(),
+          .groups = "drop"
+        )
+    },
+    panel = function() {
+      processed |>
+        filter(!is.na(country) & !is.na(year)) |>
+        group_by(country, year) |>
+        summarise(
+          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+          region = first_non_na(region),
+          firm_size = first_non_na(firm_size),
+          sample_size = n(),
+          .groups = "drop"
+        )
+    },
+    sector = function() {
+      processed |>
+        filter(!is.na(country) & !is.na(country_code) & !is.na(sector)) |>
+        group_by(country, country_code, sector) |>
+        summarise(
+          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+          region = first_non_na(region),
+          firm_size = first_non_na(firm_size),
+          sample_size = n(),
+          .groups = "drop"
+        )
+    },
+    size = function() {
+      processed |>
+        filter(!is.na(country) & !is.na(country_code) & !is.na(firm_size)) |>
+        group_by(country, country_code, firm_size) |>
+        summarise(
+          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+          region = first_non_na(region),
+          sector = first_non_na(sector),
+          sample_size = n(),
+          .groups = "drop"
+        )
+    },
+    region = function() {
+      processed |>
+        filter(!is.na(country) & !is.na(country_code) & !is.na(region)) |>
+        group_by(country, country_code, region) |>
+        summarise(
+          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+          firm_size = first_non_na(firm_size),
+          sector = first_non_na(sector),
+          sample_size = n(),
+          .groups = "drop"
+        )
+    }
+  )
+
+  # Execute all aggregations in parallel
+  agg_results <- future_lapply(agg_tasks, function(f) f(), future.seed = TRUE)
+
+  # Extract results
+  country_aggregates <- agg_results$country
+  country_panel <- agg_results$panel
+  country_sector_aggregates <- agg_results$sector
+  country_size_aggregates <- agg_results$size
+  country_region_aggregates <- agg_results$region
+
+  # Reset to sequential processing
+  plan(sequential)
+
+  # Log results
+  log_info(sprintf("Country aggregates created: %d countries", nrow(country_aggregates)))
   log_info(sprintf("Country panel created: %d country-year observations", nrow(country_panel)))
+  log_info(sprintf("Country-sector aggregates created: %d combinations", nrow(country_sector_aggregates)))
+  log_info(sprintf("Country-size aggregates created: %d combinations", nrow(country_size_aggregates)))
+  log_info(sprintf("Country-region aggregates created: %d combinations", nrow(country_region_aggregates)))
 
-  # Create country-sector aggregates for sector profile
-  log_info("Creating country-sector aggregates...")
-  country_sector_aggregates <- processed |>
-    filter(!is.na(country) & !is.na(country_code) & !is.na(sector)) |>
-    group_by(country, country_code, sector) |>
-    summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first_non_na(region),
-      firm_size = first_non_na(firm_size),
-      sample_size = n(),
-      .groups = "drop"
-    )
-  log_info(sprintf("Country-sector aggregates created: %d country-sector combinations", nrow(country_sector_aggregates)))
-
-  # Create country-size aggregates for size profile
-  log_info("Creating country-size aggregates...")
-  country_size_aggregates <- processed |>
-    filter(!is.na(country) & !is.na(country_code) & !is.na(firm_size)) |>
-    group_by(country, country_code, firm_size) |>
-    summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      region = first_non_na(region),
-      sector = first_non_na(sector),
-      sample_size = n(),
-      .groups = "drop"
-    )
-  log_info(sprintf("Country-size aggregates created: %d country-size combinations", nrow(country_size_aggregates)))
-
-  # Create country-region aggregates for regional profile
-  log_info("Creating country-region aggregates...")
-  country_region_aggregates <- processed |>
-    filter(!is.na(country) & !is.na(country_code) & !is.na(region)) |>
-    group_by(country, country_code, region) |>
-    summarise(
-      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-      firm_size = first_non_na(firm_size),
-      sector = first_non_na(sector),
-      sample_size = n(),
-      .groups = "drop"
-    )
-  log_info(sprintf("Country-region aggregates created: %d country-region combinations", nrow(country_region_aggregates)))
+  # Explicit memory cleanup after parallel operations
+  gc()
 
   # Get country coordinates and merge with aggregates
   country_coords <- get_country_coordinates()
@@ -392,6 +487,9 @@ load_microdata <- function(dta_files) {
     quality = generate_quality_metadata()
   )
 
+  # Explicit memory cleanup before returning
+  gc()
+
   log_info("Microdata loading complete")
   return(result)
 }
@@ -426,7 +524,8 @@ process_microdata <- function(data) {
       ),
       year = get0("year", ifnotfound = NA_integer_),
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
-      # Try multiple possible income group variable names
+      # Income will be enriched from World Bank data after processing
+      # For now, try to extract from existing columns (will likely be NA)
       income = coalesce_chr(
         if ("income" %in% names(data)) as.character(as_factor(get0("income", ifnotfound = NULL))) else NULL,
         if ("income_group" %in% names(data)) as.character(as_factor(get0("income_group", ifnotfound = NULL))) else NULL,

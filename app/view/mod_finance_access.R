@@ -42,6 +42,7 @@ ui <- function(id) {
     ),
     
     # Filters
+    # Tab-specific filter: Gender/Ownership (Region, Sector, Size are in sidebar)
     fluidRow(
       class = "mb-4",
       column(12,
@@ -49,20 +50,6 @@ ui <- function(id) {
           card_body(
             class = "py-2",
             fluidRow(
-              column(3,
-                selectInput(ns("region_filter"), "Region",
-                  choices = c("All Regions" = "all"))
-              ),
-              column(3,
-                selectInput(ns("firm_size"), "Firm Size",
-                  choices = c("All Sizes" = "all", "Small (5-19)" = "small",
-                              "Medium (20-99)" = "medium", "Large (100+)" = "large"))
-              ),
-              column(3,
-                selectInput(ns("sector"), "Sector",
-                  choices = c("All Sectors" = "all", "Manufacturing" = "mfg",
-                              "Services" = "svc", "Retail" = "retail"))
-              ),
               column(3,
                 selectInput(ns("gender"), "Ownership",
                   choices = c("All" = "all", "Female-Owned" = "female",

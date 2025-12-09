@@ -36,7 +36,9 @@ box::use(
   app/logic/wbes_data[load_wbes_data],
   app/logic/shared_filters[get_filter_choices, remove_na_columns],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
-                           manage_regions_modal_ui, custom_regions_storage]
+                           manage_regions_modal_ui, custom_regions_storage],
+  app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
+                           manage_sectors_modal_ui, custom_sectors_storage]
 )
 
 #' @export
@@ -158,7 +160,7 @@ ui <- function(request) {
             )
           ),
 
-          # Other filters with consistent spacing
+          # Sector filter with custom sector buttons
           tags$div(
             class = "mb-3",
             selectInput(
@@ -167,6 +169,23 @@ ui <- function(request) {
               choices = c("All Sectors" = "all"),
               selected = "all",
               width = "100%"
+            ),
+            tags$div(
+              class = "d-flex gap-2 mt-2",
+              actionButton(
+                "create_custom_sector",
+                "Create Group",
+                icon = icon("plus-circle"),
+                class = "btn-sm btn-outline-primary flex-grow-1",
+                style = "font-size: 0.75rem;"
+              ),
+              actionButton(
+                "manage_custom_sectors",
+                "Manage",
+                icon = icon("cog"),
+                class = "btn-sm btn-outline-secondary flex-grow-1",
+                style = "font-size: 0.75rem;"
+              )
             )
           ),
 
@@ -459,11 +478,12 @@ ui <- function(request) {
     waiter_hide()
   })
 
-  # Custom regions storage
+  # Custom regions and sectors storage
   custom_regions <- shiny::reactiveVal(list())
+  custom_sectors <- shiny::reactiveVal(list())
 
-  # Update filter choices when data loads or custom regions change
-  observeEvent(list(wbes_data(), custom_regions()), {
+  # Update filter choices when data loads or custom regions/sectors change
+  observeEvent(list(wbes_data(), custom_regions(), custom_sectors()), {
     req(wbes_data())
     data <- wbes_data()
 
@@ -477,10 +497,16 @@ ui <- function(request) {
       selected = if (!is.null(current_selection)) current_selection else "all"
     )
 
-    # Update sector filter (exclude NA values)
+    # Update sector filter with custom sectors (exclude NA values)
     if (!is.null(data$latest)) {
-      sector_choices <- get_filter_choices(data$latest, "sector", add_all = TRUE, all_label = "All Sectors")
-      updateSelectInput(session, "global_sector_filter", choices = sector_choices)
+      sector_choices <- get_sector_choices(wbes_data, custom_sectors())
+      current_sector_selection <- input$global_sector_filter
+      updateSelectInput(
+        session,
+        "global_sector_filter",
+        choices = sector_choices,
+        selected = if (!is.null(current_sector_selection)) current_sector_selection else "all"
+      )
 
       # Update firm size filter (exclude NA values)
       size_choices <- get_filter_choices(data$latest, "firm_size", add_all = TRUE, all_label = "All Sizes")
@@ -543,6 +569,51 @@ ui <- function(request) {
     shiny::showModal(manage_regions_modal_ui(session$ns, custom_regions()))
   })
 
+  # Custom sector modal handlers
+  observeEvent(input$create_custom_sector, {
+    req(wbes_data())
+    sectors <- sort(wbes_data()$sectors)
+    shiny::showModal(custom_sector_modal_ui(session$ns, sectors))
+  })
+
+  observeEvent(input$save_custom_sector, {
+    req(input$custom_sector_name, input$custom_sector_sectors)
+
+    sector_name <- trimws(input$custom_sector_name)
+    if (sector_name == "" || length(input$custom_sector_sectors) == 0) {
+      return(NULL)
+    }
+
+    new_sector <- list(
+      name = sector_name,
+      sectors = input$custom_sector_sectors,
+      created = Sys.time()
+    )
+
+    current_sectors <- custom_sectors()
+    current_sectors[[sector_name]] <- new_sector
+    custom_sectors(current_sectors)
+    custom_sectors_storage(current_sectors)
+
+    shiny::removeModal()
+  })
+
+  observeEvent(input$manage_custom_sectors, {
+    shiny::showModal(manage_sectors_modal_ui(session$ns, custom_sectors()))
+  })
+
+  observeEvent(input$delete_sector_name, {
+    req(input$delete_sector_name)
+    sector_to_delete <- input$delete_sector_name
+
+    current_sectors <- custom_sectors()
+    current_sectors[[sector_to_delete]] <- NULL
+    custom_sectors(current_sectors)
+    custom_sectors_storage(current_sectors)
+
+    shiny::showModal(manage_sectors_modal_ui(session$ns, custom_sectors()))
+  })
+
   # Reset all filters
   observeEvent(input$reset_all_filters, {
     updateSelectInput(session, "global_region_filter", selected = "all")
@@ -560,7 +631,8 @@ ui <- function(request) {
       firm_size = input$global_firm_size_filter,
       income = input$global_income_filter,
       year = input$global_year_filter,
-      custom_regions = custom_regions()
+      custom_regions = custom_regions(),
+      custom_sectors = custom_sectors()
     )
   })
 

@@ -168,11 +168,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Filtered data with global filters applied
     filtered_data <- reactive({
       req(wbes_data())
-      data <- wbes_data()$country_sector
+
+      # Use different data source based on sector selection
+      # When "All Sectors" selected, use latest (global country aggregates) for consistency
+      # When specific sector selected, use country_sector (country-sector combinations)
+      filters <- if (!is.null(global_filters)) global_filters() else list(sector = "all")
+      sector_val <- if (!is.null(filters$sector)) filters$sector else "all"
+
+      # Choose appropriate data source
+      data <- if (sector_val == "all") {
+        wbes_data()$latest  # Global country aggregates - same across all profiles
+      } else {
+        wbes_data()$country_sector  # Country-sector combinations
+      }
 
       # Apply global filters if provided
       if (!is.null(global_filters)) {
-        filters <- global_filters()
         data <- apply_common_filters(
           data,
           region_value = filters$region,
