@@ -9,7 +9,7 @@
 data/*.dta
 data/*.csv
 data/assets.zip
-data/wbes_processed_cache/
+# data/wbes_processed_cache/
 data/*.rds
 data/.extracted/*.dta
 

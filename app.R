@@ -1,7 +1,7 @@
 # app.R
 # Rhino Application Entry Point
 
-# Uncomment the following line to enable Rhino:
+# enable Rhino:
 rhino::app()
 
 # For development without rhino package:
