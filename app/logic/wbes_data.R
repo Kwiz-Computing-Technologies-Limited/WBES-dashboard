@@ -13,12 +13,10 @@ box::use(
   stats[runif, setNames, na.omit],
   here[here],
   arrow[as_arrow_table],
-  future[plan, multisession],
-  future.apply[future_lapply],
-  parallel[detectCores],
   app/logic/column_labels[extract_column_labels, create_wbes_label_mapping],
   app/logic/wb_integration[get_or_fetch_wb_data, get_wb_income_classifications, enrich_wbes_with_income],
-  app/logic/parquet_cache[is_parquet_cache_fresh, load_wbes_parquet, save_wbes_parquet, to_df]
+  app/logic/parquet_cache[is_parquet_cache_fresh, load_wbes_parquet, save_wbes_parquet, to_df,
+                          lazy_filter, lazy_select, lazy_summarise, is_lazy_arrow, force_collect]
 )
 
 # Expected filename for the WBES microdata
@@ -255,6 +253,10 @@ load_microdata <- function(dta_files) {
 
   # Combine all datasets
   log_info("Combining microdata files...")
+
+  # Save file names before removing data_list (needed for metadata)
+  loaded_file_names <- names(data_list)
+
   combined <- if (length(data_list) == 1) {
     data_list[[1]]
   } else {
@@ -325,91 +327,76 @@ load_microdata <- function(dta_files) {
   # Filter for valid columns that exist in the data
   available_metric_cols <- metric_cols[metric_cols %in% names(processed)]
 
-  # PARALLEL AGGREGATION: Create all aggregates concurrently
-  log_info("Creating aggregates in parallel...")
+  # SEQUENTIAL AGGREGATION: More efficient than parallel for large dataframes
 
-  # Set up parallel backend (use n-1 cores to leave one for system)
-  n_cores <- max(1, detectCores() - 1)
-  plan(multisession, workers = n_cores)
-  log_info(sprintf("Using %d cores for parallel aggregation", n_cores))
+  # (Parallel processing has too much overhead copying 1GB+ data to workers)
+  log_info("Creating aggregates sequentially...")
 
-  # Define aggregation tasks
-  agg_tasks <- list(
-    country = function() {
-      processed |>
-        filter(!is.na(country) & !is.na(country_code)) |>
-        group_by(country, country_code) |>
-        summarise(
-          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-          region = first_non_na(region),
-          firm_size = first_non_na(firm_size),
-          sector = first_non_na(sector),
-          sample_size = n(),
-          .groups = "drop"
-        )
-    },
-    panel = function() {
-      processed |>
-        filter(!is.na(country) & !is.na(year)) |>
-        group_by(country, year) |>
-        summarise(
-          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-          region = first_non_na(region),
-          firm_size = first_non_na(firm_size),
-          sample_size = n(),
-          .groups = "drop"
-        )
-    },
-    sector = function() {
-      processed |>
-        filter(!is.na(country) & !is.na(country_code) & !is.na(sector)) |>
-        group_by(country, country_code, sector) |>
-        summarise(
-          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-          region = first_non_na(region),
-          firm_size = first_non_na(firm_size),
-          sample_size = n(),
-          .groups = "drop"
-        )
-    },
-    size = function() {
-      processed |>
-        filter(!is.na(country) & !is.na(country_code) & !is.na(firm_size)) |>
-        group_by(country, country_code, firm_size) |>
-        summarise(
-          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-          region = first_non_na(region),
-          sector = first_non_na(sector),
-          sample_size = n(),
-          .groups = "drop"
-        )
-    },
-    region = function() {
-      processed |>
-        filter(!is.na(country) & !is.na(country_code) & !is.na(region)) |>
-        group_by(country, country_code, region) |>
-        summarise(
-          across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
-          firm_size = first_non_na(firm_size),
-          sector = first_non_na(sector),
-          sample_size = n(),
-          .groups = "drop"
-        )
-    }
-  )
+  # Country aggregates
+  log_info("  Creating country aggregates...")
+  country_aggregates <- processed |>
+    filter(!is.na(country) & !is.na(country_code)) |>
+    group_by(country, country_code) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first_non_na(region),
+      firm_size = first_non_na(firm_size),
+      sector = first_non_na(sector),
+      sample_size = n(),
+      .groups = "drop"
+    )
 
-  # Execute all aggregations in parallel
-  agg_results <- future_lapply(agg_tasks, function(f) f(), future.seed = TRUE)
+  # Country-year panel
+  log_info("  Creating country-year panel...")
+  country_panel <- processed |>
+    filter(!is.na(country) & !is.na(year)) |>
+    group_by(country, year) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first_non_na(region),
+      firm_size = first_non_na(firm_size),
+      sample_size = n(),
+      .groups = "drop"
+    )
 
-  # Extract results
-  country_aggregates <- agg_results$country
-  country_panel <- agg_results$panel
-  country_sector_aggregates <- agg_results$sector
-  country_size_aggregates <- agg_results$size
-  country_region_aggregates <- agg_results$region
+  # Country-sector aggregates
+  log_info("  Creating country-sector aggregates...")
+  country_sector_aggregates <- processed |>
+    filter(!is.na(country) & !is.na(country_code) & !is.na(sector)) |>
+    group_by(country, country_code, sector) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first_non_na(region),
+      firm_size = first_non_na(firm_size),
+      sample_size = n(),
+      .groups = "drop"
+    )
 
-  # Reset to sequential processing
-  plan(sequential)
+  # Country-size aggregates
+  log_info("  Creating country-size aggregates...")
+  country_size_aggregates <- processed |>
+    filter(!is.na(country) & !is.na(country_code) & !is.na(firm_size)) |>
+    group_by(country, country_code, firm_size) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      region = first_non_na(region),
+      sector = first_non_na(sector),
+      sample_size = n(),
+      .groups = "drop"
+    )
+
+  # Country-region aggregates
+  log_info("  Creating country-region aggregates...")
+  country_region_aggregates <- processed |>
+    filter(!is.na(country) & !is.na(country_code) & !is.na(region)) |>
+    group_by(country, country_code, region) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      firm_size = first_non_na(firm_size),
+      sector = first_non_na(sector),
+      sample_size = n(),
+      .groups = "drop"
+    )
 
   # Log results
   log_info(sprintf("Country aggregates created: %d countries", nrow(country_aggregates)))
@@ -478,7 +465,7 @@ load_microdata <- function(dta_files) {
     metadata = list(
       source = "World Bank Enterprise Surveys (Microdata)",
       url = "https://www.enterprisesurveys.org/en/survey-datasets",
-      files = names(data_list),
+      files = loaded_file_names,
       observations = nrow(combined),
       variables = ncol(combined),
       loaded_at = Sys.time(),

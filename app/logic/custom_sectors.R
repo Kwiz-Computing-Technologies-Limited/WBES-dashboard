@@ -92,14 +92,26 @@ manage_sectors_modal_ui <- function(ns, custom_sectors) {
                         if(length(sector$sectors) > 3) "..." else "")
                 )
               ),
-              actionButton(
-                ns(paste0("delete_sector_", sector_name)),
-                NULL,
-                icon = icon("trash"),
-                class = "btn-sm btn-outline-danger",
-                title = "Delete this sector group",
-                onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                ns("delete_sector_name"), sector_name)
+              tags$div(
+                class = "btn-group",
+                actionButton(
+                  ns(paste0("edit_sector_", sector_name)),
+                  NULL,
+                  icon = icon("edit"),
+                  class = "btn-sm btn-outline-primary me-1",
+                  title = "Edit this sector group",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                                  ns("edit_sector_name"), sector_name)
+                ),
+                actionButton(
+                  ns(paste0("delete_sector_", sector_name)),
+                  NULL,
+                  icon = icon("trash"),
+                  class = "btn-sm btn-outline-danger",
+                  title = "Delete this sector group",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                                  ns("delete_sector_name"), sector_name)
+                )
               )
             )
           })
@@ -109,6 +121,59 @@ manage_sectors_modal_ui <- function(ns, custom_sectors) {
 
     footer = tags$div(
       modalButton("Close")
+    )
+  )
+}
+
+#' UI for editing an existing custom sector group
+#' @export
+edit_sector_modal_ui <- function(ns, sectors, sector_name, sector_data) {
+  modalDialog(
+    title = tags$div(
+      icon("edit"),
+      " Edit Custom Sector Group: ", sector_name
+    ),
+    size = "l",
+
+    textInput(
+      ns("edit_sector_new_name"),
+      "Sector Group Name",
+      value = sector_name
+    ),
+
+    selectizeInput(
+      ns("edit_sector_sectors"),
+      "Select Sectors",
+      choices = sectors,
+      selected = sector_data$sectors,
+      multiple = TRUE,
+      options = list(
+        placeholder = "Choose sectors to include in this group...",
+        plugins = list('remove_button')
+      )
+    ),
+
+    # Store original name for reference using a hidden input
+    tags$input(
+      type = "hidden",
+      id = ns("edit_sector_original_name"),
+      value = sector_name
+    ),
+
+    tags$div(
+      class = "alert alert-info mt-3",
+      icon("info-circle"),
+      " Modify the sector group name or update the sectors included in this custom group."
+    ),
+
+    footer = tags$div(
+      modalButton("Cancel"),
+      actionButton(
+        ns("update_custom_sector"),
+        "Update Sector Group",
+        icon = icon("save"),
+        class = "btn-primary"
+      )
     )
   )
 }

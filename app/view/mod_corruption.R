@@ -198,7 +198,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
       if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
-      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+      if (!is.null(input$firm_size) && input$firm_size != "all" && !is.na(input$firm_size)) {
         d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d

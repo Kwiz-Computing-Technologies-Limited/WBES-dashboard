@@ -91,14 +91,26 @@ manage_regions_modal_ui <- function(ns, custom_regions) {
                         if(length(region$countries) > 3) "..." else "")
                 )
               ),
-              actionButton(
-                ns(paste0("delete_region_", region_name)),
-                NULL,
-                icon = icon("trash"),
-                class = "btn-sm btn-outline-danger",
-                title = "Delete this region",
-                onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                ns("delete_region_name"), region_name)
+              tags$div(
+                class = "btn-group",
+                actionButton(
+                  ns(paste0("edit_region_", region_name)),
+                  NULL,
+                  icon = icon("edit"),
+                  class = "btn-sm btn-outline-primary me-1",
+                  title = "Edit this region",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                                  ns("edit_region_name"), region_name)
+                ),
+                actionButton(
+                  ns(paste0("delete_region_", region_name)),
+                  NULL,
+                  icon = icon("trash"),
+                  class = "btn-sm btn-outline-danger",
+                  title = "Delete this region",
+                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                                  ns("delete_region_name"), region_name)
+                )
               )
             )
           })
@@ -108,6 +120,59 @@ manage_regions_modal_ui <- function(ns, custom_regions) {
 
     footer = tags$div(
       modalButton("Close")
+    )
+  )
+}
+
+#' UI for editing an existing custom region
+#' @export
+edit_region_modal_ui <- function(ns, countries, region_name, region_data) {
+  modalDialog(
+    title = tags$div(
+      icon("edit"),
+      " Edit Custom Region: ", region_name
+    ),
+    size = "l",
+
+    textInput(
+      ns("edit_region_new_name"),
+      "Region Name",
+      value = region_name
+    ),
+
+    selectizeInput(
+      ns("edit_region_countries"),
+      "Select Countries",
+      choices = countries,
+      selected = region_data$countries,
+      multiple = TRUE,
+      options = list(
+        placeholder = "Choose countries to include in this region...",
+        plugins = list('remove_button')
+      )
+    ),
+
+    # Store original name for reference using a hidden input
+    tags$input(
+      type = "hidden",
+      id = ns("edit_region_original_name"),
+      value = region_name
+    ),
+
+    tags$div(
+      class = "alert alert-info mt-3",
+      icon("info-circle"),
+      " Modify the region name or update the countries included in this custom region."
+    ),
+
+    footer = tags$div(
+      modalButton("Cancel"),
+      actionButton(
+        ns("update_custom_region"),
+        "Update Region",
+        icon = icon("save"),
+        class = "btn-primary"
+      )
     )
   )
 }

@@ -6,12 +6,14 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
+  leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, mutate, group_by, summarise, coalesce],
   tidyr[pivot_wider],
   stats[setNames, runif],
   utils[head],
   app/logic/shared_filters[apply_common_filters],
-  app/logic/custom_regions[filter_by_region]
+  app/logic/custom_regions[filter_by_region],
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
 #' @export
@@ -40,7 +42,24 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_collateral"))),
       column(3, uiOutput(ns("kpi_rejection")))
     ),
-    
+
+    # Geographic Map
+    fluidRow(
+      class = "mb-4",
+      column(12,
+        card(
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Finance Access"),
+          card_body(
+            leafletOutput(ns("finance_map"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "Interactive map showing credit access levels by country. Darker colors indicate higher access to finance."
+            )
+          )
+        )
+      )
+    ),
+
     # Filters
     # Tab-specific filter: Gender/Ownership (Region, Sector, Size are in sidebar)
     fluidRow(
@@ -178,22 +197,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
       if (is.null(data) || nrow(data) == 0) return(NULL)
 
       # Apply region filter
-      if (input$region_filter != "all" && !is.na(input$region_filter)) {
+      if (!is.null(input$region_filter) && input$region_filter != "all" && !is.na(input$region_filter)) {
         data <- data |> filter(!is.na(region) & region == input$region_filter)
       }
 
       # Apply firm size filter (check if column exists first)
-      if ("firm_size" %in% names(data) && input$firm_size != "all" && !is.na(input$firm_size)) {
+      if ("firm_size" %in% names(data) && !is.null(input$firm_size) && input$firm_size != "all" && !is.na(input$firm_size)) {
         data <- data |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
 
       # Apply sector filter
-      if (input$sector != "all" && !is.na(input$sector)) {
+      if (!is.null(input$sector) && input$sector != "all" && !is.na(input$sector)) {
         data <- data |> filter(!is.na(sector) & sector == input$sector)
       }
 
       # Apply gender/ownership filter
-      if (input$gender != "all" && !is.na(input$gender)) {
+      if (!is.null(input$gender) && input$gender != "all" && !is.na(input$gender)) {
         if (input$gender == "female") {
           data <- data |> filter(!is.na(female_ownership) & female_ownership == TRUE)
         } else if (input$gender == "male") {
@@ -203,7 +222,39 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       data
     })
-    
+
+    # Interactive Map - uses latest (country-level) data with coordinates
+    output$finance_map <- renderLeaflet({
+      req(wbes_data())
+      # Use latest data for map (has coordinates embedded)
+      d <- wbes_data()$latest
+      coords <- get_country_coordinates(wbes_data())
+
+      # Apply global filters to map data
+      if (!is.null(global_filters)) {
+        filters <- global_filters()
+        d <- apply_common_filters(
+          d,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      create_wbes_map(
+        data = d,
+        coordinates = coords,
+        indicator_col = "firms_with_credit_line_pct",
+        indicator_label = "Credit Access (%)",
+        color_palette = "Blues",
+        reverse_colors = FALSE  # Higher is better
+      )
+    })
+
     # KPIs with NA handling - aggregate from firm-level data
     # WBES variable mappings:
     # - firms_with_bank_account_pct: from fin15 (% firms with checking/savings account)

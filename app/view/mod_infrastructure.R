@@ -6,10 +6,12 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
+  leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, mutate, group_by, summarise],
   stats[setNames, predict, lm],
   app/logic/shared_filters[apply_common_filters],
-  app/logic/custom_regions[filter_by_region]
+  app/logic/custom_regions[filter_by_region],
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
 #' @export
@@ -38,7 +40,24 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_generator"))),
       column(3, uiOutput(ns("kpi_losses")))
     ),
-    
+
+    # Geographic Map
+    fluidRow(
+      class = "mb-4",
+      column(12,
+        card(
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Power Outages"),
+          card_body(
+            leafletOutput(ns("infra_map"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "Interactive map showing power outage frequency by country. Darker red indicates more frequent outages."
+            )
+          )
+        )
+      )
+    ),
+
     # Page-specific filters
     fluidRow(
       class = "mb-4",
@@ -165,7 +184,32 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       data
     })
-    
+
+    # Interactive Map
+    output$infra_map <- renderLeaflet({
+      req(filtered_data(), wbes_data())
+      d <- filtered_data()
+      coords <- get_country_coordinates(wbes_data())
+
+      # Use the selected indicator for map
+      indicator <- if (!is.null(input$infra_indicator)) input$infra_indicator else "power_outages_per_month"
+
+      create_wbes_map(
+        data = d,
+        coordinates = coords,
+        indicator_col = indicator,
+        indicator_label = switch(indicator,
+          "power_outages_per_month" = "Power Outages/Month",
+          "avg_outage_duration_hrs" = "Outage Duration (hrs)",
+          "firms_with_generator_pct" = "Generator Usage (%)",
+          "water_insufficiency_pct" = "Water Issues (%)",
+          indicator
+        ),
+        color_palette = "YlOrRd",
+        reverse_colors = TRUE  # Higher is worse
+      )
+    })
+
     # KPIs
     output$kpi_outages <- renderUI({
       req(filtered_data())

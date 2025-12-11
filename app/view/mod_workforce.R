@@ -6,9 +6,11 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
+  leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select],
   stats[setNames],
-  utils[head]
+  utils[head],
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
 #' @export
@@ -27,6 +29,23 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_female_workers"))),
       column(3, uiOutput(ns("kpi_female_ownership"))),
       column(3, uiOutput(ns("kpi_gender_gap")))
+    ),
+
+    # Geographic Map
+    fluidRow(
+      class = "mb-4",
+      column(12,
+        card(
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Female Ownership"),
+          card_body(
+            leafletOutput(ns("workforce_map"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "Interactive map showing female ownership rates by country. Darker colors indicate higher female ownership."
+            )
+          )
+        )
+      )
     ),
 
     # Tab-specific filters (Region and Firm Size are in sidebar)
@@ -197,13 +216,36 @@ server <- function(id, wbes_data, global_filters = NULL) {
     filtered <- reactive({
       req(wbes_data())
       d <- wbes_data()$latest
-      if (input$region != "all" && !is.na(input$region)) {
+      if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
-      if (input$firm_size != "all" && !is.na(input$firm_size)) {
+      if (!is.null(input$firm_size) && input$firm_size != "all" && !is.na(input$firm_size)) {
         d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d
+    })
+
+    # Interactive Map
+    output$workforce_map <- renderLeaflet({
+      req(filtered(), wbes_data())
+      d <- filtered()
+      coords <- get_country_coordinates(wbes_data())
+
+      indicator <- if (!is.null(input$indicator)) input$indicator else "IC.FRM.FEMO.ZS"
+
+      create_wbes_map(
+        data = d,
+        coordinates = coords,
+        indicator_col = indicator,
+        indicator_label = switch(indicator,
+          "IC.FRM.WKFC.ZS" = "Workforce Obstacle (%)",
+          "IC.FRM.FEMW.ZS" = "Female Workers (%)",
+          "IC.FRM.FEMO.ZS" = "Female Ownership (%)",
+          indicator
+        ),
+        color_palette = if (indicator == "IC.FRM.WKFC.ZS") "YlOrRd" else "Purples",
+        reverse_colors = indicator == "IC.FRM.WKFC.ZS"
+      )
     })
 
     # KPIs

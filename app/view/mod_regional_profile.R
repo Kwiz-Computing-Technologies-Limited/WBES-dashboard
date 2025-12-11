@@ -7,9 +7,11 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate, group_by, summarise, n],
+  leaflet[leafletOutput, renderLeaflet],
   stats[setNames],
   app/logic/shared_filters[apply_common_filters],
-  app/logic/custom_regions[filter_by_region]
+  app/logic/custom_regions[filter_by_region],
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
 #' @export
@@ -35,6 +37,23 @@ ui <- function(id) {
       class = "mb-4",
       column(12,
         uiOutput(ns("region_summary"))
+      )
+    ),
+
+    # Geographic Map
+    fluidRow(
+      class = "mb-4",
+      column(12,
+        card(
+          card_header(icon("map-marked-alt"), "Geographic Distribution"),
+          card_body(
+            leafletOutput(ns("regional_profile_map"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "Interactive map showing geographic distribution of power outages across countries in this region. Click markers for details."
+            )
+          )
+        )
       )
     ),
 
@@ -224,6 +243,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
         # If "all" is selected, return all data (globally aggregated)
         data
       }
+    })
+
+    # Geographic map for regional profile
+    output$regional_profile_map <- renderLeaflet({
+      req(region_data(), wbes_data())
+      d <- region_data()
+      coords <- get_country_coordinates(wbes_data())
+
+      create_wbes_map(
+        data = d,
+        coordinates = coords,
+        indicator_col = "power_outages_per_month",
+        indicator_label = "Power Outages/Month",
+        color_palette = "YlOrRd",
+        reverse_colors = FALSE
+      )
     })
 
     # Region summary card

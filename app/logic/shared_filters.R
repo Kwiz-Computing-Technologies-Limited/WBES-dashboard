@@ -87,33 +87,46 @@ apply_common_filters <- function(data,
                                   filter_by_region_fn = NULL) {
   if (is.null(data)) return(NULL)
 
+ # Helper to check if filter should be applied (handles NULL, NA, vectors)
+  should_filter <- function(value) {
+    if (is.null(value)) return(FALSE)
+    if (length(value) == 0) return(FALSE)
+    if (length(value) == 1 && (is.na(value) || value == "all")) return(FALSE)
+    # For vectors, check if it's not just "all"
+    if (length(value) > 1) return(!all(value == "all"))
+    return(TRUE)
+  }
+
   # Apply region filter (using custom_regions if available)
-  if (!is.null(filter_by_region_fn) && region_value != "all") {
-    data <- filter_by_region_fn(data, region_value, custom_regions)
-  } else if (region_value != "all" && "region" %in% names(data)) {
-    data <- data |> filter(!is.na(region) & region == region_value)
+  if (should_filter(region_value)) {
+    if (!is.null(filter_by_region_fn)) {
+      data <- filter_by_region_fn(data, region_value, custom_regions)
+    } else if ("region" %in% names(data)) {
+      data <- data |> filter(!is.na(region) & region %in% region_value)
+    }
   }
 
   # Apply sector filter
-  if (sector_value != "all" && "sector" %in% names(data)) {
-    data <- data |> filter(!is.na(sector) & sector == sector_value)
+  if (should_filter(sector_value) && "sector" %in% names(data)) {
+    data <- data |> filter(!is.na(sector) & sector %in% sector_value)
   }
 
   # Apply firm size filter
-  if (firm_size_value != "all" && "firm_size" %in% names(data)) {
-    data <- data |> filter(!is.na(firm_size) & firm_size == firm_size_value)
+  if (should_filter(firm_size_value) && "firm_size" %in% names(data)) {
+    data <- data |> filter(!is.na(firm_size) & firm_size %in% firm_size_value)
   }
 
   # Apply income filter
-  if (income_value != "all" && "income" %in% names(data)) {
-    data <- data |> filter(!is.na(income) & income == income_value)
+  if (should_filter(income_value) && "income" %in% names(data)) {
+    data <- data |> filter(!is.na(income) & income %in% income_value)
   }
 
   # Apply year filter
-  if (!is.null(year_value) && !all(year_value == "all") && "year" %in% names(data)) {
-    if (length(year_value) > 0 && year_value[1] != "all") {
-      # Convert to numeric for comparison
-      year_nums <- as.numeric(year_value)
+  if (should_filter(year_value) && "year" %in% names(data)) {
+    # Convert to numeric for comparison
+    year_nums <- as.numeric(year_value)
+    year_nums <- year_nums[!is.na(year_nums)]
+    if (length(year_nums) > 0) {
       data <- data |> filter(!is.na(year) & year %in% year_nums)
     }
   }

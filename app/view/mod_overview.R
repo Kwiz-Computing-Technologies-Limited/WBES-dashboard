@@ -8,9 +8,10 @@ box::use(
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
-         setView, colorNumeric, addLegend],
+         setView, colorNumeric, addLegend, labelFormat],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
  stats[setNames, na.omit],
+ scales[rescale],
  app/logic/shared_filters[apply_common_filters],
  app/logic/custom_regions[filter_by_region]
 )
@@ -222,7 +223,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
      )
    })
 
-   # World Map
+   # World Map - with color and size encoding
    output$world_map <- renderLeaflet({
      req(filtered_data())
 
@@ -233,7 +234,6 @@ server <- function(id, wbes_data, global_filters = NULL) {
      has_coords <- "lat" %in% names(data) && "lng" %in% names(data)
 
      if (!has_coords) {
-       # No coordinates available - show empty map
        return(
          leaflet() |>
            addTiles() |>
@@ -241,46 +241,67 @@ server <- function(id, wbes_data, global_filters = NULL) {
        )
      }
 
-     # Filter to only countries with valid coordinates and indicator data
      indicator <- input$map_indicator
 
-     data <- data[!is.na(data$lat) & !is.na(data$lng), ]
+     # Handle lon/lng naming
+     if ("lng" %in% names(data) && !"lon" %in% names(data)) {
+       data$lon <- data$lng
+     }
 
-     # Filter to countries with non-NA indicator values
+     data <- data[!is.na(data$lat) & !is.na(data$lon), ]
+
      if (indicator %in% names(data)) {
        data <- data[!is.na(data[[indicator]]), ]
      }
 
      if (nrow(data) > 0 && indicator %in% names(data)) {
-       # Create color palette
+       # Map indicator labels
+       indicator_labels <- c(
+         "power_outages_per_month" = "Power Outages/Month",
+         "firms_with_credit_line_pct" = "Credit Access %",
+         "bribery_incidence_pct" = "Bribery Incidence %",
+         "capacity_utilization_pct" = "Capacity Utilization %"
+       )
+       label <- if (indicator %in% names(indicator_labels)) indicator_labels[[indicator]] else indicator
+
+       # Color palette - YlOrRd for consistency with other maps
        pal <- colorNumeric(
-         palette = c("#2E7D32", "#F4A460", "#dc3545"),
+         palette = c("#FFFFB2", "#FED976", "#FEB24C", "#FD8D3C", "#F03B20", "#BD0026"),
          domain = data[[indicator]],
          na.color = "#808080"
        )
+
+       # Size scaling - rescale indicator values to marker sizes (5-20)
+       size_values <- data[[indicator]]
+       size_values[is.na(size_values)] <- min(size_values, na.rm = TRUE)
+       data$marker_size <- rescale(size_values, to = c(6, 22))
 
        leaflet(data) |>
          addTiles() |>
          setView(lng = 20, lat = 10, zoom = 2) |>
          addCircleMarkers(
-           lng = ~lng, lat = ~lat,
-           radius = 8,
+           lng = ~lon, lat = ~lat,
+           radius = ~marker_size,
            color = ~pal(get(indicator)),
-           fillOpacity = 0.8,
+           fillColor = ~pal(get(indicator)),
+           fillOpacity = 0.7,
            stroke = TRUE,
-           weight = 1,
+           weight = 1.5,
            opacity = 0.9,
            popup = ~paste0(
              "<strong>", country, "</strong><br>",
-             indicator, ": ", round(get(indicator), 1)
-           )
+             label, ": ", round(get(indicator), 1),
+             if ("region" %in% names(data)) paste0("<br>Region: ", region) else ""
+           ),
+           label = ~country
          ) |>
          addLegend(
            "bottomright",
            pal = pal,
            values = ~get(indicator),
-           title = "Value",
-           opacity = 0.8
+           title = label,
+           opacity = 0.8,
+           labFormat = labelFormat(suffix = if (grepl("pct", indicator)) "%" else "")
          )
      } else {
        leaflet() |>

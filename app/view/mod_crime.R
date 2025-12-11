@@ -6,11 +6,13 @@ box::use(
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
+  leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head],
   app/logic/shared_filters[apply_common_filters],
-  app/logic/custom_regions[filter_by_region]
+  app/logic/custom_regions[filter_by_region],
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
 #' @export
@@ -29,6 +31,23 @@ ui <- function(id) {
       column(3, uiOutput(ns("kpi_security_cost"))),
       column(3, uiOutput(ns("kpi_high_risk"))),
       column(3, uiOutput(ns("kpi_security_index")))
+    ),
+
+    # Geographic Map
+    fluidRow(
+      class = "mb-4",
+      column(12,
+        card(
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Crime Obstacles"),
+          card_body(
+            leafletOutput(ns("crime_map"), height = "400px"),
+            p(
+              class = "text-muted small mt-2",
+              "Interactive map showing crime as an obstacle by country. Darker red indicates higher crime obstacles."
+            )
+          )
+        )
+      )
     ),
 
     # Tab-specific filters (Region and Firm Size are in sidebar)
@@ -197,6 +216,28 @@ server <- function(id, wbes_data, global_filters = NULL) {
         d <- d |> filter(!is.na(firm_size) & firm_size == input$firm_size)
       }
       d
+    })
+
+    # Interactive Map
+    output$crime_map <- renderLeaflet({
+      req(filtered(), wbes_data())
+      d <- filtered()
+      coords <- get_country_coordinates(wbes_data())
+
+      indicator <- if (!is.null(input$indicator)) input$indicator else "IC.FRM.CRIM.ZS"
+
+      create_wbes_map(
+        data = d,
+        coordinates = coords,
+        indicator_col = indicator,
+        indicator_label = switch(indicator,
+          "IC.FRM.CRIM.ZS" = "Crime as Obstacle (%)",
+          "IC.FRM.SECU.ZS" = "Security Costs (%)",
+          indicator
+        ),
+        color_palette = "Reds",
+        reverse_colors = TRUE  # Higher is worse
+      )
     })
 
     # KPIs

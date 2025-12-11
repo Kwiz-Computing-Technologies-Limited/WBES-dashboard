@@ -36,9 +36,9 @@ box::use(
   app/logic/wbes_data[load_wbes_data],
   app/logic/shared_filters[get_filter_choices, remove_na_columns],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
-                           manage_regions_modal_ui, custom_regions_storage],
+                           manage_regions_modal_ui, edit_region_modal_ui, custom_regions_storage],
   app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
-                           manage_sectors_modal_ui, custom_sectors_storage]
+                           manage_sectors_modal_ui, edit_sector_modal_ui, custom_sectors_storage]
 )
 
 #' @export
@@ -569,6 +569,60 @@ ui <- function(request) {
     shiny::showModal(manage_regions_modal_ui(session$ns, custom_regions()))
   })
 
+  # Edit custom region - show edit modal
+  observeEvent(input$edit_region_name, {
+    req(input$edit_region_name, wbes_data())
+    region_to_edit <- input$edit_region_name
+    current_regions <- custom_regions()
+
+    if (!is.null(current_regions[[region_to_edit]])) {
+      countries <- sort(wbes_data()$countries)
+      shiny::showModal(edit_region_modal_ui(
+        session$ns,
+        countries,
+        region_to_edit,
+        current_regions[[region_to_edit]]
+      ))
+    }
+  })
+
+  # Update custom region - save changes
+  observeEvent(input$update_custom_region, {
+    req(input$edit_region_new_name, input$edit_region_countries)
+
+    new_name <- trimws(input$edit_region_new_name)
+    if (new_name == "" || length(input$edit_region_countries) == 0) {
+      return(NULL)
+    }
+
+    # Get the original name from the hidden input
+    original_name <- input$edit_region_original_name
+
+    current_regions <- custom_regions()
+
+    # If name changed, remove old entry
+    if (!is.null(original_name) && original_name != new_name && !is.null(current_regions[[original_name]])) {
+      current_regions[[original_name]] <- NULL
+    }
+
+    # Update/create region with new data
+    current_regions[[new_name]] <- list(
+      name = new_name,
+      countries = input$edit_region_countries,
+      created = if (!is.null(original_name) && !is.null(custom_regions()[[original_name]]$created)) {
+        custom_regions()[[original_name]]$created
+      } else {
+        Sys.time()
+      },
+      modified = Sys.time()
+    )
+
+    custom_regions(current_regions)
+    custom_regions_storage(current_regions)
+
+    shiny::removeModal()
+  })
+
   # Custom sector modal handlers
   observeEvent(input$create_custom_sector, {
     req(wbes_data())
@@ -612,6 +666,60 @@ ui <- function(request) {
     custom_sectors_storage(current_sectors)
 
     shiny::showModal(manage_sectors_modal_ui(session$ns, custom_sectors()))
+  })
+
+  # Edit custom sector - show edit modal
+  observeEvent(input$edit_sector_name, {
+    req(input$edit_sector_name, wbes_data())
+    sector_to_edit <- input$edit_sector_name
+    current_sectors <- custom_sectors()
+
+    if (!is.null(current_sectors[[sector_to_edit]])) {
+      sectors <- sort(wbes_data()$sectors)
+      shiny::showModal(edit_sector_modal_ui(
+        session$ns,
+        sectors,
+        sector_to_edit,
+        current_sectors[[sector_to_edit]]
+      ))
+    }
+  })
+
+  # Update custom sector - save changes
+  observeEvent(input$update_custom_sector, {
+    req(input$edit_sector_new_name, input$edit_sector_sectors)
+
+    new_name <- trimws(input$edit_sector_new_name)
+    if (new_name == "" || length(input$edit_sector_sectors) == 0) {
+      return(NULL)
+    }
+
+    # Get the original name from the hidden input
+    original_name <- input$edit_sector_original_name
+
+    current_sectors <- custom_sectors()
+
+    # If name changed, remove old entry
+    if (!is.null(original_name) && original_name != new_name && !is.null(current_sectors[[original_name]])) {
+      current_sectors[[original_name]] <- NULL
+    }
+
+    # Update/create sector with new data
+    current_sectors[[new_name]] <- list(
+      name = new_name,
+      sectors = input$edit_sector_sectors,
+      created = if (!is.null(original_name) && !is.null(custom_sectors()[[original_name]]$created)) {
+        custom_sectors()[[original_name]]$created
+      } else {
+        Sys.time()
+      },
+      modified = Sys.time()
+    )
+
+    custom_sectors(current_sectors)
+    custom_sectors_storage(current_sectors)
+
+    shiny::removeModal()
   })
 
   # Reset all filters
