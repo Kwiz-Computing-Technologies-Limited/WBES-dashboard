@@ -4,17 +4,58 @@
 box::use(
 shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
-        observeEvent, actionButton, tabsetPanel, tabPanel, HTML],
+        observeEvent, actionButton, tabsetPanel, tabPanel, HTML,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of],
   leaflet[leafletOutput, renderLeaflet],
   stats[setNames],
+  htmlwidgets[saveWidget],
+  utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
+
+# Helper function for table with download
+table_with_download <- function(ns, output_id, title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "mb-2",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "Download CSV",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary"
+      )
+    ),
+    DTOutput(ns(output_id))
+  )
+}
 
 # Define indicator domains with their indicators
 DOMAINS <- list(
@@ -167,13 +208,13 @@ ui <- function(id) {
             ),
             fluidRow(
               column(12,
-                plotlyOutput(ns("overview_heatmap"), height = "500px")
+                chart_with_download(ns, "overview_heatmap", height = "500px")
               )
             ),
             fluidRow(
               class = "mt-4",
               column(12,
-                DTOutput(ns("overview_table"))
+                table_with_download(ns, "overview_table")
               )
             )
           ),
@@ -185,10 +226,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("infra_comparison"), height = "400px")
+                chart_with_download(ns, "infra_comparison")
               ),
               column(4,
-                plotlyOutput(ns("infra_radar"), height = "400px")
+                chart_with_download(ns, "infra_radar")
               )
             ),
             fluidRow(
@@ -206,10 +247,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("finance_comparison"), height = "400px")
+                chart_with_download(ns, "finance_comparison")
               ),
               column(4,
-                plotlyOutput(ns("finance_radar"), height = "400px")
+                chart_with_download(ns, "finance_radar")
               )
             ),
             fluidRow(
@@ -227,10 +268,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("governance_comparison"), height = "400px")
+                chart_with_download(ns, "governance_comparison")
               ),
               column(4,
-                plotlyOutput(ns("governance_radar"), height = "400px")
+                chart_with_download(ns, "governance_radar")
               )
             ),
             fluidRow(
@@ -248,10 +289,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("workforce_comparison"), height = "400px")
+                chart_with_download(ns, "workforce_comparison")
               ),
               column(4,
-                plotlyOutput(ns("workforce_radar"), height = "400px")
+                chart_with_download(ns, "workforce_radar")
               )
             ),
             fluidRow(
@@ -269,10 +310,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("performance_comparison"), height = "400px")
+                chart_with_download(ns, "performance_comparison")
               ),
               column(4,
-                plotlyOutput(ns("performance_radar"), height = "400px")
+                chart_with_download(ns, "performance_radar")
               )
             ),
             fluidRow(
@@ -290,10 +331,10 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(8,
-                plotlyOutput(ns("crime_comparison"), height = "400px")
+                chart_with_download(ns, "crime_comparison")
               ),
               column(4,
-                plotlyOutput(ns("crime_radar"), height = "400px")
+                chart_with_download(ns, "crime_radar")
               )
             ),
             fluidRow(
@@ -668,95 +709,285 @@ server <- function(id, wbes_data, global_filters = NULL) {
         config(displayModeBar = FALSE)
     }
 
-    # Helper function to create faceted radar charts (one per region)
+    # Helper function to create faceted radar charts (one per region, with nested grouping if 3rd dim selected)
     create_faceted_radar <- function(data, indicators, indicator_names, domain_name) {
+      group_dim <- input$group_dimension
+      has_grouping <- !is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data) && !all(is.na(data$group_value))
+
       regions <- unique(data$region)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+      n_regions <- length(regions)
 
-      # Create individual radar charts for each region
-      plots <- lapply(seq_along(regions), function(i) {
+      # Calculate grid layout
+      n_cols <- min(3, n_regions)
+      n_rows <- ceiling(n_regions / n_cols)
+
+      # Calculate domain positions for each radar
+      get_domain <- function(idx, total, n_cols) {
+        row <- (idx - 1) %/% n_cols
+        col <- (idx - 1) %% n_cols
+        n_rows <- ceiling(total / n_cols)
+
+        x_size <- 0.9 / n_cols
+        y_size <- 0.85 / n_rows
+        x_gap <- 0.1 / (n_cols + 1)
+        y_gap <- 0.1 / (n_rows + 1)
+
+        x_start <- x_gap + col * (x_size + x_gap)
+        y_start <- 1 - (row + 1) * (y_size + y_gap)
+
+        list(x = c(x_start, x_start + x_size), y = c(y_start, y_start + y_size))
+      }
+
+      p <- plot_ly()
+
+      # Build layout with multiple polar axes
+      layout_args <- list(
+        title = list(text = paste(domain_name, "- Radar Comparison"), font = list(size = 14)),
+        paper_bgcolor = "rgba(0,0,0,0)",
+        showlegend = has_grouping,
+        legend = list(orientation = "h", y = -0.05)
+      )
+
+      annotations <- list()
+
+      for (i in seq_along(regions)) {
         r <- regions[i]
-        region_data <- data[data$region == r, ]
+        polar_name <- if (i == 1) "polar" else paste0("polar", i)
+        domain <- get_domain(i, n_regions, n_cols)
 
-        values <- sapply(indicators, function(ind) {
-          val <- mean(region_data[[ind]], na.rm = TRUE)
-          if (is.na(val)) 0 else val
-        })
-        # Close the radar by repeating first value
-        values <- c(values, values[1])
-        theta <- c(indicator_names, indicator_names[1])
+        # Add polar axis to layout
+        layout_args[[polar_name]] <- list(
+          domain = domain,
+          radialaxis = list(visible = TRUE, range = c(0, 100), tickfont = list(size = 8)),
+          angularaxis = list(tickfont = list(size = 7))
+        )
 
-        plot_ly(
-          type = 'scatterpolar',
-          mode = 'lines+markers',
-          fill = 'toself',
-          r = values,
-          theta = theta,
-          name = r,
-          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
-          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33"),
-          showlegend = FALSE
-        ) |>
-          layout(
-            polar = list(
-              radialaxis = list(visible = TRUE, range = c(0, 100)),
-              angularaxis = list(tickfont = list(size = 8))
-            ),
-            annotations = list(list(
-              text = r,
-              x = 0.5, y = 1.15,
-              xref = "paper", yref = "paper",
-              showarrow = FALSE,
-              font = list(size = 11, color = colors[((i - 1) %% length(colors)) + 1])
-            ))
+        # Add annotation (title) for this radar
+        annotations[[length(annotations) + 1]] <- list(
+          text = r,
+          x = mean(domain$x),
+          y = domain$y[2] + 0.03,
+          xref = "paper", yref = "paper",
+          showarrow = FALSE,
+          font = list(size = 10, weight = "bold", color = colors[((i - 1) %% length(colors)) + 1])
+        )
+
+        if (has_grouping) {
+          # Nested faceting: show each group value within this region
+          group_values <- unique(data$group_value[!is.na(data$group_value)])
+          for (j in seq_along(group_values)) {
+            gv <- group_values[j]
+            subset_data <- data[data$region == r & data$group_value == gv, ]
+
+            if (nrow(subset_data) > 0) {
+              values <- sapply(indicators, function(ind) {
+                val <- mean(subset_data[[ind]], na.rm = TRUE)
+                if (is.na(val)) 0 else val
+              })
+              values <- c(values, values[1])
+              theta <- c(indicator_names, indicator_names[1])
+
+              p <- p |> add_trace(
+                type = 'scatterpolar',
+                mode = 'lines+markers',
+                fill = 'toself',
+                r = values,
+                theta = theta,
+                name = as.character(gv),
+                legendgroup = as.character(gv),
+                showlegend = (i == 1),
+                line = list(color = colors[((j - 1) %% length(colors)) + 1]),
+                fillcolor = paste0(colors[((j - 1) %% length(colors)) + 1], "22"),
+                marker = list(size = 4),
+                subplot = polar_name
+              )
+            }
+          }
+        } else {
+          # No grouping: single radar per region
+          region_data <- data[data$region == r, ]
+          values <- sapply(indicators, function(ind) {
+            val <- mean(region_data[[ind]], na.rm = TRUE)
+            if (is.na(val)) 0 else val
+          })
+          values <- c(values, values[1])
+          theta <- c(indicator_names, indicator_names[1])
+
+          p <- p |> add_trace(
+            type = 'scatterpolar',
+            mode = 'lines+markers',
+            fill = 'toself',
+            r = values,
+            theta = theta,
+            name = r,
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33"),
+            marker = list(size = 5),
+            showlegend = FALSE,
+            subplot = polar_name
           )
-      })
+        }
+      }
 
-      # Arrange in grid (2 columns)
-      n_cols <- min(3, length(regions))
-      n_rows <- ceiling(length(regions) / n_cols)
+      layout_args$annotations <- annotations
 
-      subplot(plots, nrows = n_rows, margin = 0.08) |>
-        layout(
-          title = list(text = paste(domain_name, "- Radar Comparison"), font = list(size = 14)),
-          paper_bgcolor = "rgba(0,0,0,0)",
-          showlegend = FALSE
-        ) |>
-        config(displayModeBar = FALSE)
+      # Apply layout using do.call
+      p <- do.call(layout, c(list(p), layout_args))
+      p |> config(displayModeBar = FALSE)
     }
 
-    # Helper function to create domain heatmap
+    # Helper function to create domain heatmap (faceted by 3rd dimension if selected)
     create_domain_heatmap <- function(data, indicators, indicator_names, domain_name) {
+      group_dim <- input$group_dimension
+      has_grouping <- !is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data) && !all(is.na(data$group_value))
+
       regions <- unique(data$region)
 
-      # Create matrix for heatmap - regions as rows, indicators as columns
-      z_matrix <- sapply(indicators, function(ind) {
-        sapply(regions, function(r) {
-          val <- data[data$region == r, ind, drop = TRUE]
-          if (length(val) > 0) {
-            mean_val <- mean(val, na.rm = TRUE)
-            if (!is.na(mean_val)) mean_val else NA
-          } else {
-            NA
-          }
-        })
-      })
+      if (has_grouping) {
+        # Faceted heatmaps - one per group value
+        group_values <- unique(data$group_value[!is.na(data$group_value)])
+        n_groups <- length(group_values)
+        n_cols <- min(3, n_groups)
+        n_rows <- ceiling(n_groups / n_cols)
 
-      plot_ly(
-        x = indicator_names,
-        y = regions,
-        z = z_matrix,
-        type = "heatmap",
-        colorscale = list(c(0, "#f7fbff"), c(0.5, "#6baed6"), c(1, "#08306b")),
-        hovertemplate = "%{y}<br>%{x}: %{z:.1f}<extra></extra>"
-      ) |>
-        layout(
-          title = list(text = paste(domain_name, "- Heatmap"), font = list(size = 14)),
-          xaxis = list(title = "", tickangle = -45),
-          yaxis = list(title = ""),
-          paper_bgcolor = "rgba(0,0,0,0)"
+        # Calculate domain positions for each heatmap
+        get_domain <- function(idx, total, n_cols) {
+          row <- (idx - 1) %/% n_cols
+          col <- (idx - 1) %% n_cols
+          n_rows <- ceiling(total / n_cols)
+
+          x_size <- 0.88 / n_cols
+          y_size <- 0.82 / n_rows
+          x_gap <- 0.12 / (n_cols + 1)
+          y_gap <- 0.12 / (n_rows + 1)
+
+          x_start <- x_gap + col * (x_size + x_gap)
+          y_start <- 1 - (row + 1) * (y_size + y_gap)
+
+          list(x = c(x_start, x_start + x_size), y = c(y_start, y_start + y_size))
+        }
+
+        # Find global min/max for consistent color scale
+        all_vals <- unlist(lapply(group_values, function(gv) {
+          subset_data <- data[data$group_value == gv, ]
+          unlist(lapply(indicators, function(ind) {
+            mean(subset_data[[ind]], na.rm = TRUE)
+          }))
+        }))
+        z_min <- min(all_vals, na.rm = TRUE)
+        z_max <- max(all_vals, na.rm = TRUE)
+
+        p <- plot_ly()
+        annotations <- list()
+
+        for (i in seq_along(group_values)) {
+          gv <- group_values[i]
+          subset_data <- data[data$group_value == gv, ]
+          domain <- get_domain(i, n_groups, n_cols)
+
+          # Create matrix for this group
+          z_matrix <- sapply(indicators, function(ind) {
+            sapply(regions, function(r) {
+              val <- subset_data[subset_data$region == r, ind, drop = TRUE]
+              if (length(val) > 0) {
+                mean_val <- mean(val, na.rm = TRUE)
+                if (!is.na(mean_val)) mean_val else NA
+              } else {
+                NA
+              }
+            })
+          })
+
+          # Axis names for this subplot
+          xaxis_name <- if (i == 1) "xaxis" else paste0("xaxis", i)
+          yaxis_name <- if (i == 1) "yaxis" else paste0("yaxis", i)
+          xref <- if (i == 1) "x" else paste0("x", i)
+          yref <- if (i == 1) "y" else paste0("y", i)
+
+          p <- p |> add_trace(
+            type = "heatmap",
+            x = indicator_names,
+            y = regions,
+            z = z_matrix,
+            colorscale = list(c(0, "#f7fbff"), c(0.5, "#6baed6"), c(1, "#08306b")),
+            zmin = z_min,
+            zmax = z_max,
+            showscale = (i == 1),
+            hovertemplate = paste0(gv, "<br>%{y}<br>%{x}: %{z:.1f}<extra></extra>"),
+            xaxis = xref,
+            yaxis = yref
+          )
+
+          # Add annotation (title) for this heatmap
+          annotations[[length(annotations) + 1]] <- list(
+            text = paste0("<b>", gv, "</b>"),
+            x = mean(domain$x),
+            y = domain$y[2] + 0.03,
+            xref = "paper", yref = "paper",
+            showarrow = FALSE,
+            font = list(size = 11)
+          )
+        }
+
+        # Build layout with multiple axes
+        layout_args <- list(
+          title = list(text = paste(domain_name, "by", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
+          paper_bgcolor = "rgba(0,0,0,0)",
+          annotations = annotations
+        )
+
+        for (i in seq_along(group_values)) {
+          domain <- get_domain(i, n_groups, n_cols)
+          xaxis_name <- if (i == 1) "xaxis" else paste0("xaxis", i)
+          yaxis_name <- if (i == 1) "yaxis" else paste0("yaxis", i)
+
+          layout_args[[xaxis_name]] <- list(
+            domain = domain$x,
+            anchor = if (i == 1) "y" else paste0("y", i),
+            tickangle = -45,
+            tickfont = list(size = 8)
+          )
+          layout_args[[yaxis_name]] <- list(
+            domain = domain$y,
+            anchor = if (i == 1) "x" else paste0("x", i),
+            tickfont = list(size = 9)
+          )
+        }
+
+        p <- do.call(layout, c(list(p), layout_args))
+        p |> config(displayModeBar = FALSE)
+
+      } else {
+        # Single heatmap - no grouping
+        z_matrix <- sapply(indicators, function(ind) {
+          sapply(regions, function(r) {
+            val <- data[data$region == r, ind, drop = TRUE]
+            if (length(val) > 0) {
+              mean_val <- mean(val, na.rm = TRUE)
+              if (!is.na(mean_val)) mean_val else NA
+            } else {
+              NA
+            }
+          })
+        })
+
+        plot_ly(
+          x = indicator_names,
+          y = regions,
+          z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#f7fbff"), c(0.5, "#6baed6"), c(1, "#08306b")),
+          hovertemplate = "%{y}<br>%{x}: %{z:.1f}<extra></extra>"
         ) |>
-        config(displayModeBar = FALSE)
+          layout(
+            title = list(text = paste(domain_name, "- Heatmap"), font = list(size = 14)),
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
     }
 
     # Overview heatmap
@@ -1029,6 +1260,128 @@ server <- function(id, wbes_data, global_filters = NULL) {
         color_palette = "YlOrRd"
       )
     })
+
+    # ============================================
+    # DOWNLOAD HANDLERS
+    # ============================================
+
+    # Helper to create plotly download handler
+    create_plot_download <- function(plot_output_func, prefix) {
+      downloadHandler(
+        filename = function() {
+          paste0(prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          p <- plot_output_func()
+          saveWidget(p, file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    # Helper to create CSV download handler
+    create_csv_download <- function(data_func, prefix) {
+      downloadHandler(
+        filename = function() {
+          paste0(prefix, "_", format(Sys.Date(), "%Y%m%d"), ".csv")
+        },
+        content = function(file) {
+          write.csv(data_func(), file, row.names = FALSE)
+        }
+      )
+    }
+
+    # Overview downloads
+    output$dl_overview_heatmap <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        key_indicators <- c("power_outages_per_month", "firms_with_credit_line_pct",
+                            "bribery_incidence_pct", "female_ownership_pct",
+                            "capacity_utilization_pct", "crime_obstacle_pct")
+        indicator_labels <- c("Power Outages", "Credit Access", "Bribery",
+                              "Female Ownership", "Capacity Util", "Crime Obstacle")
+        available <- intersect(key_indicators, names(data))
+        regions <- unique(data$region)
+        z_matrix <- sapply(available, function(ind) {
+          sapply(regions, function(r) mean(data[data$region == r, ind, drop = TRUE], na.rm = TRUE))
+        })
+        plot_ly(x = indicator_labels[key_indicators %in% available], y = regions, z = z_matrix,
+                type = "heatmap", colorscale = list(c(0, "#1B6B5F"), c(0.5, "#F4A460"), c(1, "#dc3545")))
+      },
+      "regional_overview_heatmap"
+    )
+
+    output$dl_overview_table <- create_csv_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        key_cols <- c("region", "countries_count", "power_outages_per_month",
+                      "firms_with_credit_line_pct", "bribery_incidence_pct",
+                      "female_ownership_pct", "capacity_utilization_pct")
+        select(data, any_of(key_cols))
+      },
+      "regional_overview_data"
+    )
+
+    # Domain chart downloads - Infrastructure
+    output$dl_infra_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "infrastructure", input$chart_type) },
+      "regional_infrastructure_comparison"
+    )
+    output$dl_infra_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$infrastructure$indicators), names(DOMAINS$infrastructure$indicators), "Infrastructure") },
+      "regional_infrastructure_radar"
+    )
+
+    # Finance downloads
+    output$dl_finance_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "finance", input$chart_type) },
+      "regional_finance_comparison"
+    )
+    output$dl_finance_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$finance$indicators), names(DOMAINS$finance$indicators), "Finance") },
+      "regional_finance_radar"
+    )
+
+    # Governance downloads
+    output$dl_governance_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "governance", input$chart_type) },
+      "regional_governance_comparison"
+    )
+    output$dl_governance_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$governance$indicators), names(DOMAINS$governance$indicators), "Governance") },
+      "regional_governance_radar"
+    )
+
+    # Workforce downloads
+    output$dl_workforce_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "workforce", input$chart_type) },
+      "regional_workforce_comparison"
+    )
+    output$dl_workforce_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$workforce$indicators), names(DOMAINS$workforce$indicators), "Workforce") },
+      "regional_workforce_radar"
+    )
+
+    # Performance downloads
+    output$dl_performance_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "performance", input$chart_type) },
+      "regional_performance_comparison"
+    )
+    output$dl_performance_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$performance$indicators), names(DOMAINS$performance$indicators), "Performance") },
+      "regional_performance_radar"
+    )
+
+    # Crime downloads
+    output$dl_crime_comparison <- create_plot_download(
+      function() { req(comparison_data()); create_domain_chart(comparison_data(), "crime", input$chart_type) },
+      "regional_crime_comparison"
+    )
+    output$dl_crime_radar <- create_plot_download(
+      function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$crime$indicators), names(DOMAINS$crime$indicators), "Crime") },
+      "regional_crime_radar"
+    )
 
   })
 }

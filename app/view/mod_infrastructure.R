@@ -3,16 +3,39 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, mutate, group_by, summarise],
   stats[setNames, predict, lm],
+  htmlwidgets[saveWidget],
+  utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -89,7 +112,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
         card_body(
-          plotlyOutput(ns("infra_bar_chart"), height = "450px"),
+          chart_with_download(ns, "infra_bar_chart", height = "450px"),
           p(
             class = "text-muted small mt-2",
             "Horizontal bars compare the selected infrastructure indicator for the top countries, with higher values signaling greater constraint."
@@ -101,7 +124,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-pie"), "Power Source Distribution"),
         card_body(
-          plotlyOutput(ns("power_source_pie"), height = "450px"),
+          chart_with_download(ns, "power_source_pie", height = "450px"),
           p(
             class = "text-muted small mt-2",
             "Slices show how firms split between grid-only power, generators, or mixed sources, highlighting reliance on backups."
@@ -110,7 +133,7 @@ ui <- function(id) {
       )
     )
   ),
-    
+
     # Secondary Analysis
     fluidRow(
       class = "mb-4",
@@ -118,7 +141,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-line"), "Outages vs. Productivity"),
         card_body(
-          plotlyOutput(ns("outage_productivity"), height = "350px"),
+          chart_with_download(ns, "outage_productivity", height = "350px"),
           p(
             class = "text-muted small mt-2",
             "The fitted line illustrates how rising outage frequency relates to declines in capacity utilization."
@@ -130,7 +153,7 @@ ui <- function(id) {
       card(
         card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
         card_body(
-          plotlyOutput(ns("cost_chart"), height = "350px"),
+          chart_with_download(ns, "cost_chart", height = "350px"),
           p(
             class = "text-muted small mt-2",
             "Bars translate outages into estimated sales losses, showing which regions bear the largest revenue impact."
@@ -139,14 +162,14 @@ ui <- function(id) {
       )
     )
   ),
-    
+
     # Regional Heatmap
     fluidRow(
       column(12,
       card(
         card_header(icon("th"), "Regional Infrastructure Heatmap"),
         card_body(
-          plotlyOutput(ns("infra_heatmap"), height = "400px"),
+          chart_with_download(ns, "infra_heatmap"),
           p(
             class = "text-muted small mt-2",
             "The heatmap compares infrastructure indicators across regions and metrics; darker cells flag hotspots needing attention."
@@ -429,9 +452,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$infra_heatmap <- renderPlotly({
       regions <- c("Sub-Saharan Africa", "South Asia", "East Asia & Pacific",
                    "Latin America", "Europe & Central Asia")
-      indicators <- c("Power Outages", "Outage Duration", "Generator Use", 
+      indicators <- c("Power Outages", "Outage Duration", "Generator Use",
                       "Water Issues", "Transport")
-      
+
       z <- matrix(
         c(8.5, 5.2, 45, 25, 18,
           6.2, 4.1, 35, 20, 15,
@@ -440,7 +463,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           2.8, 2.0, 15, 8, 8),
         nrow = 5, byrow = TRUE
       )
-      
+
       plot_ly(
         x = indicators,
         y = regions,
@@ -456,6 +479,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
         ) |>
         config(displayModeBar = FALSE)
     })
-    
+
+    # ============================================================
+    # Download Handlers
+    # ============================================================
+
+    simple_chart_download <- function(prefix) {
+      downloadHandler(
+        filename = function() {
+          paste0("infrastructure_", prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          saveWidget(plot_ly() |> layout(title = paste("Infrastructure -", prefix)), file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    output$dl_infra_bar_chart <- simple_chart_download("by_country")
+    output$dl_power_source_pie <- simple_chart_download("power_sources")
+    output$dl_outage_productivity <- simple_chart_download("outage_productivity")
+    output$dl_cost_chart <- simple_chart_download("infrastructure_costs")
+    output$dl_infra_heatmap <- simple_chart_download("regional_heatmap")
+
   })
 }
