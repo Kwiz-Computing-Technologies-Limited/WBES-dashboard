@@ -2,16 +2,38 @@
 # Business Performance & Trade Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, p, strong,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, strong,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head],
+  htmlwidgets[saveWidget],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -73,7 +95,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Performance Indicators by Country"),
           card_body(
-            plotlyOutput(ns("bar_chart"), height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Bars compare capacity utilization or export participation across countries to spotlight standout performers."
@@ -85,7 +107,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Performance"),
           card_body(
-            plotlyOutput(ns("regional_chart"), height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Regional averages reveal how performance differs across geographies, contextualizing country scores."
@@ -102,7 +124,7 @@ ui <- function(id) {
         card(
           card_header(icon("shipping-fast"), " Export Intensity Matrix"),
           card_body(
-            plotlyOutput(ns("export_matrix"), height = "350px"),
+            chart_with_download(ns, "export_matrix", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "The matrix contrasts export participation with firm characteristics, helping identify segments driving trade."
@@ -114,7 +136,7 @@ ui <- function(id) {
         card(
           card_header(icon("industry"), " Capacity vs. Obstacles"),
           card_body(
-            plotlyOutput(ns("capacity_obstacles"), height = "350px"),
+            chart_with_download(ns, "capacity_obstacles", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter points show how operational capacity aligns with reported obstacles, highlighting binding constraints."
@@ -131,7 +153,7 @@ ui <- function(id) {
         card(
           card_header(icon("trophy"), " Competitiveness Index"),
           card_body(
-            plotlyOutput(ns("competitiveness_chart"), height = "350px"),
+            chart_with_download(ns, "competitiveness_chart", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "This index blends performance indicators to benchmark overall competitiveness across markets."
@@ -143,7 +165,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Performance by Firm Size"),
           card_body(
-            plotlyOutput(ns("firm_size_performance"), height = "350px"),
+            chart_with_download(ns, "firm_size_performance", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize performance dispersion by firm size to reveal variability."
@@ -160,7 +182,7 @@ ui <- function(id) {
         card(
           card_header(icon("balance-scale"), " Export vs. Infrastructure"),
           card_body(
-            plotlyOutput(ns("export_infra"), height = "350px"),
+            chart_with_download(ns, "export_infra", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter compares export participation with infrastructure reliability to show how logistics affect trade."
@@ -172,7 +194,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), " Performance Segmentation"),
           card_body(
-            plotlyOutput(ns("performance_segments"), height = "350px"),
+            chart_with_download(ns, "performance_segments", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "The pie groups firms into performance tiers, clarifying how many operate at high, medium, or low capacity."
@@ -620,6 +642,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       )
     })
+
+    # Download handlers
+    output$dl_bar_chart <- downloadHandler(
+      filename = function() paste0("performance_by_country_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bar_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_regional_chart <- downloadHandler(
+      filename = function() paste0("performance_regional_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$regional_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_export_matrix <- downloadHandler(
+      filename = function() paste0("export_matrix_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$export_matrix(), file, selfcontained = TRUE) }
+    )
+    output$dl_capacity_obstacles <- downloadHandler(
+      filename = function() paste0("capacity_vs_obstacles_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$capacity_obstacles(), file, selfcontained = TRUE) }
+    )
+    output$dl_competitiveness_chart <- downloadHandler(
+      filename = function() paste0("competitiveness_index_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$competitiveness_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_firm_size_performance <- downloadHandler(
+      filename = function() paste0("performance_by_firm_size_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$firm_size_performance(), file, selfcontained = TRUE) }
+    )
+    output$dl_export_infra <- downloadHandler(
+      filename = function() paste0("export_vs_infrastructure_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$export_infra(), file, selfcontained = TRUE) }
+    )
+    output$dl_performance_segments <- downloadHandler(
+      filename = function() paste0("performance_segments_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$performance_segments(), file, selfcontained = TRUE) }
+    )
 
   })
 }

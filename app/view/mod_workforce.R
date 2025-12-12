@@ -2,16 +2,38 @@
 # Workforce & Gender Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, p, strong,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, strong,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select],
   stats[setNames],
   utils[head],
+  htmlwidgets[saveWidget],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -74,7 +96,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Workforce Indicators by Country"),
           card_body(
-            plotlyOutput(ns("bar_chart"), height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Bars compare workforce-related indicators across countries, surfacing where labor challenges or gender gaps are most severe."
@@ -86,7 +108,7 @@ ui <- function(id) {
         card(
           card_header(icon("venus-mars"), " Gender Balance Overview"),
           card_body(
-            plotlyOutput(ns("gender_overview"), height = "450px"),
+            chart_with_download(ns, "gender_overview", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "The composition chart shows the share of female workers and leaders, highlighting representation gaps."
@@ -103,7 +125,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), " Female Participation Trends"),
           card_body(
-            plotlyOutput(ns("participation_chart"), height = "350px"),
+            chart_with_download(ns, "participation_chart", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Lines trace how female employment indicators evolve across income groups, flagging progress or setbacks."
@@ -115,7 +137,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Workforce vs. Productivity"),
           card_body(
-            plotlyOutput(ns("scatter_productivity"), height = "350px"),
+            chart_with_download(ns, "scatter_productivity", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Each point connects workforce constraints with capacity utilization, highlighting whether labor shortages coincide with lower productivity."
@@ -132,7 +154,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Female Ownership by Region"),
           card_body(
-            plotlyOutput(ns("regional_gender"), height = "350px"),
+            chart_with_download(ns, "regional_gender", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Bars summarize female ownership prevalence by region, revealing where women-led firms are most common."
@@ -144,7 +166,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Gender Gap Analysis"),
           card_body(
-            plotlyOutput(ns("gender_gap_chart"), height = "350px"),
+            chart_with_download(ns, "gender_gap_chart", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "This chart contrasts employment and ownership gaps, showing where representation diverges the most."
@@ -161,7 +183,7 @@ ui <- function(id) {
         card(
           card_header(icon("coins"), " Workforce Challenge by Firm Size"),
           card_body(
-            plotlyOutput(ns("firm_size_comparison"), height = "350px"),
+            chart_with_download(ns, "firm_size_comparison", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Firm size box plots show how workforce obstacles differ by company size."
@@ -173,7 +195,7 @@ ui <- function(id) {
         card(
           card_header(icon("graduation-cap"), " Skills & Gender Correlation"),
           card_body(
-            plotlyOutput(ns("skills_correlation"), height = "350px"),
+            chart_with_download(ns, "skills_correlation", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter points compare skilled labor availability with female employment shares to reveal inclusion linkages."
@@ -597,6 +619,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       )
     })
+
+    # Download handlers
+    output$dl_bar_chart <- downloadHandler(
+      filename = function() paste0("workforce_by_country_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bar_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_gender_overview <- downloadHandler(
+      filename = function() paste0("gender_overview_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$gender_overview(), file, selfcontained = TRUE) }
+    )
+    output$dl_participation_chart <- downloadHandler(
+      filename = function() paste0("female_participation_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$participation_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_scatter_productivity <- downloadHandler(
+      filename = function() paste0("workforce_vs_productivity_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$scatter_productivity(), file, selfcontained = TRUE) }
+    )
+    output$dl_regional_gender <- downloadHandler(
+      filename = function() paste0("regional_gender_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$regional_gender(), file, selfcontained = TRUE) }
+    )
+    output$dl_gender_gap_chart <- downloadHandler(
+      filename = function() paste0("gender_gap_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$gender_gap_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_firm_size_comparison <- downloadHandler(
+      filename = function() paste0("workforce_by_firm_size_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$firm_size_comparison(), file, selfcontained = TRUE) }
+    )
+    output$dl_skills_correlation <- downloadHandler(
+      filename = function() paste0("skills_gender_correlation_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$skills_correlation(), file, selfcontained = TRUE) }
+    )
 
   })
 }

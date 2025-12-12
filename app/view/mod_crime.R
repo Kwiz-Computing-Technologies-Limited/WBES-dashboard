@@ -2,18 +2,40 @@
 # Crime & Security Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, p, strong,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, strong,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head],
+  htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -75,7 +97,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Security Indicators by Country"),
           card_body(
-            plotlyOutput(ns("bar_chart"), height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Bars benchmark crime-related obstacles or security costs by country, surfacing the highest-risk environments."
@@ -87,7 +109,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Security Overview"),
           card_body(
-            plotlyOutput(ns("regional_chart"), height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Regional averages reveal how security pressures vary across geographies, contextualizing country performance."
@@ -104,7 +126,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Crime vs. Business Performance"),
           card_body(
-            plotlyOutput(ns("crime_performance"), height = "350px"),
+            chart_with_download(ns, "crime_performance", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter points show how crime obstacles relate to operational performance, signaling whether insecurity dampens output."
@@ -121,7 +143,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Security by Firm Size"),
           card_body(
-            plotlyOutput(ns("firm_size_security"), height = "350px"),
+            chart_with_download(ns, "firm_size_security", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize crime and security costs across firm sizes, highlighting risk dispersion."
@@ -133,7 +155,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Crime Impact Matrix"),
           card_body(
-            plotlyOutput(ns("impact_matrix"), height = "350px"),
+            chart_with_download(ns, "impact_matrix", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Matrix cells combine crime prevalence and severity to pinpoint the most disruptive contexts."
@@ -150,7 +172,7 @@ ui <- function(id) {
         card(
           card_header(icon("balance-scale"), " Crime vs. Corruption"),
           card_body(
-            plotlyOutput(ns("crime_corruption"), height = "350px"),
+            chart_with_download(ns, "crime_corruption", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter compares security risks with corruption incidence to see how governance and crime challenges overlap."
@@ -162,7 +184,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), " Risk Distribution"),
           card_body(
-            plotlyOutput(ns("risk_distribution"), height = "350px"),
+            chart_with_download(ns, "risk_distribution", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "The pie segments firms by reported risk level, providing a quick view of how pervasive security threats are."
@@ -541,6 +563,36 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       )
     })
+
+    # Download handlers
+    output$dl_bar_chart <- downloadHandler(
+      filename = function() paste0("crime_by_country_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bar_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_regional_chart <- downloadHandler(
+      filename = function() paste0("crime_regional_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$regional_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_crime_performance <- downloadHandler(
+      filename = function() paste0("crime_vs_performance_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$crime_performance(), file, selfcontained = TRUE) }
+    )
+    output$dl_firm_size_security <- downloadHandler(
+      filename = function() paste0("security_by_firm_size_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$firm_size_security(), file, selfcontained = TRUE) }
+    )
+    output$dl_impact_matrix <- downloadHandler(
+      filename = function() paste0("crime_impact_matrix_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$impact_matrix(), file, selfcontained = TRUE) }
+    )
+    output$dl_crime_corruption <- downloadHandler(
+      filename = function() paste0("crime_vs_corruption_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$crime_corruption(), file, selfcontained = TRUE) }
+    )
+    output$dl_risk_distribution <- downloadHandler(
+      filename = function() paste0("risk_distribution_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$risk_distribution(), file, selfcontained = TRUE) }
+    )
 
   })
 }

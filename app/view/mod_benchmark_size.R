@@ -216,72 +216,128 @@ ui <- function(id) {
           nav_panel(
             title = tags$span(icon("bolt"), " Infrastructure"),
             value = "infrastructure",
+            fluidRow(class = "mt-3 mb-3",
+              column(3, uiOutput(ns("infra_kpi_outages"))),
+              column(3, uiOutput(ns("infra_kpi_duration"))),
+              column(3, uiOutput(ns("infra_kpi_generator"))),
+              column(3, uiOutput(ns("infra_kpi_obstacle")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "infra_comparison")),
               column(4, chart_with_download(ns, "infra_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("infra_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("infra_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
+              column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Infrastructure Insights"), card_body(uiOutput(ns("infra_insights"))))))
           ),
 
           # Finance Tab
           nav_panel(
             title = tags$span(icon("university"), " Finance"),
             value = "finance",
+            fluidRow(class = "mt-3 mb-3",
+              column(3, uiOutput(ns("finance_kpi_credit"))),
+              column(3, uiOutput(ns("finance_kpi_bank"))),
+              column(3, uiOutput(ns("finance_kpi_rejection"))),
+              column(3, uiOutput(ns("finance_kpi_collateral")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "finance_comparison")),
               column(4, chart_with_download(ns, "finance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("finance_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("finance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
+              column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Finance Insights"), card_body(uiOutput(ns("finance_insights"))))))
           ),
 
           # Governance Tab
           nav_panel(
             title = tags$span(icon("balance-scale"), " Governance"),
             value = "governance",
+            fluidRow(class = "mt-3 mb-3",
+              column(4, uiOutput(ns("governance_kpi_bribery"))),
+              column(4, uiOutput(ns("governance_kpi_corruption"))),
+              column(4, uiOutput(ns("governance_kpi_regulations")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "governance_comparison")),
               column(4, chart_with_download(ns, "governance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("governance_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("governance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
+              column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Governance Insights"), card_body(uiOutput(ns("governance_insights"))))))
           ),
 
           # Workforce Tab
           nav_panel(
             title = tags$span(icon("users"), " Workforce"),
             value = "workforce",
+            fluidRow(class = "mt-3 mb-3",
+              column(4, uiOutput(ns("workforce_kpi_female_own"))),
+              column(4, uiOutput(ns("workforce_kpi_female_work"))),
+              column(4, uiOutput(ns("workforce_kpi_obstacle")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "workforce_comparison")),
               column(4, chart_with_download(ns, "workforce_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("workforce_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("workforce_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
+              column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Workforce Insights"), card_body(uiOutput(ns("workforce_insights"))))))
           ),
 
           # Performance Tab
           nav_panel(
             title = tags$span(icon("chart-line"), " Performance"),
             value = "performance",
+            fluidRow(class = "mt-3 mb-3",
+              column(3, uiOutput(ns("performance_kpi_capacity"))),
+              column(3, uiOutput(ns("performance_kpi_export_firms"))),
+              column(3, uiOutput(ns("performance_kpi_export_share"))),
+              column(3, uiOutput(ns("performance_kpi_growth")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "performance_comparison")),
               column(4, chart_with_download(ns, "performance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("performance_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("performance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
+              column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Performance Insights"), card_body(uiOutput(ns("performance_insights"))))))
           ),
 
           # Crime Tab
           nav_panel(
             title = tags$span(icon("shield-alt"), " Crime"),
             value = "crime",
+            fluidRow(class = "mt-3 mb-3",
+              column(6, uiOutput(ns("crime_kpi_obstacle"))),
+              column(6, uiOutput(ns("crime_kpi_security")))
+            ),
             fluidRow(
-              class = "mt-3",
               column(8, chart_with_download(ns, "crime_comparison")),
               column(4, chart_with_download(ns, "crime_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("crime_map"), height = "350px")))
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("crime_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
+              column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
+            ),
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights"))))))
           )
         )
       )

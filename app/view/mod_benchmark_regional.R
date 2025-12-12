@@ -223,20 +223,34 @@ ui <- function(id) {
           nav_panel(
             title = tags$span(icon("bolt"), " Infrastructure"),
             value = "infrastructure",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "infra_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "infra_radar")
-              )
+              class = "mt-3 mb-3",
+              column(3, uiOutput(ns("infra_kpi_outages"))),
+              column(3, uiOutput(ns("infra_kpi_duration"))),
+              column(3, uiOutput(ns("infra_kpi_generator"))),
+              column(3, uiOutput(ns("infra_kpi_obstacle")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "infra_comparison")),
+              column(4, chart_with_download(ns, "infra_radar"))
+            ),
+            # Map Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("infra_map"), height = "350px")
-              )
+              column(12, leafletOutput(ns("infra_map"), height = "350px"))
+            ),
+            # Analysis Charts Row
+            fluidRow(
+              class = "mt-3",
+              column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
+              column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(
+              class = "mt-3",
+              column(12, card(card_header(icon("lightbulb"), " Infrastructure Insights"), card_body(uiOutput(ns("infra_insights")))))
             )
           ),
 
@@ -244,105 +258,141 @@ ui <- function(id) {
           nav_panel(
             title = tags$span(icon("university"), " Finance"),
             value = "finance",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "finance_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "finance_radar")
-              )
+              class = "mt-3 mb-3",
+              column(3, uiOutput(ns("finance_kpi_credit"))),
+              column(3, uiOutput(ns("finance_kpi_bank"))),
+              column(3, uiOutput(ns("finance_kpi_rejection"))),
+              column(3, uiOutput(ns("finance_kpi_collateral")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "finance_comparison")),
+              column(4, chart_with_download(ns, "finance_radar"))
+            ),
+            # Map Row
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("finance_map"), height = "350px"))),
+            # Analysis Charts Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("finance_map"), height = "350px")
-              )
-            )
+              column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
+              column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Finance Insights"), card_body(uiOutput(ns("finance_insights"))))))
           ),
 
           # Governance Tab
           nav_panel(
             title = tags$span(icon("balance-scale"), " Governance"),
             value = "governance",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "governance_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "governance_radar")
-              )
+              class = "mt-3 mb-3",
+              column(4, uiOutput(ns("governance_kpi_bribery"))),
+              column(4, uiOutput(ns("governance_kpi_corruption"))),
+              column(4, uiOutput(ns("governance_kpi_regulations")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "governance_comparison")),
+              column(4, chart_with_download(ns, "governance_radar"))
+            ),
+            # Map Row
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("governance_map"), height = "350px"))),
+            # Analysis Charts Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("governance_map"), height = "350px")
-              )
-            )
+              column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
+              column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Governance Insights"), card_body(uiOutput(ns("governance_insights"))))))
           ),
 
           # Workforce Tab
           nav_panel(
             title = tags$span(icon("users"), " Workforce"),
             value = "workforce",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "workforce_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "workforce_radar")
-              )
+              class = "mt-3 mb-3",
+              column(4, uiOutput(ns("workforce_kpi_female_own"))),
+              column(4, uiOutput(ns("workforce_kpi_female_work"))),
+              column(4, uiOutput(ns("workforce_kpi_obstacle")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "workforce_comparison")),
+              column(4, chart_with_download(ns, "workforce_radar"))
+            ),
+            # Map Row
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("workforce_map"), height = "350px"))),
+            # Analysis Charts Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("workforce_map"), height = "350px")
-              )
-            )
+              column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
+              column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Workforce Insights"), card_body(uiOutput(ns("workforce_insights"))))))
           ),
 
           # Performance Tab
           nav_panel(
             title = tags$span(icon("chart-line"), " Performance"),
             value = "performance",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "performance_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "performance_radar")
-              )
+              class = "mt-3 mb-3",
+              column(3, uiOutput(ns("performance_kpi_capacity"))),
+              column(3, uiOutput(ns("performance_kpi_export_firms"))),
+              column(3, uiOutput(ns("performance_kpi_export_share"))),
+              column(3, uiOutput(ns("performance_kpi_growth")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "performance_comparison")),
+              column(4, chart_with_download(ns, "performance_radar"))
+            ),
+            # Map Row
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("performance_map"), height = "350px"))),
+            # Analysis Charts Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("performance_map"), height = "350px")
-              )
-            )
+              column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
+              column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Performance Insights"), card_body(uiOutput(ns("performance_insights"))))))
           ),
 
           # Crime Tab
           nav_panel(
             title = tags$span(icon("shield-alt"), " Crime"),
             value = "crime",
+            # KPI Row
             fluidRow(
-              class = "mt-3",
-              column(8,
-                chart_with_download(ns, "crime_comparison")
-              ),
-              column(4,
-                chart_with_download(ns, "crime_radar")
-              )
+              class = "mt-3 mb-3",
+              column(6, uiOutput(ns("crime_kpi_obstacle"))),
+              column(6, uiOutput(ns("crime_kpi_security")))
             ),
+            # Main Charts Row
+            fluidRow(
+              column(8, chart_with_download(ns, "crime_comparison")),
+              column(4, chart_with_download(ns, "crime_radar"))
+            ),
+            # Map Row
+            fluidRow(class = "mt-3", column(12, leafletOutput(ns("crime_map"), height = "350px"))),
+            # Analysis Charts Row
             fluidRow(
               class = "mt-3",
-              column(12,
-                leafletOutput(ns("crime_map"), height = "350px")
-              )
-            )
+              column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
+              column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
+            ),
+            # Insights Row
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights"))))))
           )
         )
       )
@@ -1262,6 +1312,386 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # ============================================
+    # DOMAIN KPIs, ANALYSIS CHARTS & INSIGHTS
+    # ============================================
+
+    # Helper function for KPI card
+    create_kpi_card <- function(value, label, bg_color = "primary") {
+      div(class = paste0("card bg-", bg_color, " text-white h-100"),
+        div(class = "card-body text-center py-2",
+          h4(value, class = "mb-0"),
+          p(label, class = "small mb-0")))
+    }
+
+    # --- INFRASTRUCTURE KPIs & Analysis ---
+    output$infra_kpi_outages <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$power_outages_per_month, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "/mo"), "Power Outages", "danger")
+    })
+    output$infra_kpi_duration <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$avg_outage_duration_hrs, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, " hrs"), "Avg Duration", "warning")
+    })
+    output$infra_kpi_generator <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$firms_with_generator_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "With Generator", "info")
+    })
+    output$infra_kpi_obstacle <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$electricity_obstacle, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Elec. Obstacle", "secondary")
+    })
+
+    output$infra_outage_impact <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~power_outages_per_month, y = ~capacity_utilization_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Outages vs Capacity Utilization", font = list(size = 14)),
+               xaxis = list(title = "Power Outages/Month"),
+               yaxis = list(title = "Capacity Utilization (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$infra_generator_correlation <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~power_outages_per_month, y = ~firms_with_generator_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Outages vs Generator Adoption", font = list(size = 14)),
+               xaxis = list(title = "Power Outages/Month"),
+               yaxis = list(title = "Firms with Generator (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$infra_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_outages <- round(mean(data$power_outages_per_month, na.rm = TRUE), 1)
+      worst <- data$region[which.max(data$power_outages_per_month)]
+      best <- data$region[which.min(data$power_outages_per_month)]
+      tags$ul(
+        tags$li(tags$strong("Average Outages: "), paste0(avg_outages, " per month across selected regions")),
+        tags$li(tags$strong("Most Affected: "), worst),
+        tags$li(tags$strong("Best Infrastructure: "), best),
+        tags$li(tags$strong("Key Finding: "), "Regions with more outages show higher generator adoption rates")
+      )
+    })
+
+    # --- FINANCE KPIs & Analysis ---
+    output$finance_kpi_credit <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$firms_with_credit_line_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Credit Access", "success")
+    })
+    output$finance_kpi_bank <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$firms_with_bank_account_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Bank Account", "info")
+    })
+    output$finance_kpi_rejection <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$loan_rejection_rate_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Loan Rejection", "danger")
+    })
+    output$finance_kpi_collateral <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$collateral_required_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Collateral Req.", "warning")
+    })
+
+    output$finance_access_gap <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~firms_with_bank_account_pct, y = ~firms_with_credit_line_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Bank Account vs Credit Access Gap", font = list(size = 14)),
+               xaxis = list(title = "Firms with Bank Account (%)"),
+               yaxis = list(title = "Firms with Credit Line (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$finance_collateral_burden <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~loan_rejection_rate_pct, y = ~collateral_required_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Rejection Rate vs Collateral Burden", font = list(size = 14)),
+               xaxis = list(title = "Loan Rejection Rate (%)"),
+               yaxis = list(title = "Collateral Required (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$finance_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_credit <- round(mean(data$firms_with_credit_line_pct, na.rm = TRUE), 1)
+      best_access <- data$region[which.max(data$firms_with_credit_line_pct)]
+      worst_rejection <- data$region[which.max(data$loan_rejection_rate_pct)]
+      tags$ul(
+        tags$li(tags$strong("Average Credit Access: "), paste0(avg_credit, "% of firms have credit lines")),
+        tags$li(tags$strong("Best Finance Access: "), best_access),
+        tags$li(tags$strong("Highest Rejection: "), worst_rejection),
+        tags$li(tags$strong("Key Finding: "), "Higher collateral requirements correlate with higher rejection rates")
+      )
+    })
+
+    # --- GOVERNANCE KPIs & Analysis ---
+    output$governance_kpi_bribery <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$bribery_incidence_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Bribery Rate", "danger")
+    })
+    output$governance_kpi_corruption <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$corruption_obstacle_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Corruption Obstacle", "warning")
+    })
+    output$governance_kpi_regulations <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$mgmt_time_regulations_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Mgmt Time on Regs", "info")
+    })
+
+    output$governance_bribery_vs_corruption <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~bribery_incidence_pct, y = ~corruption_obstacle_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Bribery Incidence vs Corruption Obstacle", font = list(size = 14)),
+               xaxis = list(title = "Bribery Incidence (%)"),
+               yaxis = list(title = "Corruption as Obstacle (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$governance_regulatory_burden <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~mgmt_time_regulations_pct, y = ~capacity_utilization_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Regulatory Burden vs Productivity", font = list(size = 14)),
+               xaxis = list(title = "Mgmt Time on Regulations (%)"),
+               yaxis = list(title = "Capacity Utilization (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$governance_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_bribery <- round(mean(data$bribery_incidence_pct, na.rm = TRUE), 1)
+      worst <- data$region[which.max(data$bribery_incidence_pct)]
+      best <- data$region[which.min(data$bribery_incidence_pct)]
+      tags$ul(
+        tags$li(tags$strong("Average Bribery: "), paste0(avg_bribery, "% incidence rate")),
+        tags$li(tags$strong("Highest Risk: "), worst),
+        tags$li(tags$strong("Best Governance: "), best),
+        tags$li(tags$strong("Key Finding: "), "Bribery incidence strongly correlates with corruption as an obstacle")
+      )
+    })
+
+    # --- WORKFORCE KPIs & Analysis ---
+    output$workforce_kpi_female_own <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$female_ownership_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Female Ownership", "primary")
+    })
+    output$workforce_kpi_female_work <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$female_workers_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Female Workers", "info")
+    })
+    output$workforce_kpi_obstacle <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$workforce_obstacle_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Workforce Obstacle", "warning")
+    })
+
+    output$workforce_gender_gap <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~female_workers_pct, y = ~female_ownership_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Female Workers vs Ownership Gap", font = list(size = 14)),
+               xaxis = list(title = "Female Workers (%)"),
+               yaxis = list(title = "Female Ownership (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$workforce_obstacle_correlation <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~workforce_obstacle_pct, y = ~capacity_utilization_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Workforce Challenges vs Productivity", font = list(size = 14)),
+               xaxis = list(title = "Workforce as Obstacle (%)"),
+               yaxis = list(title = "Capacity Utilization (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$workforce_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_female_own <- round(mean(data$female_ownership_pct, na.rm = TRUE), 1)
+      avg_female_work <- round(mean(data$female_workers_pct, na.rm = TRUE), 1)
+      gap <- round(avg_female_work - avg_female_own, 1)
+      best <- data$region[which.max(data$female_ownership_pct)]
+      tags$ul(
+        tags$li(tags$strong("Female Ownership: "), paste0(avg_female_own, "% average")),
+        tags$li(tags$strong("Female Workers: "), paste0(avg_female_work, "% average")),
+        tags$li(tags$strong("Leadership Gap: "), paste0(gap, "% difference")),
+        tags$li(tags$strong("Best Gender Inclusion: "), best)
+      )
+    })
+
+    # --- PERFORMANCE KPIs & Analysis ---
+    output$performance_kpi_capacity <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$capacity_utilization_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Capacity Util.", "success")
+    })
+    output$performance_kpi_export_firms <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$export_firms_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Export Firms", "info")
+    })
+    output$performance_kpi_export_share <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$export_share_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Export Share", "primary")
+    })
+    output$performance_kpi_growth <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$annual_sales_growth_pct, na.rm = TRUE), 1)
+      color <- if (!is.na(val) && val > 0) "success" else "danger"
+      create_kpi_card(paste0(val, "%"), "Sales Growth", color)
+    })
+
+    output$performance_capacity_vs_exports <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~capacity_utilization_pct, y = ~export_firms_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Capacity Utilization vs Export Activity", font = list(size = 14)),
+               xaxis = list(title = "Capacity Utilization (%)"),
+               yaxis = list(title = "Export Firms (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$performance_growth_distribution <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      data <- data[order(data$annual_sales_growth_pct, decreasing = TRUE), ]
+      plot_ly(data, x = ~reorder(region, annual_sales_growth_pct), y = ~annual_sales_growth_pct,
+              type = "bar", marker = list(color = ~annual_sales_growth_pct,
+              colorscale = list(c(0, "#dc3545"), c(0.5, "#ffc107"), c(1, "#28a745")))) |>
+        layout(title = list(text = "Sales Growth by Region", font = list(size = 14)),
+               xaxis = list(title = "", tickangle = -45),
+               yaxis = list(title = "Annual Sales Growth (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$performance_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_capacity <- round(mean(data$capacity_utilization_pct, na.rm = TRUE), 1)
+      avg_exports <- round(mean(data$export_firms_pct, na.rm = TRUE), 1)
+      best <- data$region[which.max(data$capacity_utilization_pct)]
+      top_exporter <- data$region[which.max(data$export_firms_pct)]
+      tags$ul(
+        tags$li(tags$strong("Avg Capacity: "), paste0(avg_capacity, "% utilization")),
+        tags$li(tags$strong("Export Participation: "), paste0(avg_exports, "% of firms")),
+        tags$li(tags$strong("Top Performer: "), best),
+        tags$li(tags$strong("Export Leader: "), top_exporter)
+      )
+    })
+
+    # --- CRIME KPIs & Analysis ---
+    output$crime_kpi_obstacle <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$crime_obstacle_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Crime Obstacle", "danger")
+    })
+    output$crime_kpi_security <- renderUI({
+      req(comparison_data())
+      val <- round(mean(comparison_data()$security_costs_pct, na.rm = TRUE), 1)
+      create_kpi_card(paste0(val, "%"), "Security Costs", "warning")
+    })
+
+    output$crime_vs_security_cost <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~crime_obstacle_pct, y = ~security_costs_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Crime Obstacle vs Security Spending", font = list(size = 14)),
+               xaxis = list(title = "Crime as Obstacle (%)"),
+               yaxis = list(title = "Security Costs (% of Sales)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$crime_impact_performance <- renderPlotly({
+      req(comparison_data())
+      data <- comparison_data()
+      plot_ly(data, x = ~crime_obstacle_pct, y = ~capacity_utilization_pct,
+              type = "scatter", mode = "markers", color = ~region,
+              text = ~region, hoverinfo = "text+x+y",
+              marker = list(size = 12, opacity = 0.7)) |>
+        layout(title = list(text = "Crime Impact on Productivity", font = list(size = 14)),
+               xaxis = list(title = "Crime as Obstacle (%)"),
+               yaxis = list(title = "Capacity Utilization (%)"),
+               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+        config(displayModeBar = FALSE)
+    })
+
+    output$crime_insights <- renderUI({
+      req(comparison_data())
+      data <- comparison_data()
+      avg_crime <- round(mean(data$crime_obstacle_pct, na.rm = TRUE), 1)
+      avg_security <- round(mean(data$security_costs_pct, na.rm = TRUE), 1)
+      worst <- data$region[which.max(data$crime_obstacle_pct)]
+      safest <- data$region[which.min(data$crime_obstacle_pct)]
+      tags$ul(
+        tags$li(tags$strong("Avg Crime Concern: "), paste0(avg_crime, "% of firms")),
+        tags$li(tags$strong("Security Spending: "), paste0(avg_security, "% of sales")),
+        tags$li(tags$strong("Highest Risk: "), worst),
+        tags$li(tags$strong("Safest Region: "), safest)
+      )
+    })
+
+    # ============================================
     # DOWNLOAD HANDLERS
     # ============================================
 
@@ -1381,6 +1811,56 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$dl_crime_radar <- create_plot_download(
       function() { req(comparison_data()); create_faceted_radar(comparison_data(), unname(DOMAINS$crime$indicators), names(DOMAINS$crime$indicators), "Crime") },
       "regional_crime_radar"
+    )
+
+    # Additional analysis chart downloads
+    output$dl_infra_outage_impact <- downloadHandler(
+      filename = function() paste0("infra_outage_impact_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$infra_outage_impact(), file, selfcontained = TRUE) }
+    )
+    output$dl_infra_generator_correlation <- downloadHandler(
+      filename = function() paste0("infra_generator_correlation_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$infra_generator_correlation(), file, selfcontained = TRUE) }
+    )
+    output$dl_finance_access_gap <- downloadHandler(
+      filename = function() paste0("finance_access_gap_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$finance_access_gap(), file, selfcontained = TRUE) }
+    )
+    output$dl_finance_collateral_burden <- downloadHandler(
+      filename = function() paste0("finance_collateral_burden_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$finance_collateral_burden(), file, selfcontained = TRUE) }
+    )
+    output$dl_governance_bribery_vs_corruption <- downloadHandler(
+      filename = function() paste0("governance_bribery_vs_corruption_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$governance_bribery_vs_corruption(), file, selfcontained = TRUE) }
+    )
+    output$dl_governance_regulatory_burden <- downloadHandler(
+      filename = function() paste0("governance_regulatory_burden_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$governance_regulatory_burden(), file, selfcontained = TRUE) }
+    )
+    output$dl_workforce_gender_gap <- downloadHandler(
+      filename = function() paste0("workforce_gender_gap_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$workforce_gender_gap(), file, selfcontained = TRUE) }
+    )
+    output$dl_workforce_obstacle_correlation <- downloadHandler(
+      filename = function() paste0("workforce_obstacle_correlation_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$workforce_obstacle_correlation(), file, selfcontained = TRUE) }
+    )
+    output$dl_performance_capacity_vs_exports <- downloadHandler(
+      filename = function() paste0("performance_capacity_vs_exports_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$performance_capacity_vs_exports(), file, selfcontained = TRUE) }
+    )
+    output$dl_performance_growth_distribution <- downloadHandler(
+      filename = function() paste0("performance_growth_distribution_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$performance_growth_distribution(), file, selfcontained = TRUE) }
+    )
+    output$dl_crime_vs_security_cost <- downloadHandler(
+      filename = function() paste0("crime_vs_security_cost_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$crime_vs_security_cost(), file, selfcontained = TRUE) }
+    )
+    output$dl_crime_impact_performance <- downloadHandler(
+      filename = function() paste0("crime_impact_performance_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$crime_impact_performance(), file, selfcontained = TRUE) }
     )
 
   })
