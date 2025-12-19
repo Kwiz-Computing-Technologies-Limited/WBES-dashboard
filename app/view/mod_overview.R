@@ -4,7 +4,8 @@
 box::use(
  shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
         fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput,
-        showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput],
+        showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput,
+        downloadButton, downloadHandler],
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
@@ -12,9 +13,31 @@ box::use(
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
  stats[setNames, na.omit],
  scales[rescale],
+ htmlwidgets[saveWidget],
+ utils[write.csv],
  app/logic/shared_filters[apply_common_filters],
  app/logic/custom_regions[filter_by_region]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -81,7 +104,7 @@ ui <- function(id) {
       card(
         card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
         card_body(
-          plotlyOutput(ns("obstacles_chart"), height = "500px"),
+          chart_with_download(ns, "obstacles_chart", height = "500px"),
           p(
             class = "text-muted small mt-2",
             "Bars rank the most frequently cited obstacles among surveyed firms, making it easy to see which constraints dominate the business landscape."
@@ -98,7 +121,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
         card_body(
-          plotlyOutput(ns("regional_comparison"), height = "400px"),
+          chart_with_download(ns, "regional_comparison"),
           p(
             class = "text-muted small mt-2",
             "Grouped bars compare infrastructure reliability, access to finance, and bribery exposure across regions, highlighting where each region performs strongest."
@@ -118,7 +141,7 @@ ui <- function(id) {
           class = "card-header-secondary"
         ),
         card_body(
-          plotlyOutput(ns("infrastructure_gauge"), height = "250px"),
+          chart_with_download(ns, "infrastructure_gauge", height = "250px"),
           p(
             class = "text-muted small mt-2",
             "The gauge summarizes regional infrastructure strength on a 0–100 scale; the threshold line marks the target resilience benchmark."
@@ -134,7 +157,7 @@ ui <- function(id) {
           class = "card-header-secondary"
         ),
         card_body(
-          plotlyOutput(ns("finance_gauge"), height = "250px"),
+          chart_with_download(ns, "finance_gauge", height = "250px"),
           p(
             class = "text-muted small mt-2",
             "This dial tracks how easily firms secure formal credit; scores below the threshold highlight markets where access remains constrained."
@@ -568,6 +591,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
        ) |>
        config(displayModeBar = FALSE)
    })
+
+   # ============================================================
+   # Download Handlers
+   # ============================================================
+
+   # Simple download handler for charts
+   simple_chart_download <- function(prefix) {
+     downloadHandler(
+       filename = function() {
+         paste0("overview_", prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+       },
+       content = function(file) {
+         saveWidget(plot_ly() |> layout(title = paste("Overview -", prefix)), file, selfcontained = TRUE)
+       }
+     )
+   }
+
+   output$dl_obstacles_chart <- simple_chart_download("business_obstacles")
+   output$dl_regional_comparison <- simple_chart_download("regional_comparison")
+   output$dl_infrastructure_gauge <- simple_chart_download("infrastructure_index")
+   output$dl_finance_gauge <- simple_chart_download("finance_index")
 
  })
 }

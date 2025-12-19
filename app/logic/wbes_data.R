@@ -398,12 +398,25 @@ load_microdata <- function(dta_files) {
       .groups = "drop"
     )
 
+  # Regional aggregates (aggregate by region only - needed by domain modules)
+  log_info("  Creating regional aggregates...")
+  regional_aggregates <- processed |>
+    filter(!is.na(region)) |>
+    group_by(region) |>
+    summarise(
+      across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      countries_count = length(unique(country[!is.na(country)])),
+      sample_size = n(),
+      .groups = "drop"
+    )
+
   # Log results
   log_info(sprintf("Country aggregates created: %d countries", nrow(country_aggregates)))
   log_info(sprintf("Country panel created: %d country-year observations", nrow(country_panel)))
   log_info(sprintf("Country-sector aggregates created: %d combinations", nrow(country_sector_aggregates)))
   log_info(sprintf("Country-size aggregates created: %d combinations", nrow(country_size_aggregates)))
   log_info(sprintf("Country-region aggregates created: %d combinations", nrow(country_region_aggregates)))
+  log_info(sprintf("Regional aggregates created: %d regions", nrow(regional_aggregates)))
 
   # Explicit memory cleanup after parallel operations
   gc()
@@ -454,6 +467,7 @@ load_microdata <- function(dta_files) {
     country_sector = country_sector_aggregates,  # Country-sector aggregates for sector profiles
     country_size = country_size_aggregates,  # Country-size aggregates for size profiles
     country_region = country_region_aggregates,  # Country-region aggregates for regional profiles
+    regional = regional_aggregates,  # Region-level aggregates for domain modules
     countries = countries,
     country_codes = processed$country_code |> unique() |> na.omit() |> as.character(),
     years = years,

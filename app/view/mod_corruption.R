@@ -2,19 +2,40 @@
 # Corruption & Governance Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, p, strong,
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, strong,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
-        renderText, textOutput],
+        renderText, textOutput, downloadButton, downloadHandler],
   bslib[card, card_header, card_body, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
   stats[setNames, reorder],
   utils[head],
+  htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -76,7 +97,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Corruption by Country"),
           card_body(
-            plotlyOutput(ns("bar_chart"), height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Horizontal bars show corruption or bribery rates by country; use the sort control to spotlight highest or lowest risk environments."
@@ -88,7 +109,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Comparison"),
           card_body(
-            plotlyOutput(ns("regional_chart"), height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Stacked bars compare corruption pressure across regions, highlighting where governance challenges are concentrated."
@@ -105,7 +126,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Corruption vs. Business Growth"),
           card_body(
-            plotlyOutput(ns("scatter_growth"), height = "350px"),
+            chart_with_download(ns, "scatter_growth", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Each point represents a country; the slope shows how corruption correlates with reported sales growth."
@@ -117,7 +138,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), " Corruption vs. Investment"),
           card_body(
-            plotlyOutput(ns("scatter_investment"), height = "350px"),
+            chart_with_download(ns, "scatter_investment", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "This scatter links corruption exposure to investment rates, indicating whether governance issues deter capital spending."
@@ -134,7 +155,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Corruption by Firm Size"),
           card_body(
-            plotlyOutput(ns("firm_size_box"), height = "350px"),
+            chart_with_download(ns, "firm_size_box", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize corruption responses by firm size, showing typical levels and variability."
@@ -146,7 +167,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Bribery Depth vs. Breadth"),
           card_body(
-            plotlyOutput(ns("bribery_scatter"), height = "350px"),
+            chart_with_download(ns, "bribery_scatter", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Points plot how widespread bribery requests are (breadth) against their frequency for affected firms (depth)."
@@ -437,6 +458,32 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       )
     })
+
+    # Download handlers
+    output$dl_bar_chart <- downloadHandler(
+      filename = function() paste0("corruption_by_country_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bar_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_regional_chart <- downloadHandler(
+      filename = function() paste0("corruption_regional_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$regional_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_scatter_growth <- downloadHandler(
+      filename = function() paste0("corruption_vs_growth_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$scatter_growth(), file, selfcontained = TRUE) }
+    )
+    output$dl_scatter_investment <- downloadHandler(
+      filename = function() paste0("corruption_vs_investment_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$scatter_investment(), file, selfcontained = TRUE) }
+    )
+    output$dl_firm_size_box <- downloadHandler(
+      filename = function() paste0("corruption_by_firm_size_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$firm_size_box(), file, selfcontained = TRUE) }
+    )
+    output$dl_bribery_scatter <- downloadHandler(
+      filename = function() paste0("bribery_depth_breadth_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bribery_scatter(), file, selfcontained = TRUE) }
+    )
 
   })
 }

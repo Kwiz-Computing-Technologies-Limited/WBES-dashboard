@@ -3,7 +3,8 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
@@ -11,10 +12,32 @@ box::use(
   tidyr[pivot_wider],
   stats[setNames, runif],
   utils[head],
+  htmlwidgets[saveWidget],
+  utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -87,7 +110,7 @@ ui <- function(id) {
       card(
         card_header(icon("credit-card"), "Financial Products Access by Region"),
         card_body(
-          plotlyOutput(ns("finance_by_region"), height = "400px"),
+          chart_with_download(ns, "finance_by_region"),
           p(
             class = "text-muted small mt-2",
             "Regional bars show uptake of formal financial products, highlighting where bank outreach is strongest."
@@ -99,7 +122,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
         card_body(
-          plotlyOutput(ns("no_apply_reasons"), height = "400px"),
+          chart_with_download(ns, "no_apply_reasons"),
           p(
             class = "text-muted small mt-2",
             "The pie breaks down why firms opt out of loan applications, distinguishing demand-side gaps from perceived rejection risk."
@@ -108,7 +131,7 @@ ui <- function(id) {
       )
     )
   ),
-    
+
     # SME Finance Gap
     fluidRow(
       class = "mb-4",
@@ -116,7 +139,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "SME Finance Gap by Country"),
         card_body(
-          plotlyOutput(ns("sme_finance_gap"), height = "400px"),
+          chart_with_download(ns, "sme_finance_gap"),
           p(
             class = "text-muted small mt-2",
             "Bars estimate the financing gap faced by SMEs, spotlighting markets where credit shortfalls are most acute."
@@ -128,7 +151,7 @@ ui <- function(id) {
       card(
         card_header(icon("venus"), "Gender Gap in Finance Access"),
         card_body(
-          plotlyOutput(ns("gender_gap"), height = "400px"),
+          chart_with_download(ns, "gender_gap"),
           p(
             class = "text-muted small mt-2",
             "Bars compare credit access for female- versus male-owned firms, illustrating gender disparities in financing."
@@ -137,7 +160,7 @@ ui <- function(id) {
       )
     )
   ),
-    
+
     # Collateral Analysis
     fluidRow(
       class = "mb-4",
@@ -145,7 +168,7 @@ ui <- function(id) {
       card(
         card_header(icon("landmark"), "Collateral Requirements"),
         card_body(
-          plotlyOutput(ns("collateral_chart"), height = "350px"),
+          chart_with_download(ns, "collateral_chart", height = "350px"),
           p(
             class = "text-muted small mt-2",
             "Box plots summarize collateral requested as a share of loan value, highlighting variability across segments."
@@ -157,7 +180,7 @@ ui <- function(id) {
       card(
         card_header(icon("clock"), "Loan Processing Time"),
         card_body(
-          plotlyOutput(ns("processing_time"), height = "350px"),
+          chart_with_download(ns, "processing_time", height = "350px"),
           p(
             class = "text-muted small mt-2",
             "Processing time distributions show how quickly banks deliver decisions, indicating procedural efficiency."
@@ -693,6 +716,28 @@ server <- function(id, wbes_data, global_filters = NULL) {
           )
       }
     })
-    
+
+    # ============================================================
+    # Download Handlers
+    # ============================================================
+
+    simple_chart_download <- function(prefix) {
+      downloadHandler(
+        filename = function() {
+          paste0("finance_", prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          saveWidget(plot_ly() |> layout(title = paste("Finance -", prefix)), file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    output$dl_finance_by_region <- simple_chart_download("by_region")
+    output$dl_no_apply_reasons <- simple_chart_download("no_apply_reasons")
+    output$dl_sme_finance_gap <- simple_chart_download("sme_finance_gap")
+    output$dl_gender_gap <- simple_chart_download("gender_gap")
+    output$dl_collateral_chart <- simple_chart_download("collateral")
+    output$dl_processing_time <- simple_chart_download("processing_time")
+
   })
 }

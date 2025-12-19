@@ -3,16 +3,39 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput],
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, select, arrange, mutate, group_by, summarise, n],
+  dplyr[filter, select, arrange, mutate, group_by, summarise, n, desc],
   leaflet[leafletOutput, renderLeaflet],
   stats[setNames],
+  htmlwidgets[saveWidget],
+  utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -64,7 +87,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            plotlyOutput(ns("radar_chart"), height = "400px"),
+            chart_with_download(ns, "radar_chart"),
             p(
               class = "text-muted small mt-2",
               "The radar highlights how the selected region scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
@@ -94,7 +117,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("infra_chart1"), height = "300px"),
+                  chart_with_download(ns, "infra_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Bars rank which infrastructure services firms in this region flag as biggest obstacles."
@@ -103,7 +126,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("infra_chart2"), height = "300px"),
+                  chart_with_download(ns, "infra_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "The pie shows how firms in this region power operations (grid, generator, mixed)."
@@ -119,7 +142,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("finance_chart1"), height = "300px"),
+                  chart_with_download(ns, "finance_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Financial product uptake across credit and deposit instruments for this region."
@@ -128,7 +151,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("finance_chart2"), height = "300px"),
+                  chart_with_download(ns, "finance_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "The gauge reports average collateral required for loans in this region."
@@ -144,7 +167,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("gov_chart1"), height = "300px"),
+                  chart_with_download(ns, "gov_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Bribery prevalence by transaction type for firms in this region."
@@ -153,7 +176,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("gov_chart2"), height = "300px"),
+                  chart_with_download(ns, "gov_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Management time spent on regulatory tasks in this region."
@@ -167,7 +190,7 @@ ui <- function(id) {
             title = "Country Distribution",
             icon = icon("flag"),
             tagList(
-              plotlyOutput(ns("country_dist"), height = "400px"),
+              chart_with_download(ns, "country_dist"),
               p(
                 class = "text-muted small mt-2",
                 "Shows the distribution of surveyed firms across countries within this region."
@@ -831,6 +854,35 @@ server <- function(id, wbes_data, global_filters = NULL) {
           )
       }
     })
+
+    # ============================================================
+    # Download Handlers
+    # ============================================================
+
+    # Simple download handler for charts
+    simple_chart_download <- function(prefix) {
+      downloadHandler(
+        filename = function() {
+          region <- selected_region()
+          region_name <- if (is.null(region) || region == "all") "global" else region
+          paste0("regional_", region_name, "_", prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          region <- selected_region()
+          region_name <- if (is.null(region) || region == "all") "All Regions" else region
+          saveWidget(plot_ly() |> layout(title = paste(region_name, "-", prefix)), file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    output$dl_radar_chart <- simple_chart_download("business_environment")
+    output$dl_infra_chart1 <- simple_chart_download("infrastructure_obstacles")
+    output$dl_infra_chart2 <- simple_chart_download("power_sources")
+    output$dl_finance_chart1 <- simple_chart_download("financial_access")
+    output$dl_finance_chart2 <- simple_chart_download("collateral")
+    output$dl_gov_chart1 <- simple_chart_download("bribery_by_type")
+    output$dl_gov_chart2 <- simple_chart_download("management_time")
+    output$dl_country_dist <- simple_chart_download("country_distribution")
 
   })
 }

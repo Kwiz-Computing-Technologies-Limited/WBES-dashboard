@@ -2,16 +2,38 @@
 # Business Performance & Trade Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, p, strong,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent],
+  shiny[moduleServer, NS, reactive, req, tags, div, icon, h2, h3, h4, p, strong,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
   stats[setNames, reorder],
   utils[head],
+  htmlwidgets[saveWidget],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -73,7 +95,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Performance Indicators by Country"),
           card_body(
-            plotlyOutput(ns("bar_chart"), height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Bars compare capacity utilization or export participation across countries to spotlight standout performers."
@@ -85,7 +107,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Performance"),
           card_body(
-            plotlyOutput(ns("regional_chart"), height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px"),
             p(
               class = "text-muted small mt-2",
               "Regional averages reveal how performance differs across geographies, contextualizing country scores."
@@ -102,7 +124,7 @@ ui <- function(id) {
         card(
           card_header(icon("shipping-fast"), " Export Intensity Matrix"),
           card_body(
-            plotlyOutput(ns("export_matrix"), height = "350px"),
+            chart_with_download(ns, "export_matrix", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "The matrix contrasts export participation with firm characteristics, helping identify segments driving trade."
@@ -114,7 +136,7 @@ ui <- function(id) {
         card(
           card_header(icon("industry"), " Capacity vs. Obstacles"),
           card_body(
-            plotlyOutput(ns("capacity_obstacles"), height = "350px"),
+            chart_with_download(ns, "capacity_obstacles", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter points show how operational capacity aligns with reported obstacles, highlighting binding constraints."
@@ -131,7 +153,7 @@ ui <- function(id) {
         card(
           card_header(icon("trophy"), " Competitiveness Index"),
           card_body(
-            plotlyOutput(ns("competitiveness_chart"), height = "350px"),
+            chart_with_download(ns, "competitiveness_chart", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "This index blends performance indicators to benchmark overall competitiveness across markets."
@@ -143,7 +165,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Performance by Firm Size"),
           card_body(
-            plotlyOutput(ns("firm_size_performance"), height = "350px"),
+            chart_with_download(ns, "firm_size_performance", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize performance dispersion by firm size to reveal variability."
@@ -160,7 +182,7 @@ ui <- function(id) {
         card(
           card_header(icon("balance-scale"), " Export vs. Infrastructure"),
           card_body(
-            plotlyOutput(ns("export_infra"), height = "350px"),
+            chart_with_download(ns, "export_infra", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "Scatter compares export participation with infrastructure reliability to show how logistics affect trade."
@@ -172,7 +194,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), " Performance Segmentation"),
           card_body(
-            plotlyOutput(ns("performance_segments"), height = "350px"),
+            chart_with_download(ns, "performance_segments", height = "350px"),
             p(
               class = "text-muted small mt-2",
               "The pie groups firms into performance tiers, clarifying how many operate at high, medium, or low capacity."
@@ -426,25 +448,77 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
-      d <- d |>
-        mutate(
-          total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3
-        )
+      # Check for required columns - use friendly names which are always present
+      if (!all(c("capacity_utilization_pct", "electricity_obstacle_pct", "finance_obstacle_pct", "corruption_obstacle_pct") %in% names(d))) {
+        # Try with IC.FRM.* columns as fallback
+        if (all(c("IC.FRM.CAPU.ZS", "IC.FRM.INFRA.ZS", "IC.FRM.FINA.ZS", "IC.FRM.CORR.ZS") %in% names(d))) {
+          d <- d |>
+            mutate(
+              total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3,
+              capacity_val = IC.FRM.CAPU.ZS
+            )
+        } else {
+          return(
+            plot_ly() |>
+              layout(
+                xaxis = list(visible = FALSE),
+                yaxis = list(visible = FALSE),
+                annotations = list(
+                  list(
+                    text = "Missing obstacle or capacity data",
+                    showarrow = FALSE,
+                    font = list(size = 14, color = "#666666")
+                  )
+                ),
+                paper_bgcolor = "rgba(0,0,0,0)"
+              ) |>
+              config(displayModeBar = FALSE)
+          )
+        }
+      } else {
+        d <- d |>
+          mutate(
+            total_obstacles = (electricity_obstacle_pct + finance_obstacle_pct + corruption_obstacle_pct) / 3,
+            capacity_val = capacity_utilization_pct
+          )
+      }
 
-      plot_ly(d, x = ~total_obstacles, y = ~IC.FRM.CAPU.ZS,
+      # Filter out NA values
+      d <- d |> filter(!is.na(total_obstacles) & !is.na(capacity_val))
+
+      if (nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid data for scatter plot",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
               type = "scatter", mode = "markers",
-              text = ~paste0(country, "<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1),
+              color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
+              text = ~paste0(country, "<br>Region: ", region, "<br>Capacity: ", round(capacity_val, 1),
                            "%<br>Obstacles: ", round(total_obstacles, 1), "%"),
               hoverinfo = "text",
-              marker = list(size = 10,
-                           color = ~IC.FRM.CAPU.ZS,
-                           colorscale = list(c(0, "#dc3545"), c(0.5, "#F4A460"), c(1, "#2E7D32")),
-                           opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7)) |>
         layout(
           xaxis = list(title = "Business Obstacles Index (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -456,7 +530,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       d <- d |>
         mutate(
-          competitiveness = (IC.FRM.CAPU.ZS * 0.6 + IC.FRM.EXPRT.ZS * 0.4)
+          competitiveness = (`IC.FRM.CAPU.ZS` * 0.6 + `IC.FRM.EXPRT.ZS` * 0.4)
         ) |>
         arrange(desc(competitiveness)) |>
         head(15)
@@ -465,7 +539,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       plot_ly(d, y = ~country, x = ~competitiveness, type = "bar",
               orientation = "h",
-              marker = list(color = "#1B6B5F"),
+              marker = list(color = ~competitiveness,
+                           colorscale = list(c(0, "#F4A460"), c(1, "#1B6B5F")),
+                           showscale = TRUE,
+                           colorbar = list(title = "Score")),
               text = ~paste0(country, ": ", round(competitiveness, 1)),
               hoverinfo = "text") |>
         layout(
@@ -620,6 +697,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       )
     })
+
+    # Download handlers
+    output$dl_bar_chart <- downloadHandler(
+      filename = function() paste0("performance_by_country_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$bar_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_regional_chart <- downloadHandler(
+      filename = function() paste0("performance_regional_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$regional_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_export_matrix <- downloadHandler(
+      filename = function() paste0("export_matrix_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$export_matrix(), file, selfcontained = TRUE) }
+    )
+    output$dl_capacity_obstacles <- downloadHandler(
+      filename = function() paste0("capacity_vs_obstacles_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$capacity_obstacles(), file, selfcontained = TRUE) }
+    )
+    output$dl_competitiveness_chart <- downloadHandler(
+      filename = function() paste0("competitiveness_index_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$competitiveness_chart(), file, selfcontained = TRUE) }
+    )
+    output$dl_firm_size_performance <- downloadHandler(
+      filename = function() paste0("performance_by_firm_size_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$firm_size_performance(), file, selfcontained = TRUE) }
+    )
+    output$dl_export_infra <- downloadHandler(
+      filename = function() paste0("export_vs_infrastructure_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$export_infra(), file, selfcontained = TRUE) }
+    )
+    output$dl_performance_segments <- downloadHandler(
+      filename = function() paste0("performance_segments_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      content = function(file) { saveWidget(output$performance_segments(), file, selfcontained = TRUE) }
+    )
 
   })
 }

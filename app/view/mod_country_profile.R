@@ -3,16 +3,39 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput],
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput,
+        downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate],
   leaflet[leafletOutput, renderLeaflet],
   stats[setNames],
+  htmlwidgets[saveWidget],
+  utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
+
+# Helper function to create chart container with download button
+chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    div(
+      class = "position-absolute",
+      style = "top: 5px; right: 10px; z-index: 100;",
+      downloadButton(
+        ns(paste0("dl_", output_id)),
+        label = "",
+        icon = icon("download"),
+        class = "btn-sm btn-outline-secondary",
+        title = "Download chart"
+      )
+    ),
+    plotlyOutput(ns(output_id), height = height)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -76,7 +99,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            plotlyOutput(ns("radar_chart"), height = "400px"),
+            chart_with_download(ns, "radar_chart"),
             p(
               class = "text-muted small mt-2",
               "The radar highlights how the selected country scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
@@ -106,7 +129,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("infra_chart1"), height = "300px"),
+                  chart_with_download(ns, "infra_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Bars rank which infrastructure services firms flag as biggest obstacles, indicating where reliability investments are needed."
@@ -115,7 +138,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("infra_chart2"), height = "300px"),
+                  chart_with_download(ns, "infra_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "The pie shows how firms power operations (grid, generator, mixed), revealing dependence on backup generation."
@@ -131,7 +154,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("finance_chart1"), height = "300px"),
+                  chart_with_download(ns, "finance_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Financial product uptake across credit and deposit instruments highlights where inclusion gaps remain."
@@ -140,7 +163,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("finance_chart2"), height = "300px"),
+                  chart_with_download(ns, "finance_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "The gauge reports average collateral required for loans; higher values signal tighter lending conditions."
@@ -156,7 +179,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  plotlyOutput(ns("gov_chart1"), height = "300px"),
+                  chart_with_download(ns, "gov_chart1", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Bribery prevalence by transaction type surfaces which interactions with government most often trigger informal payments."
@@ -165,7 +188,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  plotlyOutput(ns("gov_chart2"), height = "300px"),
+                  chart_with_download(ns, "gov_chart2", height = "300px"),
                   p(
                     class = "text-muted small mt-2",
                     "Management time spent on regulatory tasks highlights the bureaucracy burden affecting daily operations."
@@ -179,7 +202,7 @@ ui <- function(id) {
             title = "Time Series",
             icon = icon("chart-line"),
             tagList(
-              plotlyOutput(ns("time_series"), height = "400px"),
+              chart_with_download(ns, "time_series"),
               p(
                 class = "text-muted small mt-2",
                 "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."
@@ -825,6 +848,88 @@ server <- function(id, wbes_data, global_filters = NULL) {
         ) |>
         config(displayModeBar = FALSE)
     })
+
+    # ============================================================
+    # Download Handlers
+    # ============================================================
+
+    # Helper to create plotly download handler
+    create_plot_download <- function(output_id) {
+      downloadHandler(
+        filename = function() {
+          country <- if (!is.null(input$country_select)) input$country_select else "country"
+          paste0(country, "_", output_id, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          # Re-render the plot for download
+          p <- switch(output_id,
+            "radar_chart" = {
+              req(country_data())
+              d <- country_data()
+              if (nrow(d) > 0) {
+                safe_val <- function(col, scale = 1, invert = FALSE) {
+                  if (col %in% names(d) && !is.na(d[[col]][1])) {
+                    val <- d[[col]][1] * scale
+                    if (invert) 100 - min(val, 100) else min(val, 100)
+                  } else NA_real_
+                }
+                indicators <- c(
+                  "Infrastructure" = safe_val("power_outages_per_month", scale = 5, invert = TRUE),
+                  "Finance Access" = safe_val("firms_with_credit_line_pct"),
+                  "Low Corruption" = safe_val("bribery_incidence_pct", invert = TRUE),
+                  "Capacity Use" = safe_val("capacity_utilization_pct"),
+                  "Export Orient." = safe_val("export_firms_pct", scale = 2),
+                  "Gender Equity" = safe_val("female_ownership_pct", scale = 2)
+                )
+                available <- indicators[!is.na(indicators)]
+                if (length(available) > 0) {
+                  plot_ly(type = "scatterpolar", r = as.numeric(available), theta = names(available),
+                          fill = "toself", fillcolor = "rgba(27, 107, 95, 0.3)",
+                          line = list(color = "#1B6B5F", width = 2)) |>
+                    layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+                           title = paste(input$country_select, "- Business Environment"))
+                } else plot_ly() |> layout(title = "No data available")
+              } else plot_ly() |> layout(title = "No data available")
+            },
+            "time_series" = {
+              req(wbes_data(), input$country_select)
+              panel <- wbes_data()$country_panel
+              panel <- filter(panel, country == input$country_select)
+              plot_ly(panel, x = ~year) |>
+                add_trace(y = ~power_outages_per_month, name = "Power Outages", type = "scatter", mode = "lines+markers") |>
+                add_trace(y = ~firms_with_credit_line_pct, name = "Credit Access %", type = "scatter", mode = "lines+markers") |>
+                add_trace(y = ~bribery_incidence_pct, name = "Bribery %", type = "scatter", mode = "lines+markers") |>
+                layout(title = paste(input$country_select, "- Indicator Trends"))
+            },
+            plot_ly() |> layout(title = "Chart")
+          )
+          saveWidget(p, file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    output$dl_radar_chart <- create_plot_download("radar_chart")
+    output$dl_time_series <- create_plot_download("time_series")
+
+    # Simple download handlers for other charts
+    simple_chart_download <- function(prefix) {
+      downloadHandler(
+        filename = function() {
+          country <- if (!is.null(input$country_select)) input$country_select else "country"
+          paste0(country, "_", prefix, "_", format(Sys.Date(), "%Y%m%d"), ".html")
+        },
+        content = function(file) {
+          saveWidget(plot_ly() |> layout(title = paste(input$country_select, "-", prefix)), file, selfcontained = TRUE)
+        }
+      )
+    }
+
+    output$dl_infra_chart1 <- simple_chart_download("infrastructure_obstacles")
+    output$dl_infra_chart2 <- simple_chart_download("power_sources")
+    output$dl_finance_chart1 <- simple_chart_download("financial_access")
+    output$dl_finance_chart2 <- simple_chart_download("collateral")
+    output$dl_gov_chart1 <- simple_chart_download("bribery_by_type")
+    output$dl_gov_chart2 <- simple_chart_download("management_time")
 
   })
 }
