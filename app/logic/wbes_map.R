@@ -178,10 +178,15 @@ create_wbes_map <- function(
     na.color = "#CCCCCC"
   )
 
+  # Calculate auto-zoom bounds based on data points
+  lat_range <- range(map_data$lat, na.rm = TRUE)
+  lon_range <- range(map_data$lon, na.rm = TRUE)
+  center_lat <- mean(lat_range)
+  center_lon <- mean(lon_range)
+
   # Create map
   map <- leaflet(map_data) |>
     addTiles() |>
-    setView(lng = 0, lat = 20, zoom = 2) |>
     addCircleMarkers(
       lng = ~lon,
       lat = ~lat,
@@ -206,6 +211,20 @@ create_wbes_map <- function(
       opacity = 0.8,
       labFormat = labelFormat(suffix = "%")
     )
+
+  # Auto-zoom to fit data points
+  if (nrow(map_data) > 1) {
+    map <- map |>
+      leaflet::fitBounds(
+        lng1 = lon_range[1] - 2,
+        lat1 = lat_range[1] - 2,
+        lng2 = lon_range[2] + 2,
+        lat2 = lat_range[2] + 2
+      )
+  } else {
+    map <- map |>
+      setView(lng = center_lon, lat = center_lat, zoom = 5)
+  }
 
   return(map)
 }
@@ -244,9 +263,14 @@ create_simple_map <- function(data, value_col, title = "Value") {
     domain = map_data[[value_col]]
   )
 
-  leaflet(map_data) |>
+  # Calculate auto-zoom bounds based on data points
+  lat_range <- range(map_data$lat, na.rm = TRUE)
+  lon_range <- range(map_data$lon, na.rm = TRUE)
+  center_lat <- mean(lat_range)
+  center_lon <- mean(lon_range)
+
+  map <- leaflet(map_data) |>
     addTiles() |>
-    setView(lng = 0, lat = 20, zoom = 2) |>
     addCircleMarkers(
       lng = ~lon,
       lat = ~lat,
@@ -267,6 +291,22 @@ create_simple_map <- function(data, value_col, title = "Value") {
       title = title,
       opacity = 0.8
     )
+
+  # Auto-zoom to fit data points
+  if (nrow(map_data) > 1) {
+    map <- map |>
+      leaflet::fitBounds(
+        lng1 = lon_range[1] - 2,
+        lat1 = lat_range[1] - 2,
+        lng2 = lon_range[2] + 2,
+        lat2 = lat_range[2] + 2
+      )
+  } else {
+    map <- map |>
+      setView(lng = center_lon, lat = center_lat, zoom = 5)
+  }
+
+  return(map)
 }
 
 #' Get centroid coordinates for countries
@@ -427,10 +467,17 @@ create_wbes_map_3d <- function(
     } else ""
   )
 
-  # Create map
+  # Calculate auto-zoom bounds based on data points
+  lat_range <- range(map_data$lat, na.rm = TRUE)
+  lon_range <- range(map_data$lon, na.rm = TRUE)
+
+  # Calculate center
+  center_lat <- mean(lat_range)
+  center_lon <- mean(lon_range)
+
+  # Create map with auto-fit bounds
   map <- leaflet(map_data) |>
     addTiles() |>
-    setView(lng = 0, lat = 20, zoom = 2) |>
     addCircleMarkers(
       lng = ~lon,
       lat = ~lat,
@@ -451,6 +498,21 @@ create_wbes_map_3d <- function(
       title = color_label,
       opacity = 0.8
     )
+
+  # Fit bounds to data with padding
+  if (nrow(map_data) > 1) {
+    map <- map |>
+      leaflet::fitBounds(
+        lng1 = lon_range[1] - 2,
+        lat1 = lat_range[1] - 2,
+        lng2 = lon_range[2] + 2,
+        lat2 = lat_range[2] + 2
+      )
+  } else {
+    # Single point - use setView with reasonable zoom
+    map <- map |>
+      setView(lng = center_lon, lat = center_lat, zoom = 5)
+  }
 
   return(map)
 }

@@ -448,25 +448,77 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
-      d <- d |>
-        mutate(
-          total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3
-        )
+      # Check for required columns - use friendly names which are always present
+      if (!all(c("capacity_utilization_pct", "electricity_obstacle_pct", "finance_obstacle_pct", "corruption_obstacle_pct") %in% names(d))) {
+        # Try with IC.FRM.* columns as fallback
+        if (all(c("IC.FRM.CAPU.ZS", "IC.FRM.INFRA.ZS", "IC.FRM.FINA.ZS", "IC.FRM.CORR.ZS") %in% names(d))) {
+          d <- d |>
+            mutate(
+              total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3,
+              capacity_val = IC.FRM.CAPU.ZS
+            )
+        } else {
+          return(
+            plot_ly() |>
+              layout(
+                xaxis = list(visible = FALSE),
+                yaxis = list(visible = FALSE),
+                annotations = list(
+                  list(
+                    text = "Missing obstacle or capacity data",
+                    showarrow = FALSE,
+                    font = list(size = 14, color = "#666666")
+                  )
+                ),
+                paper_bgcolor = "rgba(0,0,0,0)"
+              ) |>
+              config(displayModeBar = FALSE)
+          )
+        }
+      } else {
+        d <- d |>
+          mutate(
+            total_obstacles = (electricity_obstacle_pct + finance_obstacle_pct + corruption_obstacle_pct) / 3,
+            capacity_val = capacity_utilization_pct
+          )
+      }
 
-      plot_ly(d, x = ~total_obstacles, y = ~IC.FRM.CAPU.ZS,
+      # Filter out NA values
+      d <- d |> filter(!is.na(total_obstacles) & !is.na(capacity_val))
+
+      if (nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid data for scatter plot",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
               type = "scatter", mode = "markers",
-              text = ~paste0(country, "<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1),
+              color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
+              text = ~paste0(country, "<br>Region: ", region, "<br>Capacity: ", round(capacity_val, 1),
                            "%<br>Obstacles: ", round(total_obstacles, 1), "%"),
               hoverinfo = "text",
-              marker = list(size = 10,
-                           color = ~IC.FRM.CAPU.ZS,
-                           colorscale = list(c(0, "#dc3545"), c(0.5, "#F4A460"), c(1, "#2E7D32")),
-                           opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7)) |>
         layout(
           xaxis = list(title = "Business Obstacles Index (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -478,7 +530,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       d <- d |>
         mutate(
-          competitiveness = (IC.FRM.CAPU.ZS * 0.6 + IC.FRM.EXPRT.ZS * 0.4)
+          competitiveness = (`IC.FRM.CAPU.ZS` * 0.6 + `IC.FRM.EXPRT.ZS` * 0.4)
         ) |>
         arrange(desc(competitiveness)) |>
         head(15)
@@ -487,7 +539,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       plot_ly(d, y = ~country, x = ~competitiveness, type = "bar",
               orientation = "h",
-              marker = list(color = "#1B6B5F"),
+              marker = list(color = ~competitiveness,
+                           colorscale = list(c(0, "#F4A460"), c(1, "#1B6B5F")),
+                           showscale = TRUE,
+                           colorbar = list(title = "Score")),
               text = ~paste0(country, ": ", round(competitiveness, 1)),
               hoverinfo = "text") |>
         layout(

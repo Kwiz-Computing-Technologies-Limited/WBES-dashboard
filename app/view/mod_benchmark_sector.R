@@ -11,13 +11,14 @@ box::use(
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of],
   leaflet[leafletOutput, renderLeaflet],
-  stats[setNames],
+  stats[setNames, reorder],
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/custom_sectors[filter_by_sector],
-  app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates],
+  app/logic/scatter_utils[create_scatter_with_trend]
 )
 
 # Define indicator domains with their indicators
@@ -654,15 +655,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Helper: radar chart (legacy - kept for compatibility)
     create_radar_chart <- function(data, indicators, indicator_names) {
       sectors <- unique(data$sector)
+
+      # Collect all values for dynamic range calculation
+      all_values <- c()
       plot_data <- lapply(sectors, function(s) {
         sector_data <- data[data$sector == s, ]
         values <- sapply(indicators, function(ind) {
           val <- sector_data[[ind]][1]
           if (is.na(val)) 0 else val
         })
+        all_values <<- c(all_values, values)
         values <- c(values, values[1])
         list(sector = s, values = values)
       })
+
+      # Calculate dynamic range with 10% padding
+      max_val <- max(all_values, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10  # Round up to nearest 10 with 10% padding
 
       p <- plot_ly(type = 'scatterpolar', mode = 'lines+markers', fill = 'toself')
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460", "#dc3545", "#9c27b0")
@@ -679,7 +689,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       p |>
         layout(
-          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
           showlegend = TRUE,
           legend = list(orientation = "h", y = -0.1),
           paper_bgcolor = "rgba(0,0,0,0)"
@@ -695,6 +705,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
       sectors <- unique(data$sector)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460", "#dc3545", "#9c27b0")
       n_sectors <- length(sectors)
+
+      # Calculate dynamic range from all indicator values
+      all_values <- unlist(lapply(indicators, function(ind) data[[ind]]))
+      max_val <- max(all_values, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10  # Round up to nearest 10 with 10% padding
 
       # Calculate grid layout (more columns for sectors)
       n_cols <- min(4, n_sectors)
@@ -734,10 +750,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
         polar_name <- if (i == 1) "polar" else paste0("polar", i)
         domain <- get_domain(i, n_sectors, n_cols)
 
-        # Add polar axis to layout
+        # Add polar axis to layout with dynamic range
         layout_args[[polar_name]] <- list(
           domain = domain,
-          radialaxis = list(visible = TRUE, range = c(0, 100), tickfont = list(size = 7)),
+          radialaxis = list(visible = TRUE, range = c(0, range_max), tickfont = list(size = 7)),
           angularaxis = list(tickfont = list(size = 6))
         )
 
@@ -1176,21 +1192,25 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$infra_outage_impact <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~power_outages_per_month, y = ~capacity_utilization_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Outages vs Capacity Utilization", font = list(size = 14)),
-               xaxis = list(title = "Power Outages/Month"), yaxis = list(title = "Capacity Utilization (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "power_outages_per_month", y_col = "capacity_utilization_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Outages vs Capacity Utilization", x_label = "Power Outages/Month", y_label = "Capacity Utilization (%)"
+      )
     })
 
     output$infra_generator_correlation <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~power_outages_per_month, y = ~firms_with_generator_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Outages vs Generator Adoption", font = list(size = 14)),
-               xaxis = list(title = "Power Outages/Month"), yaxis = list(title = "Firms with Generator (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "power_outages_per_month", y_col = "firms_with_generator_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Outages vs Generator Adoption", x_label = "Power Outages/Month", y_label = "Firms with Generator (%)"
+      )
     })
 
     output$infra_insights <- renderUI({
@@ -1231,21 +1251,25 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$finance_access_gap <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~firms_with_bank_account_pct, y = ~firms_with_credit_line_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Bank Account vs Credit Access", font = list(size = 14)),
-               xaxis = list(title = "Firms with Bank Account (%)"), yaxis = list(title = "Firms with Credit Line (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "firms_with_bank_account_pct", y_col = "firms_with_credit_line_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Bank Account vs Credit Access", x_label = "Firms with Bank Account (%)", y_label = "Firms with Credit Line (%)"
+      )
     })
 
     output$finance_collateral_burden <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~loan_rejection_rate_pct, y = ~collateral_required_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Rejection Rate vs Collateral", font = list(size = 14)),
-               xaxis = list(title = "Loan Rejection Rate (%)"), yaxis = list(title = "Collateral Required (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "loan_rejection_rate_pct", y_col = "collateral_required_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Rejection Rate vs Collateral", x_label = "Loan Rejection Rate (%)", y_label = "Collateral Required (%)"
+      )
     })
 
     output$finance_insights <- renderUI({
@@ -1274,28 +1298,47 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$governance_kpi_regulations <- renderUI({
       req(comparison_data())
-      val <- round(mean(comparison_data()$mgmt_time_regulations_pct, na.rm = TRUE), 1)
-      create_kpi_card(paste0(val, "%"), "Mgmt Time on Regs", "info")
+      val <- if ("mgmt_time_regulations_pct" %in% names(comparison_data()) &&
+                 any(!is.na(comparison_data()$mgmt_time_regulations_pct))) {
+        round(mean(comparison_data()$mgmt_time_regulations_pct, na.rm = TRUE), 1)
+      } else {
+        "N/A"
+      }
+      create_kpi_card(if (is.numeric(val)) paste0(val, "%") else val, "Mgmt Time on Regs", "info")
     })
 
     output$governance_bribery_vs_corruption <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~bribery_incidence_pct, y = ~corruption_obstacle_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Bribery vs Corruption Obstacle", font = list(size = 14)),
-               xaxis = list(title = "Bribery Incidence (%)"), yaxis = list(title = "Corruption as Obstacle (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "bribery_incidence_pct", y_col = "corruption_obstacle_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Bribery vs Corruption Obstacle", x_label = "Bribery Incidence (%)", y_label = "Corruption as Obstacle (%)"
+      )
     })
 
     output$governance_regulatory_burden <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~mgmt_time_regulations_pct, y = ~capacity_utilization_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Regulatory Burden vs Productivity", font = list(size = 14)),
-               xaxis = list(title = "Mgmt Time on Regulations (%)"), yaxis = list(title = "Capacity Utilization (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      # Check if mgmt_time_regulations_pct has valid data
+      if (!"mgmt_time_regulations_pct" %in% names(data) ||
+          all(is.na(data$mgmt_time_regulations_pct))) {
+        create_scatter_with_trend(
+          data = data, x_col = "corruption_obstacle_pct", y_col = "capacity_utilization_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Corruption Impact on Productivity", x_label = "Corruption as Obstacle (%)", y_label = "Capacity Utilization (%)"
+        )
+      } else {
+        create_scatter_with_trend(
+          data = data, x_col = "mgmt_time_regulations_pct", y_col = "capacity_utilization_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Regulatory Burden vs Productivity", x_label = "Mgmt Time on Regulations (%)", y_label = "Capacity Utilization (%)"
+        )
+      }
     })
 
     output$governance_insights <- renderUI({
@@ -1331,21 +1374,25 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$workforce_gender_gap <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~female_workers_pct, y = ~female_ownership_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Female Workers vs Ownership Gap", font = list(size = 14)),
-               xaxis = list(title = "Female Workers (%)"), yaxis = list(title = "Female Ownership (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "female_workers_pct", y_col = "female_ownership_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Female Workers vs Ownership Gap", x_label = "Female Workers (%)", y_label = "Female Ownership (%)"
+      )
     })
 
     output$workforce_obstacle_correlation <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~workforce_obstacle_pct, y = ~capacity_utilization_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Workforce Challenges vs Productivity", font = list(size = 14)),
-               xaxis = list(title = "Workforce as Obstacle (%)"), yaxis = list(title = "Capacity Utilization (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "workforce_obstacle_pct", y_col = "capacity_utilization_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Workforce Challenges vs Productivity", x_label = "Workforce as Obstacle (%)", y_label = "Capacity Utilization (%)"
+      )
     })
 
     output$workforce_insights <- renderUI({
@@ -1389,11 +1436,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$performance_capacity_vs_exports <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~capacity_utilization_pct, y = ~export_firms_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Capacity vs Export Activity", font = list(size = 14)),
-               xaxis = list(title = "Capacity Utilization (%)"), yaxis = list(title = "Export Firms (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "capacity_utilization_pct", y_col = "export_firms_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Capacity vs Export Activity", x_label = "Capacity Utilization (%)", y_label = "Export Firms (%)"
+      )
     })
 
     output$performance_growth_distribution <- renderPlotly({
@@ -1436,21 +1485,25 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$crime_vs_security_cost <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~crime_obstacle_pct, y = ~security_costs_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Crime Obstacle vs Security Spending", font = list(size = 14)),
-               xaxis = list(title = "Crime as Obstacle (%)"), yaxis = list(title = "Security Costs (% of Sales)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "crime_obstacle_pct", y_col = "security_costs_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Crime Obstacle vs Security Spending", x_label = "Crime as Obstacle (%)", y_label = "Security Costs (% of Sales)"
+      )
     })
 
     output$crime_impact_performance <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      plot_ly(data, x = ~crime_obstacle_pct, y = ~capacity_utilization_pct, type = "scatter", mode = "markers",
-              color = ~sector, text = ~sector, hoverinfo = "text+x+y", marker = list(size = 12, opacity = 0.7)) |>
-        layout(title = list(text = "Crime Impact on Productivity", font = list(size = 14)),
-               xaxis = list(title = "Crime as Obstacle (%)"), yaxis = list(title = "Capacity Utilization (%)"),
-               paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      group_dim <- input$group_dimension
+      shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+      create_scatter_with_trend(
+        data = data, x_col = "crime_obstacle_pct", y_col = "capacity_utilization_pct",
+        color_col = "sector", shape_col = shape_col,
+        title = "Crime Impact on Productivity", x_label = "Crime as Obstacle (%)", y_label = "Capacity Utilization (%)"
+      )
     })
 
     output$crime_insights <- renderUI({
