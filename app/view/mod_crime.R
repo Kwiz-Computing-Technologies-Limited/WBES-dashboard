@@ -9,7 +9,7 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
-  stats[setNames, reorder],
+  stats[setNames, reorder, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
@@ -60,12 +60,24 @@ ui <- function(id) {
       class = "mb-4",
       column(12,
         card(
-          card_header(icon("map-marked-alt"), "Geographic Distribution of Crime Obstacles"),
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Crime & Security"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Crime as Obstacle (%)" = "crime_obstacle_pct",
+                    "Security Costs (% Sales)" = "security_costs_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("crime_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing crime as an obstacle by country. Darker red indicates higher crime obstacles."
+              "Interactive map showing the selected crime/security indicator by country. Darker red indicates higher values."
             )
           )
         )
@@ -246,19 +258,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- filtered()
       coords <- get_country_coordinates(wbes_data())
 
-      indicator <- if (!is.null(input$indicator)) input$indicator else "IC.FRM.CRIM.ZS"
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "crime_obstacle_pct"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "crime_obstacle_pct" = list(palette = "Reds", reverse = TRUE, label = "Crime as Obstacle (%)"),
+        "security_costs_pct" = list(palette = "Oranges", reverse = TRUE, label = "Security Costs (% Sales)"),
+        list(palette = "Reds", reverse = TRUE, label = indicator)
+      )
 
       create_wbes_map(
         data = d,
         coordinates = coords,
         indicator_col = indicator,
-        indicator_label = switch(indicator,
-          "IC.FRM.CRIM.ZS" = "Crime as Obstacle (%)",
-          "IC.FRM.SECU.ZS" = "Security Costs (%)",
-          indicator
-        ),
-        color_palette = "Reds",
-        reverse_colors = TRUE  # Higher is worse
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -366,11 +382,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Check if required columns exist
-      required_cols <- c("IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS")
-      missing_cols <- required_cols[!required_cols %in% names(regional)]
+      # Check if required columns exist - use friendly names first, then IC.FRM.* as fallback
+      crime_col <- if ("crime_obstacle_pct" %in% names(regional)) "crime_obstacle_pct" else "IC.FRM.CRIM.ZS"
+      security_col <- if ("security_costs_pct" %in% names(regional)) "security_costs_pct" else "IC.FRM.SECU.ZS"
 
-      if (length(missing_cols) > 0) {
+      if (!crime_col %in% names(regional) || !security_col %in% names(regional)) {
         return(
           plot_ly() |>
             layout(
@@ -378,7 +394,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
               yaxis = list(visible = FALSE),
               annotations = list(
                 list(
-                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  text = "Missing crime or security data columns",
                   showarrow = FALSE,
                   font = list(size = 14, color = "#666666")
                 )
@@ -391,9 +407,29 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       regional <- regional |>
         mutate(
-          security_index = (IC.FRM.CRIM.ZS * 0.7 + IC.FRM.SECU.ZS * 10 * 0.3)
+          security_index = (.data[[crime_col]] * 0.7 + .data[[security_col]] * 10 * 0.3)
         ) |>
+        filter(!is.na(security_index)) |>
         arrange(desc(security_index))
+
+      if (nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid regional data",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(regional, x = ~security_index, y = ~reorder(region, security_index),
               type = "bar", orientation = "h",
@@ -417,18 +453,44 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
 
-      plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
+      valid_data <- d[!is.na(d$IC.FRM.CRIM.ZS) & !is.na(d$IC.FRM.CAPU.ZS), ]
+
+      p <- plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~paste0(country, "<br>Crime: ", round(IC.FRM.CRIM.ZS, 1),
                            "%<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1), "%"),
               hoverinfo = "text",
               marker = list(size = 10,
                            color = ~IC.FRM.CRIM.ZS,
                            colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
-                           opacity = 0.7)) |>
-        layout(
+                           opacity = 0.7))
+
+      # Add trend line
+      if (nrow(valid_data) >= 2) {
+        tryCatch({
+          model <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.CRIM.ZS, data = valid_data)
+          x_range <- range(valid_data$IC.FRM.CRIM.ZS, na.rm = TRUE)
+          trend_x <- seq(x_range[1], x_range[2], length.out = 50)
+          trend_y <- predict(model, newdata = data.frame(IC.FRM.CRIM.ZS = trend_x))
+          r_sq <- round(summary(model)$r.squared, 3)
+
+          p <- p |> add_trace(
+            x = trend_x, y = trend_y,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R²=", r_sq, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            inherit = FALSE
+          )
+        }, error = function(e) {})
+      }
+
+      p |> layout(
           xaxis = list(title = "Crime as Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 70),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
@@ -466,16 +528,42 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.SECU.ZS" %in% names(d)) return(NULL)
 
-      plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
+      valid_data <- d[!is.na(d$IC.FRM.CRIM.ZS) & !is.na(d$IC.FRM.SECU.ZS), ]
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      p <- plot_ly(d, x = ~IC.FRM.CRIM.ZS, y = ~IC.FRM.SECU.ZS,
               type = "scatter", mode = "markers",
+              color = ~region,
+              colors = colors,
               text = ~country,
-              marker = list(size = 12,
-                           color = ~region,
-                           opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
-        layout(
+              marker = list(size = 12, opacity = 0.7,
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line
+      if (nrow(valid_data) >= 2) {
+        tryCatch({
+          model <- lm(IC.FRM.SECU.ZS ~ IC.FRM.CRIM.ZS, data = valid_data)
+          x_range <- range(valid_data$IC.FRM.CRIM.ZS, na.rm = TRUE)
+          trend_x <- seq(x_range[1], x_range[2], length.out = 50)
+          trend_y <- predict(model, newdata = data.frame(IC.FRM.CRIM.ZS = trend_x))
+          r_sq <- round(summary(model)$r.squared, 3)
+
+          p <- p |> add_trace(
+            x = trend_x, y = trend_y,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R²=", r_sq, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            inherit = FALSE
+          )
+        }, error = function(e) {})
+      }
+
+      p |> layout(
           xaxis = list(title = "Crime as Obstacle (%)"),
           yaxis = list(title = "Security Costs (% of Sales)"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 70),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
@@ -489,15 +577,42 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !"IC.FRM.CRIM.ZS" %in% names(d) || !"IC.FRM.CORR.ZS" %in% names(d)) return(NULL)
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
+      valid_data <- d[!is.na(d$IC.FRM.CRIM.ZS) & !is.na(d$IC.FRM.CORR.ZS), ]
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CRIM.ZS,
               type = "scatter", mode = "markers",
+              color = ~region,
+              colors = colors,
               text = ~country,
-              marker = list(size = 10,
-                           color = ~firm_size,
-                           opacity = 0.7)) |>
-        layout(
+              name = "Countries",
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line
+      if (nrow(valid_data) >= 2) {
+        tryCatch({
+          model <- lm(IC.FRM.CRIM.ZS ~ IC.FRM.CORR.ZS, data = valid_data)
+          x_range <- range(valid_data$IC.FRM.CORR.ZS, na.rm = TRUE)
+          trend_x <- seq(x_range[1], x_range[2], length.out = 50)
+          trend_y <- predict(model, newdata = data.frame(IC.FRM.CORR.ZS = trend_x))
+          r_sq <- round(summary(model)$r.squared, 3)
+
+          p <- p |> add_trace(
+            x = trend_x, y = trend_y,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R²=", r_sq, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            inherit = FALSE
+          )
+        }, error = function(e) {})
+      }
+
+      p |> layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Crime Obstacle (%)"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 70),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>

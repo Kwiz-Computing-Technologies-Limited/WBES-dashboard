@@ -708,19 +708,55 @@ https://kwizresearch.com'
 server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Completeness chart
+    # Completeness chart - Calculate actual completeness from data
     output$completeness_chart <- renderPlotly({
-      indicators <- c(
-        "Power Outages", "Credit Access", "Bribery",
-        "Capacity Util.", "Female Ownership", "Exports"
+      req(wbes_data())
+      d <- wbes_data()$latest
+
+      # Define key indicator columns and their display names
+      indicator_map <- list(
+        "power_outages_per_month" = "Power Outages",
+        "firms_with_credit_line_pct" = "Credit Access",
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "capacity_utilization_pct" = "Capacity Utilization",
+        "female_ownership_pct" = "Female Ownership",
+        "export_firms_pct" = "Export Firms",
+        "crime_obstacle_pct" = "Crime Obstacle",
+        "workforce_obstacle_pct" = "Workforce Obstacle"
       )
-      completeness <- c(88, 92, 78, 85, 94, 90)
 
-      data <- data.frame(indicator = indicators, pct = completeness)
-      data <- arrange(data, pct)
-      data$indicator <- factor(data$indicator, levels = data$indicator)
+      # Calculate completeness for each indicator
+      completeness_data <- data.frame(
+        indicator = character(),
+        pct = numeric(),
+        stringsAsFactors = FALSE
+      )
 
-      plot_ly(data,
+      for (col_name in names(indicator_map)) {
+        if (col_name %in% names(d)) {
+          total <- nrow(d)
+          non_na <- sum(!is.na(d[[col_name]]))
+          pct <- round(non_na / total * 100, 1)
+          completeness_data <- rbind(completeness_data, data.frame(
+            indicator = indicator_map[[col_name]],
+            pct = pct,
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+
+      if (nrow(completeness_data) == 0) {
+        # Fallback to placeholder data
+        completeness_data <- data.frame(
+          indicator = c("Power Outages", "Credit Access", "Bribery", "Capacity Util.", "Female Ownership", "Exports"),
+          pct = c(88, 92, 78, 85, 94, 90)
+        )
+      }
+
+      completeness_data <- arrange(completeness_data, pct)
+      completeness_data$indicator <- factor(completeness_data$indicator, levels = completeness_data$indicator)
+
+      plot_ly(completeness_data,
               y = ~indicator,
               x = ~pct,
               type = "bar",
@@ -745,13 +781,66 @@ server <- function(id, wbes_data, global_filters = NULL) {
         config(displayModeBar = FALSE)
     })
 
-    # Regional completeness
+    # Regional completeness - Calculate from actual data
     output$regional_completeness <- renderPlotly({
-      regions <- c("SSA", "SA", "EAP", "LAC", "ECA")
-      completeness <- c(82, 85, 91, 88, 94)
-      sample_size <- c(45000, 28000, 35000, 42000, 38000)
+      req(wbes_data())
+      d <- wbes_data()$latest
 
-      data <- data.frame(region = regions, pct = completeness, n = sample_size)
+      if (!"region" %in% names(d)) {
+        # Fallback to placeholder
+        data <- data.frame(
+          region = c("SSA", "SA", "EAP", "LAC", "ECA"),
+          pct = c(82, 85, 91, 88, 94),
+          n = c(45000, 28000, 35000, 42000, 38000)
+        )
+      } else {
+        # Calculate completeness by region
+        # Key indicator columns to check
+        key_cols <- c("power_outages_per_month", "firms_with_credit_line_pct",
+                      "bribery_incidence_pct", "capacity_utilization_pct")
+        key_cols <- key_cols[key_cols %in% names(d)]
+
+        if (length(key_cols) > 0) {
+          regional_data <- d |>
+            filter(!is.na(region)) |>
+            dplyr::group_by(region) |>
+            dplyr::summarise(
+              n = dplyr::n(),
+              # Average completeness across key indicators
+              pct = mean(sapply(key_cols, function(col) {
+                sum(!is.na(.data[[col]])) / dplyr::n()
+              })) * 100,
+              .groups = "drop"
+            ) |>
+            dplyr::arrange(dplyr::desc(pct))
+
+          # Abbreviate region names for display
+          regional_data$region_short <- sapply(regional_data$region, function(r) {
+            switch(r,
+              "Sub-Saharan Africa" = "SSA",
+              "South Asia" = "SA",
+              "East Asia & Pacific" = "EAP",
+              "Latin America & Caribbean" = "LAC",
+              "Europe & Central Asia" = "ECA",
+              "Middle East & North Africa" = "MENA",
+              substr(r, 1, 6)
+            )
+          })
+
+          data <- data.frame(
+            region = regional_data$region_short,
+            pct = round(regional_data$pct, 1),
+            n = regional_data$n
+          )
+        } else {
+          # Fallback to placeholder
+          data <- data.frame(
+            region = c("SSA", "SA", "EAP", "LAC", "ECA"),
+            pct = c(82, 85, 91, 88, 94),
+            n = c(45000, 28000, 35000, 42000, 38000)
+          )
+        }
+      }
 
       plot_ly(data,
               x = ~region,

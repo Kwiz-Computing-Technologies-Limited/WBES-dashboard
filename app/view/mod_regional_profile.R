@@ -70,10 +70,26 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), "Geographic Distribution"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Power Outages/Month" = "power_outages_per_month",
+                    "Credit Access (%)" = "firms_with_credit_line_pct",
+                    "Bribery Incidence (%)" = "bribery_incidence_pct",
+                    "Capacity Utilization (%)" = "capacity_utilization_pct",
+                    "Female Ownership (%)" = "female_ownership_pct",
+                    "Export Firms (%)" = "export_firms_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("regional_profile_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing geographic distribution of power outages across countries in this region. Click markers for details."
+              "Interactive map showing the selected indicator across countries in this region. Click markers for details."
             )
           )
         )
@@ -274,13 +290,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- region_data()
       coords <- get_country_coordinates(wbes_data())
 
+      # Get selected map indicator
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "power_outages_per_month"
+
+      # Determine color palette and direction based on indicator
+      palette_info <- switch(indicator,
+        "power_outages_per_month" = list(palette = "YlOrRd", reverse = TRUE, label = "Power Outages/Month"),
+        "firms_with_credit_line_pct" = list(palette = "Blues", reverse = FALSE, label = "Credit Access (%)"),
+        "bribery_incidence_pct" = list(palette = "Reds", reverse = TRUE, label = "Bribery Incidence (%)"),
+        "capacity_utilization_pct" = list(palette = "Greens", reverse = FALSE, label = "Capacity Utilization (%)"),
+        "female_ownership_pct" = list(palette = "Purples", reverse = FALSE, label = "Female Ownership (%)"),
+        "export_firms_pct" = list(palette = "Blues", reverse = FALSE, label = "Export Firms (%)"),
+        list(palette = "YlOrRd", reverse = FALSE, label = indicator)
+      )
+
       create_wbes_map(
         data = d,
         coordinates = coords,
-        indicator_col = "power_outages_per_month",
-        indicator_label = "Power Outages/Month",
-        color_palette = "YlOrRd",
-        reverse_colors = FALSE
+        indicator_col = indicator,
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 

@@ -9,7 +9,7 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, pull],
-  stats[setNames, reorder],
+  stats[setNames, reorder, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
@@ -80,10 +80,22 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), " Geographic Distribution of Corruption"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Corruption as Obstacle (%)" = "corruption_obstacle_pct",
+                    "Bribery Incidence (%)" = "bribery_incidence_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("corruption_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing corruption levels by country. Larger, redder circles indicate higher corruption. Click markers for details."
+              "Interactive map showing the selected corruption indicator by country. Darker red indicates higher corruption."
             )
           )
         )
@@ -273,16 +285,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- filtered()
       coords <- get_country_coordinates(wbes_data())
 
-      # Use the selected indicator for map visualization
-      indicator <- input$indicator
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "corruption_obstacle_pct"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "corruption_obstacle_pct" = list(palette = "Reds", reverse = TRUE, label = "Corruption as Obstacle (%)"),
+        "bribery_incidence_pct" = list(palette = "Oranges", reverse = TRUE, label = "Bribery Incidence (%)"),
+        list(palette = "Reds", reverse = TRUE, label = indicator)
+      )
 
       create_wbes_map(
         data = d,
         coordinates = coords,
         indicator_col = indicator,
-        indicator_label = if (indicator == "IC.FRM.CORR.ZS") "Corruption as Obstacle" else "Bribery Incidence",
-        color_palette = "Reds",
-        reverse_colors = TRUE  # Higher is worse
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -324,13 +343,38 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$regional_chart <- renderPlotly({
       req(wbes_data())
       regional <- wbes_data()$regional
-      if (is.null(regional)) return(NULL)
+      if (is.null(regional) || nrow(regional) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No regional data available", showarrow = FALSE))))
+      }
+
+      # Use friendly column names with fallbacks
+      corr_col <- if ("corruption_obstacle_pct" %in% names(regional)) "corruption_obstacle_pct" else "IC.FRM.CORR.ZS"
+      brib_col <- if ("bribery_incidence_pct" %in% names(regional)) "bribery_incidence_pct" else "IC.FRM.BRIB.ZS"
+
+      # Check if at least one column exists
+      has_corr <- corr_col %in% names(regional)
+      has_brib <- brib_col %in% names(regional)
+
+      if (!has_corr && !has_brib) {
+        return(plot_ly() |> layout(annotations = list(list(text = "Corruption data columns not found", showarrow = FALSE))))
+      }
+
+      # Calculate corruption index from available columns
+      if (has_corr && has_brib) {
+        regional$corruption_index <- (regional[[corr_col]] + regional[[brib_col]]) / 2
+      } else if (has_corr) {
+        regional$corruption_index <- regional[[corr_col]]
+      } else {
+        regional$corruption_index <- regional[[brib_col]]
+      }
 
       regional <- regional |>
-        mutate(
-          corruption_index = (IC.FRM.CORR.ZS + IC.FRM.BRIB.ZS) / 2
-        ) |>
+        filter(!is.na(region), !is.na(corruption_index)) |>
         arrange(desc(corruption_index))
+
+      if (nrow(regional) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No valid regional data", showarrow = FALSE))))
+      }
 
       plot_ly(regional, x = ~corruption_index, y = ~reorder(region, corruption_index),
               type = "bar", orientation = "h",
@@ -350,10 +394,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Scatter - Corruption vs Growth
     output$scatter_growth <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.CORR.ZS), !is.na(IC.FRM.CAPU.ZS))
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CAPU.ZS,
+      if (nrow(d) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~paste0(country, "<br>Corruption: ", round(IC.FRM.CORR.ZS, 1),
                            "%<br>Capacity: ", round(IC.FRM.CAPU.ZS, 1), "%"),
               hoverinfo = "text",
@@ -361,10 +410,33 @@ server <- function(id, wbes_data, global_filters = NULL) {
                            color = ~IC.FRM.CORR.ZS,
                            colorscale = list(c(0, "#2E7D32"), c(1, "#dc3545")),
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
-        layout(
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if enough data points
+      if (nrow(d) >= 3) {
+        model <- tryCatch(lm(IC.FRM.CAPU.ZS ~ IC.FRM.CORR.ZS, data = d), error = function(e) NULL)
+        if (!is.null(model)) {
+          x_seq <- seq(min(d$IC.FRM.CORR.ZS, na.rm = TRUE), max(d$IC.FRM.CORR.ZS, na.rm = TRUE), length.out = 50)
+          y_pred <- predict(model, newdata = data.frame(IC.FRM.CORR.ZS = x_seq))
+          r_squared <- round(summary(model)$r.squared, 2)
+          slope <- round(coef(model)[2], 3)
+
+          p <- p |> add_trace(
+            x = x_seq, y = y_pred,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R\u00b2=", r_squared, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            hovertemplate = paste0("Trend Line<br>Slope: ", slope, "<br>R\u00b2: ", r_squared, "<extra></extra>"),
+            inherit = FALSE
+          )
+        }
+      }
+
+      p |> layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 80),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
@@ -374,20 +446,48 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Scatter - Corruption vs Investment
     output$scatter_investment <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.CORR.ZS), !is.na(IC.FRM.FINA.ZS))
 
-      plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.FINA.ZS,
+      if (nrow(d) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CORR.ZS, y = ~IC.FRM.FINA.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~paste0(country, "<br>Corruption: ", round(IC.FRM.CORR.ZS, 1),
-                           "%<br>Finance Access: ", round(IC.FRM.FINA.ZS, 1), "%"),
+                           "%<br>Finance Obstacle: ", round(IC.FRM.FINA.ZS, 1), "%"),
               hoverinfo = "text",
               marker = list(size = 10,
                            color = ~region,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
-        layout(
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if enough data points
+      if (nrow(d) >= 3) {
+        model <- tryCatch(lm(IC.FRM.FINA.ZS ~ IC.FRM.CORR.ZS, data = d), error = function(e) NULL)
+        if (!is.null(model)) {
+          x_seq <- seq(min(d$IC.FRM.CORR.ZS, na.rm = TRUE), max(d$IC.FRM.CORR.ZS, na.rm = TRUE), length.out = 50)
+          y_pred <- predict(model, newdata = data.frame(IC.FRM.CORR.ZS = x_seq))
+          r_squared <- round(summary(model)$r.squared, 2)
+          slope <- round(coef(model)[2], 3)
+
+          p <- p |> add_trace(
+            x = x_seq, y = y_pred,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R\u00b2=", r_squared, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            hovertemplate = paste0("Trend Line<br>Slope: ", slope, "<br>R\u00b2: ", r_squared, "<extra></extra>"),
+            inherit = FALSE
+          )
+        }
+      }
+
+      p |> layout(
           xaxis = list(title = "Corruption Obstacle (%)"),
           yaxis = list(title = "Finance as Obstacle (%)"),
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 80),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE
@@ -415,18 +515,46 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Bribery scatter
     output$bribery_scatter <- renderPlotly({
       req(filtered())
-      d <- filtered()
+      d <- filtered() |> filter(!is.na(IC.FRM.BRIB.ZS), !is.na(IC.FRM.CORR.ZS))
 
-      plot_ly(d, x = ~IC.FRM.BRIB.ZS, y = ~IC.FRM.CORR.ZS,
+      if (nrow(d) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.BRIB.ZS, y = ~IC.FRM.CORR.ZS,
               type = "scatter", mode = "markers",
+              name = "Countries",
               text = ~country,
               marker = list(size = 12,
                            color = ~firm_size,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
-        layout(
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if enough data points
+      if (nrow(d) >= 3) {
+        model <- tryCatch(lm(IC.FRM.CORR.ZS ~ IC.FRM.BRIB.ZS, data = d), error = function(e) NULL)
+        if (!is.null(model)) {
+          x_seq <- seq(min(d$IC.FRM.BRIB.ZS, na.rm = TRUE), max(d$IC.FRM.BRIB.ZS, na.rm = TRUE), length.out = 50)
+          y_pred <- predict(model, newdata = data.frame(IC.FRM.BRIB.ZS = x_seq))
+          r_squared <- round(summary(model)$r.squared, 2)
+          slope <- round(coef(model)[2], 3)
+
+          p <- p |> add_trace(
+            x = x_seq, y = y_pred,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R\u00b2=", r_squared, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            hovertemplate = paste0("Trend Line<br>Slope: ", slope, "<br>R\u00b2: ", r_squared, "<extra></extra>"),
+            inherit = FALSE
+          )
+        }
+      }
+
+      p |> layout(
           xaxis = list(title = "Bribery Incidence (%)"),
           yaxis = list(title = "Corruption as Obstacle (%)"),
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 80),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>

@@ -60,10 +60,23 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), "Geographic Distribution of Business Performance"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Capacity Utilization (%)" = "capacity_utilization_pct",
+                    "Export Firms (%)" = "export_firms_pct",
+                    "Annual Sales Growth (%)" = "annual_sales_growth_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("performance_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing capacity utilization by country. Darker colors indicate higher utilization."
+              "Interactive map showing the selected performance indicator by country. Darker colors indicate higher values."
             )
           )
         )
@@ -252,19 +265,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- filtered()
       coords <- get_country_coordinates(wbes_data())
 
-      indicator <- if (!is.null(input$indicator)) input$indicator else "IC.FRM.CAPU.ZS"
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "capacity_utilization_pct"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "capacity_utilization_pct" = list(palette = "Greens", reverse = FALSE, label = "Capacity Utilization (%)"),
+        "export_firms_pct" = list(palette = "Blues", reverse = FALSE, label = "Export Firms (%)"),
+        "annual_sales_growth_pct" = list(palette = "Greens", reverse = FALSE, label = "Annual Sales Growth (%)"),
+        list(palette = "Greens", reverse = FALSE, label = indicator)
+      )
 
       create_wbes_map(
         data = d,
         coordinates = coords,
         indicator_col = indicator,
-        indicator_label = switch(indicator,
-          "IC.FRM.CAPU.ZS" = "Capacity Utilization (%)",
-          "IC.FRM.EXPRT.ZS" = "Export Participation (%)",
-          indicator
-        ),
-        color_palette = "Greens",
-        reverse_colors = FALSE  # Higher is better
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -369,11 +387,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Check if required columns exist
-      required_cols <- c("IC.FRM.CAPU.ZS", "IC.FRM.EXPRT.ZS")
-      missing_cols <- required_cols[!required_cols %in% names(regional)]
+      # Check if required columns exist - use friendly names first, then IC.FRM.* as fallback
+      capacity_col <- if ("capacity_utilization_pct" %in% names(regional)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
+      export_col <- if ("export_firms_pct" %in% names(regional)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
 
-      if (length(missing_cols) > 0) {
+      if (!capacity_col %in% names(regional) || !export_col %in% names(regional)) {
         return(
           plot_ly() |>
             layout(
@@ -381,7 +399,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
               yaxis = list(visible = FALSE),
               annotations = list(
                 list(
-                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  text = "Missing capacity or export data columns",
                   showarrow = FALSE,
                   font = list(size = 14, color = "#666666")
                 )
@@ -394,9 +412,29 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       regional <- regional |>
         mutate(
-          perf_index = (IC.FRM.CAPU.ZS + IC.FRM.EXPRT.ZS) / 2
+          perf_index = (.data[[capacity_col]] + .data[[export_col]]) / 2
         ) |>
+        filter(!is.na(perf_index)) |>
         arrange(desc(perf_index))
+
+      if (nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid regional data",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
       plot_ly(regional, x = ~perf_index, y = ~reorder(region, perf_index),
               type = "bar", orientation = "h",
@@ -448,40 +486,63 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
-      # Check for required columns - use friendly names which are always present
-      if (!all(c("capacity_utilization_pct", "electricity_obstacle_pct", "finance_obstacle_pct", "corruption_obstacle_pct") %in% names(d))) {
-        # Try with IC.FRM.* columns as fallback
-        if (all(c("IC.FRM.CAPU.ZS", "IC.FRM.INFRA.ZS", "IC.FRM.FINA.ZS", "IC.FRM.CORR.ZS") %in% names(d))) {
-          d <- d |>
-            mutate(
-              total_obstacles = (IC.FRM.INFRA.ZS + IC.FRM.FINA.ZS + IC.FRM.CORR.ZS) / 3,
-              capacity_val = IC.FRM.CAPU.ZS
-            )
-        } else {
-          return(
-            plot_ly() |>
-              layout(
-                xaxis = list(visible = FALSE),
-                yaxis = list(visible = FALSE),
-                annotations = list(
-                  list(
-                    text = "Missing obstacle or capacity data",
-                    showarrow = FALSE,
-                    font = list(size = 14, color = "#666666")
-                  )
-                ),
-                paper_bgcolor = "rgba(0,0,0,0)"
-              ) |>
-              config(displayModeBar = FALSE)
-          )
-        }
-      } else {
-        d <- d |>
-          mutate(
-            total_obstacles = (electricity_obstacle_pct + finance_obstacle_pct + corruption_obstacle_pct) / 3,
-            capacity_val = capacity_utilization_pct
-          )
+      # Get capacity column (friendly name first, then IC.FRM.*)
+      capacity_col <- if ("capacity_utilization_pct" %in% names(d)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
+
+      # Get obstacle columns - use corruption_obstacle_pct, electricity_obstacle (no _pct), and IC.FRM.FINA.ZS for finance
+      corr_col <- if ("corruption_obstacle_pct" %in% names(d)) "corruption_obstacle_pct" else "IC.FRM.CORR.ZS"
+      elec_col <- if ("electricity_obstacle" %in% names(d)) "electricity_obstacle" else "IC.FRM.ELEC.ZS"
+      # For finance, use IC.FRM.FINA.ZS (finance access) as there's no finance_obstacle_pct
+      fina_col <- "IC.FRM.FINA.ZS"
+
+      # Check if required columns exist
+      if (!capacity_col %in% names(d)) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "Missing capacity utilization data",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
       }
+
+      # Calculate obstacles index with available columns
+      obstacle_cols_present <- c(corr_col, elec_col, fina_col)[c(corr_col, elec_col, fina_col) %in% names(d)]
+
+      if (length(obstacle_cols_present) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "Missing obstacle data columns",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Calculate mean of available obstacles
+      d <- d |>
+        mutate(
+          total_obstacles = rowMeans(across(all_of(obstacle_cols_present)), na.rm = TRUE),
+          capacity_val = .data[[capacity_col]]
+        )
 
       # Filter out NA values
       d <- d |> filter(!is.na(total_obstacles) & !is.na(capacity_val))
@@ -602,11 +663,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Check if required columns exist
-      required_cols <- c("IC.FRM.INFRA.ZS", "IC.FRM.EXPRT.ZS")
-      missing_cols <- required_cols[!required_cols %in% names(d)]
+      # Use friendly column names with fallbacks
+      # For infrastructure, use power_outages_per_month as proxy (IC.FRM.INFRA.ZS may not exist)
+      infra_col <- if ("power_outages_per_month" %in% names(d)) {
+        "power_outages_per_month"
+      } else if ("electricity_obstacle" %in% names(d)) {
+        "electricity_obstacle"
+      } else if ("IC.FRM.INFRA.ZS" %in% names(d)) {
+        "IC.FRM.INFRA.ZS"
+      } else if ("IC.FRM.OUTG.ZS" %in% names(d)) {
+        "IC.FRM.OUTG.ZS"
+      } else {
+        NULL
+      }
 
-      if (length(missing_cols) > 0) {
+      export_col <- if ("export_firms_pct" %in% names(d)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
+
+      if (is.null(infra_col) || !export_col %in% names(d)) {
         return(
           plot_ly() |>
             layout(
@@ -614,7 +687,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
               yaxis = list(visible = FALSE),
               annotations = list(
                 list(
-                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  text = "Missing infrastructure or export data columns",
                   showarrow = FALSE,
                   font = list(size = 14, color = "#666666")
                 )
@@ -625,17 +698,55 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      plot_ly(d, x = ~IC.FRM.INFRA.ZS, y = ~IC.FRM.EXPRT.ZS,
+      # Extract values for plotting
+      infra_vals <- d[[infra_col]]
+      export_vals <- d[[export_col]]
+
+      # Filter out rows with NA values
+      valid_rows <- !is.na(infra_vals) & !is.na(export_vals)
+      d <- d[valid_rows, ]
+      infra_vals <- infra_vals[valid_rows]
+      export_vals <- export_vals[valid_rows]
+
+      if (nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid data for scatter plot",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Create x-axis label based on column used
+      x_label <- switch(infra_col,
+        "power_outages_per_month" = "Power Outages (per month)",
+        "electricity_obstacle" = "Electricity Obstacle (%)",
+        "IC.FRM.OUTG.ZS" = "Power Outages (%)",
+        "Infrastructure Obstacle (%)"
+      )
+
+      plot_ly(d, x = infra_vals, y = export_vals,
               type = "scatter", mode = "markers",
               text = ~country,
-              marker = list(size = 10,
-                           color = ~region,
-                           opacity = 0.7)) |>
+              color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
+              marker = list(size = 10, opacity = 0.7)) |>
         layout(
-          xaxis = list(title = "Infrastructure Obstacle (%)"),
+          xaxis = list(title = x_label),
           yaxis = list(title = "Export Participation (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
         ) |>
         config(displayModeBar = FALSE)
     })

@@ -82,10 +82,26 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), "Geographic Context"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Power Outages/Month" = "power_outages_per_month",
+                    "Credit Access (%)" = "firms_with_credit_line_pct",
+                    "Bribery Incidence (%)" = "bribery_incidence_pct",
+                    "Capacity Utilization (%)" = "capacity_utilization_pct",
+                    "Female Ownership (%)" = "female_ownership_pct",
+                    "Export Firms (%)" = "export_firms_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("country_profile_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing the selected country's location and regional context. Click markers for details."
+              "Interactive map showing the selected indicator across countries. Click markers for details."
             )
           )
         )
@@ -264,20 +280,51 @@ server <- function(id, wbes_data, global_filters = NULL) {
       filtered_data() |> filter(!is.na(country) & country == input$country_select)
     })
 
-    # Geographic map for country profile
+    # Geographic map for country profile - zooms to selected country
     output$country_profile_map <- renderLeaflet({
-      req(filtered_data(), wbes_data())
+      req(filtered_data(), wbes_data(), input$country_select)
       d <- filtered_data()
       coords <- get_country_coordinates(wbes_data())
 
-      create_wbes_map(
+      # Get selected map indicator
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "power_outages_per_month"
+
+      # Determine color palette and direction based on indicator
+      palette_info <- switch(indicator,
+        "power_outages_per_month" = list(palette = "YlOrRd", reverse = TRUE, label = "Power Outages/Month"),
+        "firms_with_credit_line_pct" = list(palette = "Blues", reverse = FALSE, label = "Credit Access (%)"),
+        "bribery_incidence_pct" = list(palette = "Reds", reverse = TRUE, label = "Bribery Incidence (%)"),
+        "capacity_utilization_pct" = list(palette = "Greens", reverse = FALSE, label = "Capacity Utilization (%)"),
+        "female_ownership_pct" = list(palette = "Purples", reverse = FALSE, label = "Female Ownership (%)"),
+        "export_firms_pct" = list(palette = "Blues", reverse = FALSE, label = "Export Firms (%)"),
+        list(palette = "YlOrRd", reverse = FALSE, label = indicator)
+      )
+
+      # Create the map with the selected country highlighted
+      map <- create_wbes_map(
         data = d,
         coordinates = coords,
-        indicator_col = "power_outages_per_month",
-        indicator_label = "Power Outages/Month",
-        color_palette = "YlOrRd",
-        reverse_colors = FALSE
+        indicator_col = indicator,
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
+
+      # Get coordinates for selected country and zoom to it
+      selected_country <- input$country_select
+      if (!is.null(selected_country) && selected_country != "") {
+        # Find country coordinates from the coordinates data
+        country_coords <- coords |> filter(country == selected_country)
+        if (nrow(country_coords) > 0 && !is.na(country_coords$lat[1]) && !is.na(country_coords$lng[1])) {
+          map <- map |> leaflet::setView(
+            lng = country_coords$lng[1],
+            lat = country_coords$lat[1],
+            zoom = 5
+          )
+        }
+      }
+
+      map
     })
 
     # Country summary card

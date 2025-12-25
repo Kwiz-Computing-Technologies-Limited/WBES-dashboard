@@ -227,7 +227,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "infra_comparison")),
               column(4, chart_with_download(ns, "infra_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("infra_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("infra_map_indicator"), "Map Indicator",
+                choices = c("Power Outages/Month" = "power_outages_per_month", "Outage Duration (hrs)" = "avg_outage_duration_hrs", "Generator Usage (%)" = "firms_with_generator_pct"))),
+              column(12, leafletOutput(ns("infra_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
               column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px"))
@@ -249,7 +254,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "finance_comparison")),
               column(4, chart_with_download(ns, "finance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("finance_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("finance_map_indicator"), "Map Indicator",
+                choices = c("Credit Access (%)" = "firms_with_credit_line_pct", "Bank Account (%)" = "firms_with_bank_account_pct", "Collateral Required (%)" = "collateral_required_pct"))),
+              column(12, leafletOutput(ns("finance_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
               column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
@@ -270,7 +280,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "governance_comparison")),
               column(4, chart_with_download(ns, "governance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("governance_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("governance_map_indicator"), "Map Indicator",
+                choices = c("Bribery Incidence (%)" = "bribery_incidence_pct", "Corruption Obstacle (%)" = "corruption_obstacle_pct"))),
+              column(12, leafletOutput(ns("governance_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
               column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
@@ -291,7 +306,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "workforce_comparison")),
               column(4, chart_with_download(ns, "workforce_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("workforce_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("workforce_map_indicator"), "Map Indicator",
+                choices = c("Female Ownership (%)" = "female_ownership_pct", "Female Workers (%)" = "female_workers_pct"))),
+              column(12, leafletOutput(ns("workforce_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
               column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
@@ -313,7 +333,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "performance_comparison")),
               column(4, chart_with_download(ns, "performance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("performance_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("performance_map_indicator"), "Map Indicator",
+                choices = c("Capacity Utilization (%)" = "capacity_utilization_pct", "Export Firms (%)" = "export_firms_pct"))),
+              column(12, leafletOutput(ns("performance_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
               column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
@@ -333,7 +358,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "crime_comparison")),
               column(4, chart_with_download(ns, "crime_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("crime_map"), height = "350px"))),
+            fluidRow(
+              class = "mt-3",
+              column(4, selectInput(ns("crime_map_indicator"), "Map Indicator",
+                choices = c("Crime Obstacle (%)" = "crime_obstacle_pct", "Security Costs (% Sales)" = "security_costs_pct"))),
+              column(12, leafletOutput(ns("crime_map"), height = "350px"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
               column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
@@ -530,7 +560,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators by", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.3, title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
+              legend = list(orientation = "h", y = -0.45, x = 0.5, xanchor = "center", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
+              margin = list(b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -552,7 +583,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators"), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.2),
+              legend = list(orientation = "h", y = -0.4, x = 0.5, xanchor = "center"),
+              margin = list(b = 110),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -606,7 +638,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         layout(
           polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.1),
+          legend = list(orientation = "h", y = -0.25, x = 0.5, xanchor = "center"),
+          margin = list(b = 80),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
@@ -655,7 +688,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         title = list(text = paste(domain_name, "- Radar Comparison"), font = list(size = 14)),
         paper_bgcolor = "rgba(0,0,0,0)",
         showlegend = has_grouping,
-        legend = list(orientation = "h", y = -0.05)
+        legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
+        margin = list(b = 60)
       )
 
       annotations <- list()
@@ -980,9 +1014,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$infra_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$infra_map_indicator)) input$infra_map_indicator else "power_outages_per_month"
+      palette_info <- switch(indicator,
+        "power_outages_per_month" = list(palette = "YlOrRd", label = "Power Outages/Month"),
+        "avg_outage_duration_hrs" = list(palette = "YlOrRd", label = "Outage Duration (hrs)"),
+        "firms_with_generator_pct" = list(palette = "Oranges", label = "Generator Usage (%)"),
+        list(palette = "YlOrRd", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "power_outages_per_month", size_col = "power_outages_per_month",
-                         color_label = "Power Outages", size_label = "Power Outages", color_palette = "YlOrRd")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$finance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "finance", input$chart_type) })
@@ -997,9 +1038,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$finance_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$finance_map_indicator)) input$finance_map_indicator else "firms_with_credit_line_pct"
+      palette_info <- switch(indicator,
+        "firms_with_credit_line_pct" = list(palette = "YlGn", label = "Credit Access (%)"),
+        "firms_with_bank_account_pct" = list(palette = "Blues", label = "Bank Account (%)"),
+        "collateral_required_pct" = list(palette = "YlOrRd", label = "Collateral Required (%)"),
+        list(palette = "YlGn", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "firms_with_credit_line_pct", size_col = "firms_with_credit_line_pct",
-                         color_label = "Credit Access %", size_label = "Credit Access", color_palette = "YlGn")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$governance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "governance", input$chart_type) })
@@ -1014,9 +1062,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$governance_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$governance_map_indicator)) input$governance_map_indicator else "bribery_incidence_pct"
+      palette_info <- switch(indicator,
+        "bribery_incidence_pct" = list(palette = "YlOrRd", label = "Bribery Incidence (%)"),
+        "corruption_obstacle_pct" = list(palette = "Reds", label = "Corruption Obstacle (%)"),
+        list(palette = "YlOrRd", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "bribery_incidence_pct", size_col = "bribery_incidence_pct",
-                         color_label = "Bribery %", size_label = "Bribery", color_palette = "YlOrRd")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$workforce_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "workforce", input$chart_type) })
@@ -1031,9 +1085,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$workforce_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$workforce_map_indicator)) input$workforce_map_indicator else "female_ownership_pct"
+      palette_info <- switch(indicator,
+        "female_ownership_pct" = list(palette = "PuRd", label = "Female Ownership (%)"),
+        "female_workers_pct" = list(palette = "Purples", label = "Female Workers (%)"),
+        list(palette = "PuRd", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "female_ownership_pct", size_col = "female_ownership_pct",
-                         color_label = "Female Ownership %", size_label = "Female Ownership", color_palette = "PuRd")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$performance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "performance", input$chart_type) })
@@ -1048,9 +1108,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$performance_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$performance_map_indicator)) input$performance_map_indicator else "capacity_utilization_pct"
+      palette_info <- switch(indicator,
+        "capacity_utilization_pct" = list(palette = "YlGn", label = "Capacity Utilization (%)"),
+        "export_firms_pct" = list(palette = "Blues", label = "Export Firms (%)"),
+        list(palette = "YlGn", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "capacity_utilization_pct", size_col = "export_firms_pct",
-                         color_label = "Capacity %", size_label = "Export Firms %", color_palette = "YlGn")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$crime_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "crime", input$chart_type) })
@@ -1065,9 +1131,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
     output$crime_map <- renderLeaflet({
       req(selected_size_data(), wbes_data())
+      indicator <- if (!is.null(input$crime_map_indicator)) input$crime_map_indicator else "crime_obstacle_pct"
+      palette_info <- switch(indicator,
+        "crime_obstacle_pct" = list(palette = "YlOrRd", label = "Crime Obstacle (%)"),
+        "security_costs_pct" = list(palette = "Oranges", label = "Security Costs (% Sales)"),
+        list(palette = "YlOrRd", label = indicator)
+      )
       create_wbes_map_3d(data = selected_size_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = "crime_obstacle_pct", size_col = "security_costs_pct",
-                         color_label = "Crime Obstacle %", size_label = "Security Costs %", color_palette = "YlOrRd")
+                         color_col = indicator, size_col = indicator,
+                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     # ============================================================
@@ -1398,11 +1470,53 @@ server <- function(id, wbes_data, global_filters = NULL) {
       if (!"annual_sales_growth_pct" %in% names(data)) {
         return(plot_ly() |> layout(title = "Data not available"))
       }
-      plot_ly(data, x = ~firm_size, y = ~annual_sales_growth_pct, color = ~firm_size,
-              type = "bar", text = ~paste0(round(annual_sales_growth_pct, 1), "%"),
-              textposition = "outside", hoverinfo = "text+name") |>
-        layout(title = "Sales Growth by Firm Size", xaxis = list(title = "Firm Size"),
-               yaxis = list(title = "Annual Sales Growth %"), showlegend = FALSE)
+
+      group_dim <- input$group_dimension
+      has_grouping <- !is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data) && !all(is.na(data$group_value))
+
+      if (has_grouping) {
+        # Grouped bar chart with 3rd dimension
+        group_values <- unique(data$group_value[!is.na(data$group_value)])
+        colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+        p <- plot_ly()
+        for (j in seq_along(group_values)) {
+          gv <- group_values[j]
+          subset_data <- data[data$group_value == gv, ]
+
+          p <- p |> add_trace(
+            x = subset_data$firm_size,
+            y = subset_data$annual_sales_growth_pct,
+            type = "bar",
+            name = as.character(gv),
+            text = ~paste0(round(subset_data$annual_sales_growth_pct, 1), "%"),
+            textposition = "outside",
+            marker = list(color = colors[((j - 1) %% length(colors)) + 1]),
+            hovertemplate = paste0("Sales Growth (", gv, "): %{y:.1f}%<extra></extra>")
+          )
+        }
+        p |> layout(
+          title = list(text = paste("Sales Growth by Firm Size and", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
+          barmode = "group",
+          xaxis = list(title = "Firm Size"),
+          yaxis = list(title = "Annual Sales Growth %"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.3, x = 0.5, xanchor = "center", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
+          margin = list(b = 100),
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor = "rgba(0,0,0,0)"
+        ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        # Simple bar chart without grouping
+        plot_ly(data, x = ~firm_size, y = ~annual_sales_growth_pct, color = ~firm_size,
+                type = "bar", text = ~paste0(round(annual_sales_growth_pct, 1), "%"),
+                textposition = "outside", hoverinfo = "text+name") |>
+          layout(title = "Sales Growth by Firm Size", xaxis = list(title = "Firm Size"),
+                 yaxis = list(title = "Annual Sales Growth %"), showlegend = FALSE,
+                 paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE)
+      }
     })
     output$performance_insights <- renderUI({
       req(comparison_data())

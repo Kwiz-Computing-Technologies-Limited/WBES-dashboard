@@ -9,7 +9,7 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select],
-  stats[setNames],
+  stats[setNames, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
@@ -58,12 +58,25 @@ ui <- function(id) {
       class = "mb-4",
       column(12,
         card(
-          card_header(icon("map-marked-alt"), "Geographic Distribution of Female Ownership"),
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Workforce & Gender"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Female Ownership (%)" = "female_ownership_pct",
+                    "Female Workers (%)" = "female_workers_pct",
+                    "Workforce Obstacle (%)" = "workforce_obstacle_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("workforce_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing female ownership rates by country. Darker colors indicate higher female ownership."
+              "Interactive map showing the selected workforce/gender indicator by country."
             )
           )
         )
@@ -253,20 +266,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- filtered()
       coords <- get_country_coordinates(wbes_data())
 
-      indicator <- if (!is.null(input$indicator)) input$indicator else "IC.FRM.FEMO.ZS"
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "female_ownership_pct"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "female_ownership_pct" = list(palette = "Purples", reverse = FALSE, label = "Female Ownership (%)"),
+        "female_workers_pct" = list(palette = "Purples", reverse = FALSE, label = "Female Workers (%)"),
+        "workforce_obstacle_pct" = list(palette = "YlOrRd", reverse = TRUE, label = "Workforce Obstacle (%)"),
+        list(palette = "Purples", reverse = FALSE, label = indicator)
+      )
 
       create_wbes_map(
         data = d,
         coordinates = coords,
         indicator_col = indicator,
-        indicator_label = switch(indicator,
-          "IC.FRM.WKFC.ZS" = "Workforce Obstacle (%)",
-          "IC.FRM.FEMW.ZS" = "Female Workers (%)",
-          "IC.FRM.FEMO.ZS" = "Female Ownership (%)",
-          indicator
-        ),
-        color_palette = if (indicator == "IC.FRM.WKFC.ZS") "YlOrRd" else "Purples",
-        reverse_colors = indicator == "IC.FRM.WKFC.ZS"
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -398,11 +415,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Check if required columns exist
-      required_cols <- c("IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS")
-      missing_cols <- required_cols[!required_cols %in% names(regional)]
+      # Check if required columns exist - use friendly names first, then IC.FRM.* as fallback
+      female_workers_col <- if ("female_workers_pct" %in% names(regional)) "female_workers_pct" else "IC.FRM.FEMW.ZS"
+      female_ownership_col <- if ("female_ownership_pct" %in% names(regional)) "female_ownership_pct" else "IC.FRM.FEMO.ZS"
 
-      if (length(missing_cols) > 0) {
+      if (!female_workers_col %in% names(regional) || !female_ownership_col %in% names(regional)) {
         return(
           plot_ly() |>
             layout(
@@ -410,7 +427,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
               yaxis = list(visible = FALSE),
               annotations = list(
                 list(
-                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  text = "Missing female workers or ownership data columns",
                   showarrow = FALSE,
                   font = list(size = 14, color = "#666666")
                 )
@@ -421,7 +438,29 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      plot_ly(regional, x = ~IC.FRM.FEMW.ZS, y = ~IC.FRM.FEMO.ZS,
+      # Filter valid data
+      regional <- regional |> filter(!is.na(.data[[female_workers_col]]) & !is.na(.data[[female_ownership_col]]))
+
+      if (nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid regional data",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      plot_ly(regional, x = ~get(female_workers_col), y = ~get(female_ownership_col),
               type = "scatter", mode = "markers+text",
               text = ~region,
               textposition = "top center",
@@ -442,17 +481,44 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !"IC.FRM.WKFC.ZS" %in% names(d) || !"IC.FRM.CAPU.ZS" %in% names(d)) return(NULL)
 
-      plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
+      # Filter valid data for trend line
+      valid_data <- d[!is.na(d$IC.FRM.WKFC.ZS) & !is.na(d$IC.FRM.CAPU.ZS), ]
+
+      p <- plot_ly(d, x = ~IC.FRM.WKFC.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
+              name = "Countries",
               marker = list(size = 10,
                            color = ~IC.FRM.FEMW.ZS,
                            colorscale = list(c(0, "#dc3545"), c(0.5, "#F4A460"), c(1, "#2E7D32")),
                            colorbar = list(title = "Female<br>Workers (%)"),
-                           opacity = 0.7)) |>
-        layout(
+                           opacity = 0.7))
+
+      # Add trend line if enough data
+      if (nrow(valid_data) >= 2) {
+        tryCatch({
+          model <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.WKFC.ZS, data = valid_data)
+          x_range <- range(valid_data$IC.FRM.WKFC.ZS, na.rm = TRUE)
+          trend_x <- seq(x_range[1], x_range[2], length.out = 50)
+          trend_y <- predict(model, newdata = data.frame(IC.FRM.WKFC.ZS = trend_x))
+          r_sq <- round(summary(model)$r.squared, 3)
+
+          p <- p |> add_trace(
+            x = trend_x, y = trend_y,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R²=", r_sq, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            inherit = FALSE
+          )
+        }, error = function(e) {})
+      }
+
+      p |> layout(
           xaxis = list(title = "Workforce as Obstacle (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 70),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
@@ -484,11 +550,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Check if required columns exist
-      required_cols <- c("IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS")
-      missing_cols <- required_cols[!required_cols %in% names(regional)]
+      # Use friendly column names with fallbacks to IC.FRM.* codes
+      female_workers_col <- if ("female_workers_pct" %in% names(regional)) "female_workers_pct" else "IC.FRM.FEMW.ZS"
+      female_ownership_col <- if ("female_ownership_pct" %in% names(regional)) "female_ownership_pct" else "IC.FRM.FEMO.ZS"
 
-      if (length(missing_cols) > 0) {
+      # Check if at least one column exists
+      if (!female_workers_col %in% names(regional) && !female_ownership_col %in% names(regional)) {
         return(
           plot_ly() |>
             layout(
@@ -496,7 +563,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
               yaxis = list(visible = FALSE),
               annotations = list(
                 list(
-                  text = paste0("Missing data: ", paste(missing_cols, collapse = ", ")),
+                  text = "Missing female workers and ownership data columns",
                   showarrow = FALSE,
                   font = list(size = 14, color = "#666666")
                 )
@@ -507,11 +574,37 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Filter valid data
+      regional <- regional |> filter(!is.na(region))
+
+      if (nrow(regional) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid regional data",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Extract values for plotting
+      workers_vals <- if (female_workers_col %in% names(regional)) regional[[female_workers_col]] else rep(NA, nrow(regional))
+      ownership_vals <- if (female_ownership_col %in% names(regional)) regional[[female_ownership_col]] else rep(NA, nrow(regional))
+
       plot_ly(regional) |>
-        add_trace(y = ~region, x = ~IC.FRM.FEMW.ZS, type = "bar",
+        add_trace(y = ~region, x = workers_vals, type = "bar",
                  orientation = "h", name = "Female Workers",
                  marker = list(color = "#1B6B5F")) |>
-        add_trace(y = ~region, x = ~IC.FRM.FEMO.ZS, type = "bar",
+        add_trace(y = ~region, x = ownership_vals, type = "bar",
                  orientation = "h", name = "Female Ownership",
                  marker = list(color = "#F49B7A")) |>
         layout(
@@ -572,15 +665,43 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
-      plot_ly(d, x = ~IC.FRM.FEMO.ZS, y = ~IC.FRM.CAPU.ZS,
+      # Filter valid data for trend line
+      valid_data <- d[!is.na(d$IC.FRM.FEMO.ZS) & !is.na(d$IC.FRM.CAPU.ZS), ]
+
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      p <- plot_ly(d, x = ~IC.FRM.FEMO.ZS, y = ~IC.FRM.CAPU.ZS,
               type = "scatter", mode = "markers",
+              color = ~region,
+              colors = colors,
               text = ~country,
-              marker = list(size = 10,
-                           color = ~region,
-                           opacity = 0.7)) |>
-        layout(
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line if enough data
+      if (nrow(valid_data) >= 2) {
+        tryCatch({
+          model <- lm(IC.FRM.CAPU.ZS ~ IC.FRM.FEMO.ZS, data = valid_data)
+          x_range <- range(valid_data$IC.FRM.FEMO.ZS, na.rm = TRUE)
+          trend_x <- seq(x_range[1], x_range[2], length.out = 50)
+          trend_y <- predict(model, newdata = data.frame(IC.FRM.FEMO.ZS = trend_x))
+          r_sq <- round(summary(model)$r.squared, 3)
+
+          p <- p |> add_trace(
+            x = trend_x, y = trend_y,
+            type = "scatter", mode = "lines",
+            name = paste0("Trend (R²=", r_sq, ")"),
+            line = list(color = "#6C757D", dash = "dash", width = 2),
+            inherit = FALSE
+          )
+        }, error = function(e) {})
+      }
+
+      p |> layout(
           xaxis = list(title = "Female Ownership (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(b = 70),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>

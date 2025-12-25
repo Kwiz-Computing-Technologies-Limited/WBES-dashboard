@@ -203,23 +203,35 @@ server <- function(id, wbes_data, global_filters = NULL) {
       )
     })
 
-    # Comparison data
+    # Comparison data - reactive to countries/indicator/sort changes, not just button
     comparison_data <- reactive({
-      req(filtered_data(), input$countries_compare, input$sort_order)
+      req(filtered_data(), input$countries_compare, input$sort_order, input$indicator_select)
       data <- filtered_data()
-      data <- filter(data, country %in% input$countries_compare)
 
-      # Don't return NULL - let the chart handle missing indicators
-      if (!is.null(data) && input$indicator_select %in% names(data)) {
+      # Filter to selected countries
+      selected_countries <- input$countries_compare
+      if (is.null(selected_countries) || length(selected_countries) == 0) {
+        return(NULL)
+      }
+
+      data <- filter(data, country %in% selected_countries)
+
+      if (nrow(data) == 0) {
+        return(NULL)
+      }
+
+      # Sort by indicator if it exists
+      indicator <- input$indicator_select
+      if (!is.null(indicator) && indicator %in% names(data)) {
         if (input$sort_order == "desc") {
-          data <- arrange(data, desc(.data[[input$indicator_select]]))
+          data <- arrange(data, desc(.data[[indicator]]))
         } else {
-          data <- arrange(data, .data[[input$indicator_select]])
+          data <- arrange(data, .data[[indicator]])
         }
       }
 
       data
-    }) |> shiny::bindEvent(input$compare_btn, input$sort_order, ignoreNULL = FALSE)
+    })
 
     # Main comparison bar chart
     output$comparison_bar <- renderPlotly({
@@ -236,7 +248,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
             annotations = list(
               list(
                 text = if (!indicator %in% names(data)) {
-                  paste0("Missing data: ", indicator, " column not found in dataset")
+                  paste0("Missing data: ", indicator, " column not found in dataset.\nAvailable columns: ", paste(head(names(data), 10), collapse = ", "))
                 } else {
                   "No data available for selected countries"
                 },
@@ -254,28 +266,53 @@ server <- function(id, wbes_data, global_filters = NULL) {
           "South Asia" = "#F49B7A",
           "East Asia & Pacific" = "#2E7D32",
           "Latin America & Caribbean" = "#17a2b8",
-          "Europe & Central Asia" = "#6C757D"
+          "Europe & Central Asia" = "#6C757D",
+          "Middle East & North Africa" = "#F4A460"
         )
 
-        data$color <- colors[data$region]
+        # Prepare data - extract indicator values explicitly
+        data$indicator_value <- data[[indicator]]
         data$country <- factor(data$country, levels = data$country)
 
-        plot_ly(data,
-                x = ~country,
-                y = ~get(indicator),
-                type = "bar",
-                color = ~region,
-                colors = colors,
-                hovertemplate = "%{x}<br>%{y:.1f}<extra>%{fullData.name}</extra>") |>
-          layout(
-            xaxis = list(title = "", tickangle = -45),
-            yaxis = list(title = gsub("_", " ", tools::toTitleCase(indicator))),
-            legend = list(orientation = "h", y = -0.25),
-            margin = list(b = 120),
-            paper_bgcolor = "rgba(0,0,0,0)",
-            plot_bgcolor = "rgba(0,0,0,0)"
-          ) |>
-          config(displayModeBar = FALSE)
+        # Filter out NA values
+        data <- data |> filter(!is.na(indicator_value))
+
+        if (nrow(data) == 0) {
+          plot_ly() |>
+            layout(
+              annotations = list(list(text = "No valid data for this indicator", showarrow = FALSE)),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          # Create readable indicator label
+          indicator_label <- switch(indicator,
+            "power_outages_per_month" = "Power Outages (per month)",
+            "firms_with_credit_line_pct" = "Access to Credit (%)",
+            "bribery_incidence_pct" = "Bribery Incidence (%)",
+            "capacity_utilization_pct" = "Capacity Utilization (%)",
+            "female_ownership_pct" = "Female Ownership (%)",
+            "export_firms_pct" = "Export Firms (%)",
+            gsub("_", " ", tools::toTitleCase(indicator))
+          )
+
+          plot_ly(data,
+                  x = ~country,
+                  y = ~indicator_value,
+                  type = "bar",
+                  color = ~region,
+                  colors = colors,
+                  hovertemplate = "%{x}<br>%{y:.1f}<extra>%{fullData.name}</extra>") |>
+            layout(
+              xaxis = list(title = "", tickangle = -45),
+              yaxis = list(title = indicator_label),
+              legend = list(orientation = "h", y = -0.3, x = 0.5, xanchor = "center"),
+              margin = list(b = 130),
+              paper_bgcolor = "rgba(0,0,0,0)",
+              plot_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        }
       }
     })
 

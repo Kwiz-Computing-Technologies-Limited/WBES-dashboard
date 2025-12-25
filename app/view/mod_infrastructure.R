@@ -69,12 +69,26 @@ ui <- function(id) {
       class = "mb-4",
       column(12,
         card(
-          card_header(icon("map-marked-alt"), "Geographic Distribution of Power Outages"),
+          card_header(icon("map-marked-alt"), "Geographic Distribution of Infrastructure"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Power Outages/Month" = "power_outages_per_month",
+                    "Outage Duration (hrs)" = "avg_outage_duration_hrs",
+                    "Generator Usage (%)" = "firms_with_generator_pct",
+                    "Water Issues (%)" = "water_insufficiency_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("infra_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing power outage frequency by country. Darker red indicates more frequent outages."
+              "Interactive map showing the selected infrastructure indicator by country. Darker colors indicate more severe issues."
             )
           )
         )
@@ -214,22 +228,25 @@ server <- function(id, wbes_data, global_filters = NULL) {
       d <- filtered_data()
       coords <- get_country_coordinates(wbes_data())
 
-      # Use the selected indicator for map
-      indicator <- if (!is.null(input$infra_indicator)) input$infra_indicator else "power_outages_per_month"
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "power_outages_per_month"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "power_outages_per_month" = list(palette = "YlOrRd", reverse = TRUE, label = "Power Outages/Month"),
+        "avg_outage_duration_hrs" = list(palette = "YlOrRd", reverse = TRUE, label = "Outage Duration (hrs)"),
+        "firms_with_generator_pct" = list(palette = "Oranges", reverse = TRUE, label = "Generator Usage (%)"),
+        "water_insufficiency_pct" = list(palette = "Blues", reverse = TRUE, label = "Water Issues (%)"),
+        list(palette = "YlOrRd", reverse = TRUE, label = indicator)
+      )
 
       create_wbes_map(
         data = d,
         coordinates = coords,
         indicator_col = indicator,
-        indicator_label = switch(indicator,
-          "power_outages_per_month" = "Power Outages/Month",
-          "avg_outage_duration_hrs" = "Outage Duration (hrs)",
-          "firms_with_generator_pct" = "Generator Usage (%)",
-          "water_insufficiency_pct" = "Water Issues (%)",
-          indicator
-        ),
-        color_palette = "YlOrRd",
-        reverse_colors = TRUE  # Higher is worse
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 

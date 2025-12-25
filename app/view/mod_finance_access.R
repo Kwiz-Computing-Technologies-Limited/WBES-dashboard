@@ -73,10 +73,23 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), "Geographic Distribution of Finance Access"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Credit Access (%)" = "firms_with_credit_line_pct",
+                    "Bank Account (%)" = "firms_with_bank_account_pct",
+                    "Finance Obstacle (%)" = "finance_obstacle_pct"
+                  )
+                )
+              )
+            ),
             leafletOutput(ns("finance_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing credit access levels by country. Darker colors indicate higher access to finance."
+              "Interactive map showing the selected finance indicator by country."
             )
           )
         )
@@ -84,7 +97,7 @@ ui <- function(id) {
     ),
 
     # Filters
-    # Tab-specific filter: Gender/Ownership (Region, Sector, Size are in sidebar)
+    # Tab-specific filters: Gender/Ownership, Income Group, Finance Indicator
     fluidRow(
       class = "mb-4",
       column(12,
@@ -93,9 +106,28 @@ ui <- function(id) {
             class = "py-2",
             fluidRow(
               column(3,
-                selectInput(ns("gender"), "Ownership",
+                selectInput(ns("gender"), "Ownership Type",
                   choices = c("All" = "all", "Female-Owned" = "female",
                               "Male-Owned" = "male"))
+              ),
+              column(3,
+                selectInput(ns("income_filter"), "Income Group",
+                  choices = c("All" = "all",
+                              "High Income" = "High income",
+                              "Upper Middle Income" = "Upper middle income",
+                              "Lower Middle Income" = "Lower middle income",
+                              "Low Income" = "Low income"))
+              ),
+              column(3,
+                selectInput(ns("finance_indicator"), "Finance Metric",
+                  choices = c("Credit Access" = "firms_with_credit_line_pct",
+                              "Bank Account" = "firms_with_bank_account_pct",
+                              "Collateral Required" = "collateral_required_pct",
+                              "Loan Rejection Rate" = "loan_rejection_rate_pct"))
+              ),
+              column(3,
+                selectInput(ns("sort_order"), "Sort Order",
+                  choices = c("Highest First" = "desc", "Lowest First" = "asc"))
               )
             )
           )
@@ -243,6 +275,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
         }
       }
 
+      # Apply income group filter
+      if (!is.null(input$income_filter) && input$income_filter != "all" && !is.na(input$income_filter)) {
+        if ("income" %in% names(data)) {
+          data <- data |> filter(!is.na(income) & income == input$income_filter)
+        }
+      }
+
       data
     })
 
@@ -268,13 +307,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Get selected map indicator (use dedicated map_indicator input)
+      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "firms_with_credit_line_pct"
+
+      # Determine color palette based on indicator
+      palette_info <- switch(indicator,
+        "firms_with_credit_line_pct" = list(palette = "Blues", reverse = FALSE, label = "Credit Access (%)"),
+        "firms_with_bank_account_pct" = list(palette = "Blues", reverse = FALSE, label = "Bank Account (%)"),
+        "finance_obstacle_pct" = list(palette = "Reds", reverse = TRUE, label = "Finance Obstacle (%)"),
+        list(palette = "Blues", reverse = FALSE, label = indicator)
+      )
+
       create_wbes_map(
         data = d,
         coordinates = coords,
-        indicator_col = "firms_with_credit_line_pct",
-        indicator_label = "Credit Access (%)",
-        color_palette = "Blues",
-        reverse_colors = FALSE  # Higher is better
+        indicator_col = indicator,
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -428,37 +478,60 @@ server <- function(id, wbes_data, global_filters = NULL) {
         if (!is.nan(val) && !is.na(val)) reasons_list$`Loan Size Issues` <- val
       }
 
-      if (length(reasons_list) > 0) {
+      if (length(reasons_list) > 0 && sum(unlist(reasons_list), na.rm = TRUE) > 0) {
         reasons <- data.frame(
           reason = names(reasons_list),
           pct = unlist(reasons_list),
           stringsAsFactors = FALSE
         )
 
-        plot_ly(reasons,
-                labels = ~reason,
-                values = ~pct,
-                type = "pie",
-                hole = 0.4,
-                marker = list(colors = c("#1B6B5F", "#F49B7A", "#2E7D32",
-                                         "#17a2b8", "#6C757D", "#ffc107")),
-                textinfo = "label+percent") |>
-          layout(
-            showlegend = FALSE,
-            paper_bgcolor = "rgba(0,0,0,0)"
-          ) |>
-          config(displayModeBar = FALSE)
+        # Filter out zero or NA values
+        reasons <- reasons[!is.na(reasons$pct) & reasons$pct > 0, ]
+
+        if (nrow(reasons) > 0) {
+          plot_ly(reasons,
+                  labels = ~reason,
+                  values = ~pct,
+                  type = "pie",
+                  hole = 0.4,
+                  marker = list(colors = c("#1B6B5F", "#F49B7A", "#2E7D32",
+                                           "#17a2b8", "#6C757D", "#ffc107")),
+                  textinfo = "label+percent") |>
+            layout(
+              showlegend = FALSE,
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          plot_ly() |>
+            layout(
+              annotations = list(
+                list(
+                  text = "Detailed loan application reasons\n(fin19a-e variables) not available\nin current survey data",
+                  xref = "paper", yref = "paper",
+                  x = 0.5, y = 0.5, showarrow = FALSE,
+                  font = list(size = 12, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        }
       } else {
-        # Show placeholder message if no data
+        # Show placeholder message explaining data limitation
         plot_ly() |>
           layout(
             annotations = list(
-              text = "Loan application reason data not available",
-              xref = "paper", yref = "paper",
-              x = 0.5, y = 0.5, showarrow = FALSE
+              list(
+                text = "Detailed loan application reasons\n(fin19a-e variables) not available\nin current survey data",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE,
+                font = list(size = 12, color = "#666666")
+              )
             ),
             paper_bgcolor = "rgba(0,0,0,0)"
-          )
+          ) |>
+          config(displayModeBar = FALSE)
       }
     })
     
@@ -467,45 +540,87 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered_data())
       firm_data <- filtered_data()
 
+      # Get selected finance indicator and sort order
+      indicator <- if (!is.null(input$finance_indicator)) input$finance_indicator else "firms_with_credit_line_pct"
+      sort_dir <- if (!is.null(input$sort_order)) input$sort_order else "desc"
+
       # Aggregate by country
-      if (nrow(firm_data) > 0 && "country" %in% names(firm_data)) {
+      if (nrow(firm_data) > 0 && "country" %in% names(firm_data) && indicator %in% names(firm_data)) {
         data <- firm_data |>
           group_by(country) |>
           summarise(
-            firms_with_credit_line_pct = mean(firms_with_credit_line_pct, na.rm = TRUE),
+            indicator_value = mean(.data[[indicator]], na.rm = TRUE),
             .groups = "drop"
           ) |>
-          filter(!is.na(firms_with_credit_line_pct)) |>
-          arrange(desc(firms_with_credit_line_pct)) |>
-          head(12)
+          filter(!is.na(indicator_value))
+
+        # Apply sort order
+        if (sort_dir == "desc") {
+          data <- data |> arrange(desc(indicator_value))
+        } else {
+          data <- data |> arrange(indicator_value)
+        }
+        data <- data |> head(12)
 
         data$country <- factor(data$country, levels = rev(data$country))
 
-        # Simulated gap data
-        data$need <- data$firms_with_credit_line_pct + runif(nrow(data), 20, 40)
-        data$gap <- data$need - data$firms_with_credit_line_pct
+        # Create indicator label
+        indicator_label <- switch(indicator,
+          "firms_with_credit_line_pct" = "Credit Access (%)",
+          "firms_with_bank_account_pct" = "Bank Account (%)",
+          "collateral_required_pct" = "Collateral Required (%)",
+          "loan_rejection_rate_pct" = "Rejection Rate (%)",
+          "Value (%)"
+        )
 
-        plot_ly(data) |>
-        add_trace(y = ~country, x = ~firms_with_credit_line_pct, 
-                  name = "Current Access", type = "bar", orientation = "h",
-                  marker = list(color = "#1B6B5F")) |>
-        add_trace(y = ~country, x = ~gap,
-                  name = "Unmet Need (Gap)", type = "bar", orientation = "h",
-                  marker = list(color = "#F49B7A")) |>
-        layout(
-          barmode = "stack",
-          xaxis = list(title = "% of SMEs", ticksuffix = "%"),
-          yaxis = list(title = ""),
-          legend = list(orientation = "h", y = -0.15),
-          margin = list(l = 100),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+        # For credit/bank account, show gap; for others, just show values
+        if (indicator %in% c("firms_with_credit_line_pct", "firms_with_bank_account_pct")) {
+          # Simulated gap data for finance access metrics
+          set.seed(123)  # For reproducibility
+          data$need <- data$indicator_value + runif(nrow(data), 20, 40)
+          data$gap <- data$need - data$indicator_value
+
+          plot_ly(data) |>
+            add_trace(y = ~country, x = ~indicator_value,
+                      name = "Current Access", type = "bar", orientation = "h",
+                      marker = list(color = "#1B6B5F")) |>
+            add_trace(y = ~country, x = ~gap,
+                      name = "Unmet Need (Gap)", type = "bar", orientation = "h",
+                      marker = list(color = "#F49B7A")) |>
+            layout(
+              barmode = "stack",
+              xaxis = list(title = indicator_label),
+              yaxis = list(title = ""),
+              legend = list(orientation = "h", y = -0.15),
+              margin = list(l = 100),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        } else {
+          # For collateral and rejection rate, just show bars
+          plot_ly(data, y = ~country, x = ~indicator_value, type = "bar",
+                  orientation = "h",
+                  marker = list(
+                    color = ~indicator_value,
+                    colorscale = list(c(0, "#2E7D32"), c(0.5, "#F4A460"), c(1, "#dc3545"))
+                  )) |>
+            layout(
+              xaxis = list(title = indicator_label),
+              yaxis = list(title = ""),
+              margin = list(l = 100),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        }
       } else {
         # Empty plot if no data
         plot_ly() |>
           layout(
-            title = "No data available",
+            annotations = list(
+              text = "No data available for selected indicator",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
             paper_bgcolor = "rgba(0,0,0,0)"
           )
       }
