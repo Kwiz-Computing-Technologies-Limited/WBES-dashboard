@@ -73,10 +73,25 @@ ui <- function(id) {
         card(
           card_header(icon("map-marked-alt"), "Geographic Distribution of Finance Access"),
           card_body(
+            fluidRow(
+              column(4,
+                selectInput(
+                  ns("map_indicator"),
+                  "Map Indicator",
+                  choices = c(
+                    "Credit Access" = "firms_with_credit_line_pct",
+                    "Bank Account" = "firms_with_bank_account_pct",
+                    "Loan Rejection Rate" = "loan_rejection_rate_pct",
+                    "Collateral Required" = "collateral_required_pct"
+                  ),
+                  selected = "firms_with_credit_line_pct"
+                )
+              )
+            ),
             leafletOutput(ns("finance_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing credit access levels by country. Darker colors indicate higher access to finance."
+              "Interactive map showing selected finance metric by country. Choose different indicators from the dropdown above."
             )
           )
         )
@@ -248,7 +263,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     # Interactive Map - uses latest (country-level) data with coordinates
     output$finance_map <- renderLeaflet({
-      req(wbes_data())
+      req(wbes_data(), input$map_indicator)
       # Use latest data for map (has coordinates embedded)
       d <- wbes_data()$latest
       coords <- get_country_coordinates(wbes_data())
@@ -268,11 +283,20 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Get readable label from indicator code
+      indicator_label <- switch(input$map_indicator,
+        "firms_with_credit_line_pct" = "Credit Access (%)",
+        "firms_with_bank_account_pct" = "Bank Account (%)",
+        "loan_rejection_rate_pct" = "Loan Rejection Rate (%)",
+        "collateral_required_pct" = "Collateral Required (%)",
+        gsub("_", " ", tools::toTitleCase(input$map_indicator))
+      )
+
       create_wbes_map(
         data = d,
         coordinates = coords,
-        indicator_col = "firms_with_credit_line_pct",
-        indicator_label = "Credit Access (%)",
+        indicator_col = input$map_indicator,
+        indicator_label = indicator_label,
         color_palette = "Blues",
         reverse_colors = FALSE  # Higher is better
       )

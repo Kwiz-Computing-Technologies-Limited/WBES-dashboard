@@ -216,8 +216,8 @@ ui <- function(request) {
             selectizeInput(
               "global_year_filter",
               "Survey Year",
-              choices = c("All Years" = "all"),
-              selected = "all",
+              choices = c("Latest Year (per country)" = "latest", "All Years" = "all"),
+              selected = "latest",
               multiple = TRUE,
               options = list(plugins = list('remove_button')),
               width = "100%"
@@ -519,8 +519,8 @@ ui <- function(request) {
 
     # Update year filter (exclude NA values)
     if (!is.null(data$years) && length(data$years) > 0) {
-      year_choices <- c("All Years" = "all", stats::setNames(as.character(data$years), as.character(data$years)))
-      updateSelectizeInput(session, "global_year_filter", choices = year_choices, selected = "all")
+      year_choices <- c("Latest Year (per country)" = "latest", "All Years" = "all", stats::setNames(as.character(data$years), as.character(data$years)))
+      updateSelectizeInput(session, "global_year_filter", choices = year_choices, selected = "latest")
     }
   }, ignoreNULL = FALSE, ignoreInit = FALSE)
 
@@ -728,7 +728,7 @@ ui <- function(request) {
     updateSelectInput(session, "global_sector_filter", selected = "all")
     updateSelectInput(session, "global_firm_size_filter", selected = "all")
     updateSelectInput(session, "global_income_filter", selected = "all")
-    updateSelectizeInput(session, "global_year_filter", selected = "all")
+    updateSelectizeInput(session, "global_year_filter", selected = "latest")
   })
 
   # Create reactive for global filter state

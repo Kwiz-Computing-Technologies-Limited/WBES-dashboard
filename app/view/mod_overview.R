@@ -177,12 +177,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
    # Filtered data reactive - uses global filters from sidebar
    filtered_data <- reactive({
      req(wbes_data())
-     data <- wbes_data()$latest
+
+     # Use country_panel (has year) if year filter is active, otherwise use latest
+     filters <- if (!is.null(global_filters)) global_filters() else NULL
+     use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                  !all(filters$year %in% c("all", NA))
+
+     data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
 
      # If global filters are provided, use them
-     if (!is.null(global_filters)) {
-       filters <- global_filters()
-
+     if (!is.null(filters)) {
        data <- apply_common_filters(
          data,
          region_value = filters$region,
@@ -193,6 +197,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
          custom_regions = filters$custom_regions,
          filter_by_region_fn = filter_by_region
        )
+     }
+
+     # Add coordinates if using panel data (for maps)
+     if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+       coords <- wbes_data()$country_coordinates
+       if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+         data <- merge(data, coords, by = "country", all.x = TRUE)
+       }
      }
 
      data
