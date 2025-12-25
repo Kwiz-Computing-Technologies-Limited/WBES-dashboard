@@ -428,7 +428,12 @@ ui <- function(request) {
   server <- function(input, output, session) {
 
   # Set up parallel processing plan for async operations
-  plan("multisession", workers = 2)
+  # Use sequential on Posit Cloud (multisession fails), multisession locally
+  if (Sys.getenv("SHINY_PORT") != "" || Sys.getenv("R_CONFIG_ACTIVE") == "rsconnect") {
+    plan("sequential")
+  } else {
+    plan("multisession", workers = 2)
+  }
 
   # Show loading screen
   waiter_show(
