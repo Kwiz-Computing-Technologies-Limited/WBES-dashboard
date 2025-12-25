@@ -16,7 +16,8 @@ box::use(
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
-  app/logic/scatter_utils[create_scatter_with_trend]
+  app/logic/scatter_utils[create_scatter_with_trend],
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
 )
 
 # Define indicator domains with their indicators
@@ -79,7 +80,7 @@ DOMAINS <- list(
   )
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -95,7 +96,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -178,11 +180,6 @@ ui <- function(id) {
                   "Chart Type",
                   choices = c("Bar Chart" = "bar", "Radar Chart" = "radar", "Heatmap" = "heatmap")
                 )
-              ),
-              column(2,
-                actionButton(ns("compare_btn"), "Update Comparison",
-                             icon = icon("sync"),
-                             class = "btn-kwiz-primary w-100 mt-4")
               )
             )
           )
@@ -226,7 +223,14 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "infra_comparison")),
               column(4, chart_with_download(ns, "infra_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("infra_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("infra_map_indicator"), "Map Indicator",
+                choices = c("Power Outages/Month" = "power_outages_per_month",
+                            "Outage Duration (hrs)" = "avg_outage_duration_hrs",
+                            "Firms with Generator (%)" = "firms_with_generator_pct",
+                            "Water Insufficiency (%)" = "water_insufficiency_pct"))),
+              column(12, map_with_caption(ns, "infra_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
               column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px"))
@@ -248,7 +252,14 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "finance_comparison")),
               column(4, chart_with_download(ns, "finance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("finance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("finance_map_indicator"), "Map Indicator",
+                choices = c("Credit Access (%)" = "firms_with_credit_line_pct",
+                            "Bank Account (%)" = "firms_with_bank_account_pct",
+                            "Loan Rejection (%)" = "loan_rejection_rate_pct",
+                            "Collateral Required (%)" = "collateral_required_pct"))),
+              column(12, map_with_caption(ns, "finance_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
               column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
@@ -269,7 +280,13 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "governance_comparison")),
               column(4, chart_with_download(ns, "governance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("governance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("governance_map_indicator"), "Map Indicator",
+                choices = c("Bribery Incidence (%)" = "bribery_incidence_pct",
+                            "Corruption Obstacle (%)" = "corruption_obstacle_pct",
+                            "Mgmt Time on Regulations (%)" = "mgmt_time_regulations_pct"))),
+              column(12, map_with_caption(ns, "governance_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
               column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
@@ -290,7 +307,13 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "workforce_comparison")),
               column(4, chart_with_download(ns, "workforce_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("workforce_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("workforce_map_indicator"), "Map Indicator",
+                choices = c("Female Ownership (%)" = "female_ownership_pct",
+                            "Female Workers (%)" = "female_workers_pct",
+                            "Workforce Obstacle (%)" = "workforce_obstacle_pct"))),
+              column(12, map_with_caption(ns, "workforce_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
               column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
@@ -312,7 +335,14 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "performance_comparison")),
               column(4, chart_with_download(ns, "performance_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("performance_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("performance_map_indicator"), "Map Indicator",
+                choices = c("Capacity Utilization (%)" = "capacity_utilization_pct",
+                            "Export Firms (%)" = "export_firms_pct",
+                            "Export Share (%)" = "export_share_pct",
+                            "Sales Growth (%)" = "annual_sales_growth_pct"))),
+              column(12, map_with_caption(ns, "performance_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
               column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
@@ -332,7 +362,12 @@ ui <- function(id) {
               column(8, chart_with_download(ns, "crime_comparison")),
               column(4, chart_with_download(ns, "crime_radar"))
             ),
-            fluidRow(class = "mt-3", column(12, leafletOutput(ns("crime_map"), height = "350px"))),
+            fluidRow(class = "mt-3",
+              column(4, selectInput(ns("crime_map_indicator"), "Map Indicator",
+                choices = c("Crime Obstacle (%)" = "crime_obstacle_pct",
+                            "Security Costs (% Sales)" = "security_costs_pct"))),
+              column(12, map_with_caption(ns, "crime_map"))
+            ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
               column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
@@ -407,7 +442,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data <- filtered_data()
       data <- filter(data, country %in% input$countries_compare)
       data
-    }) |> shiny::bindEvent(input$compare_btn, ignoreNULL = FALSE)
+    })
 
     # ==============================================================================
     # OVERVIEW TAB OUTPUTS
@@ -587,27 +622,74 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(comparison_data())
       data <- comparison_data()
 
-      # Radar chart showing infrastructure metrics for each country
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(
-          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+      indicators <- c("power_outages_per_month", "avg_outage_duration_hrs", "firms_with_generator_pct", "water_insufficiency_pct")
+      labels <- c("Power Outages", "Outage Duration", "Generator %", "Water %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      # Calculate max value for range
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$infra_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
+
+      indicator <- if (!is.null(input$infra_map_indicator)) input$infra_map_indicator else "power_outages_per_month"
+      palette_info <- switch(indicator,
+        "power_outages_per_month" = list(palette = "Reds", label = "Power Outages/Month", reverse = TRUE),
+        "avg_outage_duration_hrs" = list(palette = "YlOrRd", label = "Outage Duration (hrs)", reverse = TRUE),
+        "firms_with_generator_pct" = list(palette = "Oranges", label = "Firms with Generator (%)", reverse = FALSE),
+        "water_insufficiency_pct" = list(palette = "Blues", label = "Water Insufficiency (%)", reverse = TRUE),
+        list(palette = "Reds", label = indicator, reverse = FALSE)
+      )
 
       create_wbes_map(
         data = data,
         coordinates = coords,
-        indicator_col = "power_outages_per_month",
-        indicator_label = "Power Outages/Month",
-        color_palette = "Reds",
-        reverse_colors = TRUE
+        indicator_col = indicator,
+        indicator_label = palette_info$label,
+        color_palette = palette_info$palette,
+        reverse_colors = palette_info$reverse
       )
     })
 
@@ -729,18 +811,70 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     output$finance_radar <- renderPlotly({
       req(comparison_data())
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      data <- comparison_data()
+
+      indicators <- c("firms_with_credit_line_pct", "firms_with_bank_account_pct", "loan_rejection_rate_pct", "collateral_required_pct")
+      labels <- c("Credit %", "Bank Account %", "Rejection %", "Collateral %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$finance_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
 
-      create_wbes_map(data = data, coordinates = coords, indicator_col = "firms_with_credit_line_pct",
-                      indicator_label = "Credit Access %", color_palette = "Blues", reverse_colors = FALSE)
+      indicator <- if (!is.null(input$finance_map_indicator)) input$finance_map_indicator else "firms_with_credit_line_pct"
+      palette_info <- switch(indicator,
+        "firms_with_credit_line_pct" = list(palette = "Greens", label = "Credit Access (%)", reverse = FALSE),
+        "firms_with_bank_account_pct" = list(palette = "Blues", label = "Bank Account (%)", reverse = FALSE),
+        "loan_rejection_rate_pct" = list(palette = "Reds", label = "Loan Rejection (%)", reverse = TRUE),
+        "collateral_required_pct" = list(palette = "YlOrRd", label = "Collateral Required (%)", reverse = TRUE),
+        list(palette = "Blues", label = indicator, reverse = FALSE)
+      )
+
+      create_wbes_map(data = data, coordinates = coords, indicator_col = indicator,
+                      indicator_label = palette_info$label, color_palette = palette_info$palette, reverse_colors = palette_info$reverse)
     })
 
     output$finance_access_gap <- renderPlotly({
@@ -814,16 +948,71 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$governance_radar <- renderPlotly({
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      req(comparison_data())
+      data <- comparison_data()
+
+      indicators <- c("IC.FRM.BRIB.ZS", "IC.FRM.CORR.ZS", "mgmt_time_regulations_pct")
+      labels <- c("Bribery %", "Corruption %", "Regulations %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$governance_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
-      create_wbes_map(data, coords, "IC.FRM.BRIB.ZS", "Bribery Incidence %", "Reds", TRUE)
+
+      indicator <- if (!is.null(input$governance_map_indicator)) input$governance_map_indicator else "bribery_incidence_pct"
+      palette_info <- switch(indicator,
+        "bribery_incidence_pct" = list(palette = "Reds", label = "Bribery Incidence (%)", reverse = TRUE, col = "IC.FRM.BRIB.ZS"),
+        "corruption_obstacle_pct" = list(palette = "YlOrRd", label = "Corruption Obstacle (%)", reverse = TRUE, col = "IC.FRM.CORR.ZS"),
+        "mgmt_time_regulations_pct" = list(palette = "Oranges", label = "Mgmt Time on Regulations (%)", reverse = TRUE, col = "mgmt_time_regulations_pct"),
+        list(palette = "Reds", label = indicator, reverse = TRUE, col = indicator)
+      )
+
+      # Try the mapped column first, fallback to indicator name
+      col_to_use <- if (palette_info$col %in% names(data)) palette_info$col else indicator
+      create_wbes_map(data, coords, col_to_use, palette_info$label, palette_info$palette, palette_info$reverse)
     })
 
     output$governance_bribery_vs_corruption <- renderPlotly({
@@ -895,16 +1084,69 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$workforce_radar <- renderPlotly({
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      req(comparison_data())
+      data <- comparison_data()
+
+      indicators <- c("female_ownership_pct", "female_workers_pct", "workforce_obstacle_pct")
+      labels <- c("Female Own %", "Female Workers %", "Obstacle %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$workforce_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
-      create_wbes_map(data, coords, "female_ownership_pct", "Female Ownership %", "Purples", FALSE)
+
+      indicator <- if (!is.null(input$workforce_map_indicator)) input$workforce_map_indicator else "female_ownership_pct"
+      palette_info <- switch(indicator,
+        "female_ownership_pct" = list(palette = "Purples", label = "Female Ownership (%)", reverse = FALSE),
+        "female_workers_pct" = list(palette = "PuRd", label = "Female Workers (%)", reverse = FALSE),
+        "workforce_obstacle_pct" = list(palette = "YlOrRd", label = "Workforce Obstacle (%)", reverse = TRUE),
+        list(palette = "Purples", label = indicator, reverse = FALSE)
+      )
+
+      create_wbes_map(data, coords, indicator, palette_info$label, palette_info$palette, palette_info$reverse)
     })
 
     output$workforce_gender_gap <- renderPlotly({
@@ -983,16 +1225,70 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$performance_radar <- renderPlotly({
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      req(comparison_data())
+      data <- comparison_data()
+
+      indicators <- c("capacity_utilization_pct", "export_firms_pct", "export_share_pct", "annual_sales_growth_pct")
+      labels <- c("Capacity %", "Export Firms %", "Export Share %", "Growth %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$performance_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
-      create_wbes_map(data, coords, "capacity_utilization_pct", "Capacity Utilization %", "Greens", FALSE)
+
+      indicator <- if (!is.null(input$performance_map_indicator)) input$performance_map_indicator else "capacity_utilization_pct"
+      palette_info <- switch(indicator,
+        "capacity_utilization_pct" = list(palette = "Greens", label = "Capacity Utilization (%)", reverse = FALSE),
+        "export_firms_pct" = list(palette = "Blues", label = "Export Firms (%)", reverse = FALSE),
+        "export_share_pct" = list(palette = "BuGn", label = "Export Share (%)", reverse = FALSE),
+        "annual_sales_growth_pct" = list(palette = "YlGn", label = "Sales Growth (%)", reverse = FALSE),
+        list(palette = "Greens", label = indicator, reverse = FALSE)
+      )
+
+      create_wbes_map(data, coords, indicator, palette_info$label, palette_info$palette, palette_info$reverse)
     })
 
     output$performance_capacity_vs_exports <- renderPlotly({
@@ -1057,16 +1353,68 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     output$crime_radar <- renderPlotly({
-      plot_ly(type = "scatterpolar", fill = "toself") |>
-        layout(polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      req(comparison_data())
+      data <- comparison_data()
+
+      indicators <- c("crime_obstacle_pct", "security_costs_pct")
+      labels <- c("Crime Obstacle %", "Security Costs %")
+
+      available_indicators <- intersect(indicators, names(data))
+      if (length(available_indicators) == 0) {
+        return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
+      }
+
+      available_labels <- labels[match(available_indicators, indicators)]
+      countries <- unique(data$country)
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      max_val <- max(all_vals, na.rm = TRUE)
+      if (is.na(max_val) || max_val == 0) max_val <- 100
+      range_max <- ceiling(max_val * 1.1 / 10) * 10
+
+      p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+      for (i in seq_along(countries)) {
+        country <- countries[i]
+        country_data <- data[data$country == country, ]
+        values <- sapply(available_indicators, function(ind) {
+          val <- mean(country_data[[ind]], na.rm = TRUE)
+          if (is.na(val)) 0 else val
+        })
+        values <- c(values, values[1])
+        theta <- c(available_labels, available_labels[1])
+
+        p <- p |> add_trace(
+          r = values,
+          theta = theta,
+          name = country,
+          line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+          fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+        )
+      }
+
+      p |> layout(
+        polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+        showlegend = TRUE,
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(b = 70),
+        paper_bgcolor = "rgba(0,0,0,0)"
+      ) |> config(displayModeBar = FALSE)
     })
 
     output$crime_map <- renderLeaflet({
-      req(wbes_data())
-      data <- wbes_data()$latest
+      req(comparison_data(), wbes_data())
+      data <- comparison_data()
       coords <- get_country_coordinates(wbes_data())
-      create_wbes_map(data, coords, "crime_obstacle_pct", "Crime Obstacle %", "Reds", TRUE)
+
+      indicator <- if (!is.null(input$crime_map_indicator)) input$crime_map_indicator else "crime_obstacle_pct"
+      palette_info <- switch(indicator,
+        "crime_obstacle_pct" = list(palette = "Reds", label = "Crime Obstacle (%)", reverse = TRUE),
+        "security_costs_pct" = list(palette = "Oranges", label = "Security Costs (% Sales)", reverse = TRUE),
+        list(palette = "Reds", label = indicator, reverse = TRUE)
+      )
+
+      create_wbes_map(data, coords, indicator, palette_info$label, palette_info$palette, palette_info$reverse)
     })
 
     output$crime_vs_security_cost <- renderPlotly({
@@ -1097,6 +1445,97 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$dl_overview_table <- downloadHandler(
       filename = function() { paste0("overview_table_", Sys.Date(), ".csv") },
       content = function(file) { write.csv(comparison_data(), file, row.names = FALSE) }
+    )
+
+    # Map downloads - using htmlwidgets to save leaflet maps
+    output$dl_infra_map <- downloadHandler(
+      filename = function() { paste0("infrastructure_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "power_outages_per_month",
+          indicator_label = "Power Outages/Month",
+          color_palette = "Reds",
+          reverse_colors = TRUE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_finance_map <- downloadHandler(
+      filename = function() { paste0("finance_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "firms_with_credit_line_pct",
+          indicator_label = "Credit Access %",
+          color_palette = "Blues",
+          reverse_colors = FALSE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_governance_map <- downloadHandler(
+      filename = function() { paste0("governance_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "IC.FRM.BRIB.ZS",
+          indicator_label = "Bribery Incidence %",
+          color_palette = "Reds",
+          reverse_colors = TRUE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_workforce_map <- downloadHandler(
+      filename = function() { paste0("workforce_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "female_ownership_pct",
+          indicator_label = "Female Ownership %",
+          color_palette = "Purples",
+          reverse_colors = FALSE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_performance_map <- downloadHandler(
+      filename = function() { paste0("performance_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "capacity_utilization_pct",
+          indicator_label = "Capacity Utilization %",
+          color_palette = "Greens",
+          reverse_colors = FALSE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_crime_map <- downloadHandler(
+      filename = function() { paste0("crime_map_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = "crime_obstacle_pct",
+          indicator_label = "Crime Obstacle %",
+          color_palette = "Reds",
+          reverse_colors = TRUE
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
     )
 
   })

@@ -12,6 +12,8 @@ box::use(
   stats[setNames, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
+  app/logic/shared_filters[apply_common_filters],
+  app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates]
 )
 
@@ -247,10 +249,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
       shiny::updateSelectInput(session, "firm_size", choices = firm_sizes)
     })
 
-    # Filtered data
+    # Filtered data with global filters
     filtered <- reactive({
       req(wbes_data())
-      d <- wbes_data()$latest
+
+      # Use country_panel (has year) if year filter is active, otherwise use latest
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      d <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+
+      # Apply global filters if provided
+      if (!is.null(filters)) {
+        d <- apply_common_filters(
+          d,
+          region_value = filters$region,
+          sector_value = filters$sector,
+          firm_size_value = filters$firm_size,
+          income_value = filters$income,
+          year_value = filters$year,
+          custom_regions = filters$custom_regions,
+          filter_by_region_fn = filter_by_region
+        )
+      }
+
+      # Add coordinates if using panel data (for maps)
+      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+        coords <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+          d <- merge(d, coords, by = "country", all.x = TRUE)
+        }
+      }
+
+      # Apply local module filters if they exist
       if (!is.null(input$region) && input$region != "all" && !is.na(input$region)) {
         d <- d |> filter(!is.na(region) & region == input$region)
       }
@@ -390,10 +422,43 @@ server <- function(id, wbes_data, global_filters = NULL) {
         config(displayModeBar = FALSE)
     })
 
+    # Regional data reactive that respects global filters
+    regional_filtered <- reactive({
+      req(wbes_data())
+
+      # Check if year filter is active
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      if (use_panel) {
+        # Aggregate from filtered country_panel data by region
+        data <- filtered()
+        if (is.null(data) || nrow(data) == 0 || !"region" %in% names(data)) {
+          return(NULL)
+        }
+
+        # Aggregate by region
+        regional_agg <- data |>
+          filter(!is.na(region)) |>
+          group_by(region) |>
+          summarise(
+            IC.FRM.FEMW.ZS = mean(IC.FRM.FEMW.ZS, na.rm = TRUE),
+            IC.FRM.FEMO.ZS = mean(IC.FRM.FEMO.ZS, na.rm = TRUE),
+            female_workers_pct = mean(IC.FRM.FEMW.ZS, na.rm = TRUE),
+            female_ownership_pct = mean(IC.FRM.FEMO.ZS, na.rm = TRUE),
+            .groups = "drop"
+          )
+        return(regional_agg)
+      } else {
+        # Use pre-computed regional data
+        return(wbes_data()$regional)
+      }
+    })
+
     # Participation chart
     output$participation_chart <- renderPlotly({
-      req(wbes_data())
-      regional <- wbes_data()$regional
+      regional <- regional_filtered()
 
       # Check if data exists
       if (is.null(regional) || nrow(regional) == 0) {
@@ -527,8 +592,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     # Regional gender
     output$regional_gender <- renderPlotly({
-      req(wbes_data())
-      regional <- wbes_data()$regional
+      regional <- regional_filtered()
 
       # Check if data exists
       if (is.null(regional) || nrow(regional) == 0) {

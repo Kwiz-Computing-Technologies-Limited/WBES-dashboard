@@ -261,16 +261,20 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data
     })
 
-    # Interactive Map - uses latest (country-level) data with coordinates
+    # Interactive Map - uses country_panel when year filter active
     output$finance_map <- renderLeaflet({
       req(wbes_data(), input$map_indicator)
-      # Use latest data for map (has coordinates embedded)
-      d <- wbes_data()$latest
+
+      # Use country_panel (has year) if year filter is active, otherwise use latest
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      d <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
       coords <- get_country_coordinates(wbes_data())
 
       # Apply global filters to map data
-      if (!is.null(global_filters)) {
-        filters <- global_filters()
+      if (!is.null(filters)) {
         d <- apply_common_filters(
           d,
           region_value = filters$region,
@@ -281,6 +285,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
           custom_regions = filters$custom_regions,
           filter_by_region_fn = filter_by_region
         )
+      }
+
+      # Add coordinates if using panel data
+      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+        coords_data <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords_data) && "lng" %in% names(coords_data)) {
+          d <- merge(d, coords_data, by = "country", all.x = TRUE)
+        }
       }
 
       # Get readable label from indicator code

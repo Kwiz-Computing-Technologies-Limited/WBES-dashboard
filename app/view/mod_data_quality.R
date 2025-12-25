@@ -10,7 +10,7 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_annotations],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate, case_when]
+  dplyr[filter, select, arrange, mutate, case_when, group_by, summarise, n, across, all_of, desc]
 )
 
 #' @export
@@ -801,18 +801,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
         key_cols <- key_cols[key_cols %in% names(d)]
 
         if (length(key_cols) > 0) {
+          # First, calculate completeness for each region
           regional_data <- d |>
             filter(!is.na(region)) |>
-            dplyr::group_by(region) |>
-            dplyr::summarise(
-              n = dplyr::n(),
-              # Average completeness across key indicators
-              pct = mean(sapply(key_cols, function(col) {
-                sum(!is.na(.data[[col]])) / dplyr::n()
-              })) * 100,
+            group_by(region) |>
+            summarise(
+              n = n(),
+              # Calculate completeness for each key column
+              across(all_of(key_cols), ~sum(!is.na(.x)) / n() * 100, .names = "{.col}_complete"),
               .groups = "drop"
-            ) |>
-            dplyr::arrange(dplyr::desc(pct))
+            )
+
+          # Then calculate average completeness across indicators
+          completeness_cols <- paste0(key_cols, "_complete")
+          regional_data$pct <- rowMeans(regional_data[, completeness_cols, drop = FALSE], na.rm = TRUE)
+
+          # Arrange by pct descending
+          regional_data <- arrange(regional_data, desc(pct))
 
           # Abbreviate region names for display
           regional_data$region_short <- sapply(regional_data$region, function(r) {

@@ -11,7 +11,9 @@ box::use(
     nav_item, page_navbar, card, card_header, card_body, sidebar, layout_sidebar
   ],
   waiter[useWaiter, waiterPreloader, spin_fading_circles, waiter_show, waiter_hide],
-  here[here]
+  here[here],
+  future[future, plan],
+  promises[`%...>%`, `%...!%`]
 )
 
 box::use(
@@ -425,6 +427,9 @@ ui <- function(request) {
   #' @export
   server <- function(input, output, session) {
 
+  # Set up parallel processing plan for async operations
+  plan("multisession", workers = 2)
+
   # Show loading screen
   waiter_show(
     html = tags$div(
@@ -437,45 +442,58 @@ ui <- function(request) {
     # Load data reactively (shared across modules)
     wbes_data <- shiny::reactiveVal(NULL)
 
-  # Initialize data loading with improved error handling
+  # Initialize data loading with async/futures for non-blocking operations
   shiny::observe({
-    tryCatch({
-      # Load data from assets.zip or .dta files (real data required)
-      data <- load_wbes_data(
-        data_path = here("data"),
-        use_cache = TRUE,
-        cache_hours = 24
-      )
+    # Wrap data loading in a future for async execution
+    future({
+      tryCatch({
+        # Load data from assets.zip or .dta files (real data required)
+        data <- load_wbes_data(
+          data_path = here("data"),
+          use_cache = TRUE,
+          cache_hours = 24
+        )
 
-      # Remove NA columns from all data components
-      if (!is.null(data$latest)) {
-        data$latest <- remove_na_columns(data$latest)
-      }
-      if (!is.null(data$processed)) {
-        data$processed <- remove_na_columns(data$processed)
-      }
-      if (!is.null(data$country_panel)) {
-        data$country_panel <- remove_na_columns(data$country_panel)
-      }
-      if (!is.null(data$country_sector)) {
-        data$country_sector <- remove_na_columns(data$country_sector)
-      }
-      if (!is.null(data$country_size)) {
-        data$country_size <- remove_na_columns(data$country_size)
-      }
-      if (!is.null(data$country_region)) {
-        data$country_region <- remove_na_columns(data$country_region)
-      }
+        # Remove NA columns from all data components
+        if (!is.null(data$latest)) {
+          data$latest <- remove_na_columns(data$latest)
+        }
+        if (!is.null(data$processed)) {
+          data$processed <- remove_na_columns(data$processed)
+        }
+        if (!is.null(data$country_panel)) {
+          data$country_panel <- remove_na_columns(data$country_panel)
+        }
+        if (!is.null(data$country_sector)) {
+          data$country_sector <- remove_na_columns(data$country_sector)
+        }
+        if (!is.null(data$country_size)) {
+          data$country_size <- remove_na_columns(data$country_size)
+        }
+        if (!is.null(data$country_region)) {
+          data$country_region <- remove_na_columns(data$country_region)
+        }
 
+        data
+
+      }, error = function(e) {
+        message("Error loading WBES data: ", e$message)
+        stop("Failed to load WBES data. Please ensure data/assets.zip is present.")
+      })
+    }) %...>% (function(data) {
+      # Success handler: set the reactive value
       wbes_data(data)
-
-    }, error = function(e) {
-      message("Error loading WBES data: ", e$message)
-      stop("Failed to load WBES data. Please ensure data/assets.zip is present.")
+      waiter_hide()
+    }) %...!% (function(error) {
+      # Error handler: show error message and hide waiter
+      message("Async data loading failed: ", error$message)
+      waiter_hide()
+      shiny::showNotification(
+        paste("Failed to load data:", error$message),
+        type = "error",
+        duration = NULL
+      )
     })
-
-    # Hide waiter after data loads
-    waiter_hide()
   })
 
   # Custom regions and sectors storage

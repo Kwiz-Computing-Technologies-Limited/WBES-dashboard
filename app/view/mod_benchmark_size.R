@@ -17,10 +17,11 @@ box::use(
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates],
-  app/logic/scatter_utils[create_scatter_with_trend]
+  app/logic/scatter_utils[create_scatter_with_trend],
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -36,7 +37,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -231,7 +233,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("infra_map_indicator"), "Map Indicator",
                 choices = c("Power Outages/Month" = "power_outages_per_month", "Outage Duration (hrs)" = "avg_outage_duration_hrs", "Generator Usage (%)" = "firms_with_generator_pct"))),
-              column(12, leafletOutput(ns("infra_map"), height = "350px"))
+              column(12, map_with_caption(ns, "infra_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
@@ -258,7 +260,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("finance_map_indicator"), "Map Indicator",
                 choices = c("Credit Access (%)" = "firms_with_credit_line_pct", "Bank Account (%)" = "firms_with_bank_account_pct", "Collateral Required (%)" = "collateral_required_pct"))),
-              column(12, leafletOutput(ns("finance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "finance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
@@ -284,7 +286,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("governance_map_indicator"), "Map Indicator",
                 choices = c("Bribery Incidence (%)" = "bribery_incidence_pct", "Corruption Obstacle (%)" = "corruption_obstacle_pct"))),
-              column(12, leafletOutput(ns("governance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "governance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
@@ -310,7 +312,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("workforce_map_indicator"), "Map Indicator",
                 choices = c("Female Ownership (%)" = "female_ownership_pct", "Female Workers (%)" = "female_workers_pct"))),
-              column(12, leafletOutput(ns("workforce_map"), height = "350px"))
+              column(12, map_with_caption(ns, "workforce_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
@@ -337,7 +339,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("performance_map_indicator"), "Map Indicator",
                 choices = c("Capacity Utilization (%)" = "capacity_utilization_pct", "Export Firms (%)" = "export_firms_pct"))),
-              column(12, leafletOutput(ns("performance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "performance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
@@ -362,7 +364,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("crime_map_indicator"), "Map Indicator",
                 choices = c("Crime Obstacle (%)" = "crime_obstacle_pct", "Security Costs (% Sales)" = "security_costs_pct"))),
-              column(12, leafletOutput(ns("crime_map"), height = "350px"))
+              column(12, map_with_caption(ns, "crime_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
@@ -383,10 +385,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Filtered data (EXCEPT firm_size filter)
     filtered_data <- reactive({
       req(wbes_data())
-      data <- wbes_data()$latest
 
-      if (!is.null(global_filters)) {
-        filters <- global_filters()
+      # Use country_panel (has year) if year filter is active, otherwise use latest
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+
+      if (!is.null(filters)) {
         data <- apply_common_filters(
           data,
           region_value = filters$region,
@@ -397,6 +404,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
           custom_regions = filters$custom_regions,
           filter_by_region_fn = filter_by_region
         )
+      }
+
+      # Add coordinates if using panel data
+      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+        coords <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+          data <- merge(data, coords, by = "country", all.x = TRUE)
+        }
       }
 
       data
@@ -550,8 +565,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               )
             }
             p |> layout(
-              xaxis = list(title = ind_name, tickangle = -45),
-              yaxis = list(title = "")
+              xaxis = list(title = ind_name, tickangle = -45, automargin = TRUE),
+              yaxis = list(title = "", automargin = TRUE)
             )
           })
 
@@ -560,8 +575,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators by", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.45, x = 0.5, xanchor = "center", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
-              margin = list(b = 120),
+              legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
+              margin = list(l = 60, r = 120, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -583,8 +598,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators"), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.4, x = 0.5, xanchor = "center"),
-              margin = list(b = 110),
+              legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+              margin = list(l = 60, r = 120, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -688,8 +703,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         title = list(text = paste(domain_name, "- Radar Comparison"), font = list(size = 14)),
         paper_bgcolor = "rgba(0,0,0,0)",
         showlegend = has_grouping,
-        legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
-        margin = list(b = 60)
+        legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+        margin = list(l = 40, r = 120, t = 40, b = 40)
       )
 
       annotations <- list()
@@ -926,7 +941,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           layout(
             title = list(text = paste(domain_name, "- Heatmap"), font = list(size = 14)),
             xaxis = list(title = "", tickangle = -45),
-            yaxis = list(title = ""),
+            yaxis = list(title = "", automargin = TRUE),
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
@@ -975,7 +990,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         layout(
           title = "Key Indicators by Firm Size",
           xaxis = list(title = "", tickangle = -45),
-          yaxis = list(title = ""),
+          yaxis = list(title = "", automargin = TRUE),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
@@ -1898,6 +1913,91 @@ server <- function(id, wbes_data, global_filters = NULL) {
                  yaxis = list(title = "Capacity Utilization %"))
       },
       "size_crime_impact_performance"
+    )
+
+    # Map downloads
+    output$dl_infra_map <- downloadHandler(
+      filename = function() { paste0("infrastructure_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$infra_map_indicator,
+          group_col = "firm_size",
+          title = "Infrastructure Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_finance_map <- downloadHandler(
+      filename = function() { paste0("finance_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$finance_map_indicator,
+          group_col = "firm_size",
+          title = "Finance Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_governance_map <- downloadHandler(
+      filename = function() { paste0("governance_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$governance_map_indicator,
+          group_col = "firm_size",
+          title = "Governance Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_workforce_map <- downloadHandler(
+      filename = function() { paste0("workforce_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$workforce_map_indicator,
+          group_col = "firm_size",
+          title = "Workforce Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_performance_map <- downloadHandler(
+      filename = function() { paste0("performance_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$performance_map_indicator,
+          group_col = "firm_size",
+          title = "Performance Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_crime_map <- downloadHandler(
+      filename = function() { paste0("crime_map_size_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map_3d(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$crime_map_indicator,
+          group_col = "firm_size",
+          title = "Crime Indicators by Firm Size"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
     )
 
   })

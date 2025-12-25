@@ -17,8 +17,9 @@ box::use(
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/custom_sectors[filter_by_sector],
-  app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates],
-  app/logic/scatter_utils[create_scatter_with_trend]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/scatter_utils[create_scatter_with_trend],
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
 )
 
 # Define indicator domains with their indicators
@@ -81,7 +82,7 @@ DOMAINS <- list(
   )
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -97,7 +98,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -232,7 +234,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("infra_map_indicator"), "Map Indicator",
                 choices = c("Power Outages/Month" = "power_outages_per_month", "Outage Duration (hrs)" = "avg_outage_duration_hrs", "Generator Usage (%)" = "firms_with_generator_pct"))),
-              column(12, leafletOutput(ns("infra_map"), height = "350px"))
+              column(12, map_with_caption(ns, "infra_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
@@ -259,7 +261,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("finance_map_indicator"), "Map Indicator",
                 choices = c("Credit Access (%)" = "firms_with_credit_line_pct", "Bank Account (%)" = "firms_with_bank_account_pct", "Collateral Required (%)" = "collateral_required_pct"))),
-              column(12, leafletOutput(ns("finance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "finance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
@@ -285,7 +287,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("governance_map_indicator"), "Map Indicator",
                 choices = c("Bribery Incidence (%)" = "bribery_incidence_pct", "Corruption Obstacle (%)" = "corruption_obstacle_pct"))),
-              column(12, leafletOutput(ns("governance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "governance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
@@ -311,7 +313,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("workforce_map_indicator"), "Map Indicator",
                 choices = c("Female Ownership (%)" = "female_ownership_pct", "Female Workers (%)" = "female_workers_pct"))),
-              column(12, leafletOutput(ns("workforce_map"), height = "350px"))
+              column(12, map_with_caption(ns, "workforce_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
@@ -338,7 +340,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("performance_map_indicator"), "Map Indicator",
                 choices = c("Capacity Utilization (%)" = "capacity_utilization_pct", "Export Firms (%)" = "export_firms_pct"))),
-              column(12, leafletOutput(ns("performance_map"), height = "350px"))
+              column(12, map_with_caption(ns, "performance_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
@@ -363,7 +365,7 @@ ui <- function(id) {
               class = "mt-3",
               column(4, selectInput(ns("crime_map_indicator"), "Map Indicator",
                 choices = c("Crime Obstacle (%)" = "crime_obstacle_pct", "Security Costs (% Sales)" = "security_costs_pct"))),
-              column(12, leafletOutput(ns("crime_map"), height = "350px"))
+              column(12, map_with_caption(ns, "crime_map"))
             ),
             fluidRow(class = "mt-3",
               column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
@@ -381,23 +383,53 @@ ui <- function(id) {
 server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
 
-    # Filtered data (EXCEPT sector filter)
+    # Filtered data (EXCEPT sector filter) - uses data source with sector column
     filtered_data <- reactive({
       req(wbes_data())
-      data <- wbes_data()$latest
 
-      if (!is.null(global_filters)) {
-        filters <- global_filters()
+      # For cross-sector benchmarking with year filtering, we need processed data
+      # which has all dimensions (country, year, sector), then aggregate by sector
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_year_filter <- !is.null(filters$year) && length(filters$year) > 0 &&
+                         !all(filters$year %in% c("all", NA))
+
+      # Use processed data when year filter is active (has sector + year),
+      # otherwise use country_sector (pre-aggregated by sector)
+      if (use_year_filter && !is.null(wbes_data()$processed) &&
+          "sector" %in% names(wbes_data()$processed) &&
+          "year" %in% names(wbes_data()$processed)) {
+        data <- wbes_data()$processed
+      } else if (!is.null(wbes_data()$country_sector) && "sector" %in% names(wbes_data()$country_sector)) {
+        data <- wbes_data()$country_sector
+      } else {
+        data <- wbes_data()$latest
+      }
+
+      # Check if sector column exists - if not, return NULL to prevent errors
+      if (!"sector" %in% names(data)) {
+        return(NULL)
+      }
+
+      # Apply filters (excluding sector since we compare all sectors)
+      if (!is.null(filters)) {
         data <- apply_common_filters(
           data,
           region_value = filters$region,
-          sector_value = "all",
+          sector_value = "all",  # Don't filter by sector here - we compare sectors
           firm_size_value = filters$firm_size,
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
           filter_by_region_fn = filter_by_region
         )
+      }
+
+      # Add coordinates for maps
+      if (!is.null(wbes_data()$country_coordinates)) {
+        coords <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
+          data <- merge(data, coords, by = "country", all.x = TRUE)
+        }
       }
 
       data
@@ -407,6 +439,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
     selected_sector_data <- reactive({
       req(filtered_data(), input$sectors_compare)
       data <- filtered_data()
+
+      # Check if data is NULL or doesn't have sector column
+      if (is.null(data) || !"sector" %in% names(data)) {
+        return(NULL)
+      }
+
       selected <- input$sectors_compare
 
       custom_sectors <- if (!is.null(global_filters)) {
@@ -420,13 +458,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
         standard_selected <- selected[!grepl("^custom:", selected)]
         custom_selected <- gsub("^custom:", "", selected[grepl("^custom:", selected)])
 
-        if (length(standard_selected) > 0) {
+        if (length(standard_selected) > 0 && "sector" %in% names(data)) {
           standard_data <- data |> filter(sector %in% standard_selected)
         } else {
           standard_data <- data[0, ]
         }
 
-        if (length(custom_selected) > 0) {
+        if (length(custom_selected) > 0 && "sector" %in% names(data)) {
           custom_sector_list <- unlist(lapply(custom_selected, function(name) {
             if (!is.null(custom_sectors[[name]])) custom_sectors[[name]]$sectors else character(0)
           }))
@@ -479,6 +517,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered_data())
       data <- filtered_data()
 
+      # Check if data is NULL or doesn't have sector column
+      if (is.null(data) || !"sector" %in% names(data)) {
+        return(NULL)
+      }
+
       group_dim <- if (!is.null(input$group_dimension) && input$group_dimension != "none") {
         input$group_dimension
       } else {
@@ -492,31 +535,61 @@ server <- function(id, wbes_data, global_filters = NULL) {
         list()
       }
 
+      # Check if we should also group by year
+      has_year <- "year" %in% names(data) && !all(is.na(data$year))
+
+      # Check if sample_size column exists (processed data may not have it)
+      has_sample_size <- "sample_size" %in% names(data)
+
       # Use unname to preserve column names in across()
       all_indicators <- unname(unlist(lapply(DOMAINS, function(d) d$indicators)))
 
       if (!is.null(group_dim) && group_dim %in% names(data)) {
-        standard_agg <- data |>
-          filter(!is.na(sector), !is.na(.data[[group_dim]])) |>
-          group_by(sector, .data[[group_dim]]) |>
-          summarise(
-            countries_count = length(unique(country[!is.na(country)])),
-            firms_count = sum(sample_size, na.rm = TRUE),
-            across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
-            .groups = "drop"
-          )
+        if (has_year) {
+          standard_agg <- data |>
+            filter(!is.na(sector), !is.na(.data[[group_dim]]), !is.na(year)) |>
+            group_by(sector, year, .data[[group_dim]]) |>
+            summarise(
+              countries_count = length(unique(country[!is.na(country)])),
+              firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+              across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+              .groups = "drop"
+            )
+        } else {
+          standard_agg <- data |>
+            filter(!is.na(sector), !is.na(.data[[group_dim]])) |>
+            group_by(sector, .data[[group_dim]]) |>
+            summarise(
+              countries_count = length(unique(country[!is.na(country)])),
+              firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+              across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+              .groups = "drop"
+            )
+        }
         names(standard_agg)[names(standard_agg) == group_dim] <- "group_value"
         standard_agg$group_dimension <- group_dim
       } else {
-        standard_agg <- data |>
-          filter(!is.na(sector)) |>
-          group_by(sector) |>
-          summarise(
-            countries_count = length(unique(country[!is.na(country)])),
-            firms_count = sum(sample_size, na.rm = TRUE),
-            across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
-            .groups = "drop"
-          )
+        if (has_year) {
+          standard_agg <- data |>
+            filter(!is.na(sector), !is.na(year)) |>
+            group_by(sector, year) |>
+            summarise(
+              countries_count = length(unique(country[!is.na(country)])),
+              firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+              across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+              .groups = "drop"
+            )
+        } else {
+          standard_agg <- data |>
+            filter(!is.na(sector)) |>
+            group_by(sector) |>
+            summarise(
+              countries_count = length(unique(country[!is.na(country)])),
+              firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+              across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+              .groups = "drop"
+            )
+        }
         standard_agg$group_value <- NA
         standard_agg$group_dimension <- NA
       }
@@ -529,26 +602,50 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
           if (nrow(sector_data) > 0) {
             if (!is.null(group_dim) && group_dim %in% names(sector_data)) {
-              agg <- sector_data |>
-                filter(!is.na(.data[[group_dim]])) |>
-                group_by(.data[[group_dim]]) |>
-                summarise(
-                  countries_count = length(unique(country[!is.na(country)])),
-                  firms_count = sum(sample_size, na.rm = TRUE),
-                  across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
-                  .groups = "drop"
-                )
+              if (has_year) {
+                agg <- sector_data |>
+                  filter(!is.na(.data[[group_dim]]), !is.na(year)) |>
+                  group_by(year, .data[[group_dim]]) |>
+                  summarise(
+                    countries_count = length(unique(country[!is.na(country)])),
+                    firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+                    across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+                    .groups = "drop"
+                  )
+              } else {
+                agg <- sector_data |>
+                  filter(!is.na(.data[[group_dim]])) |>
+                  group_by(.data[[group_dim]]) |>
+                  summarise(
+                    countries_count = length(unique(country[!is.na(country)])),
+                    firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+                    across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+                    .groups = "drop"
+                  )
+              }
               names(agg)[names(agg) == group_dim] <- "group_value"
               agg$sector <- paste0("custom:", sector_name)
               agg$group_dimension <- group_dim
               agg
             } else {
-              agg <- sector_data |>
-                summarise(
-                  countries_count = length(unique(country[!is.na(country)])),
-                  firms_count = sum(sample_size, na.rm = TRUE),
-                  across(any_of(all_indicators), ~mean(.x, na.rm = TRUE))
-                )
+              if (has_year) {
+                agg <- sector_data |>
+                  filter(!is.na(year)) |>
+                  group_by(year) |>
+                  summarise(
+                    countries_count = length(unique(country[!is.na(country)])),
+                    firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+                    across(any_of(all_indicators), ~mean(.x, na.rm = TRUE)),
+                    .groups = "drop"
+                  )
+              } else {
+                agg <- sector_data |>
+                  summarise(
+                    countries_count = length(unique(country[!is.na(country)])),
+                    firms_count = if (has_sample_size) sum(sample_size, na.rm = TRUE) else n(),
+                    across(any_of(all_indicators), ~mean(.x, na.rm = TRUE))
+                  )
+              }
               agg$sector <- paste0("custom:", sector_name)
               agg$group_value <- NA
               agg$group_dimension <- NA
@@ -635,8 +732,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               )
             }
             p |> layout(
-              xaxis = list(title = ind_name, tickangle = -45),
-              yaxis = list(title = "")
+              xaxis = list(title = ind_name, tickangle = -45, automargin = TRUE),
+              yaxis = list(title = "", automargin = TRUE)
             )
           })
 
@@ -645,14 +742,19 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators by", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.45, x = 0.5, xanchor = "center", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
-              margin = list(b = 120),
+              legend = list(
+                orientation = "v",
+                x = 1.02, y = 0.5, yanchor = "middle",
+                bgcolor = "rgba(255,255,255,0.8)",
+                title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))
+              ),
+              margin = list(l = 60, r = 120, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
             config(displayModeBar = FALSE)
         } else {
-          # No grouping - simple bar chart
+          # No grouping - simple bar chart (no legend needed - indicator names shown as x-axis titles)
           plots <- lapply(seq_along(available), function(i) {
             ind <- available[i]
             ind_name <- indicator_names[i]
@@ -667,9 +769,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
             layout(
               title = list(text = paste(domain$name, "Indicators"), font = list(size = 14)),
               barmode = "group",
-              showlegend = TRUE,
-              legend = list(orientation = "h", y = -0.4, x = 0.5, xanchor = "center"),
-              margin = list(b = 110),
+              showlegend = FALSE,
+              margin = list(l = 60, r = 40, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -723,8 +824,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
         layout(
           polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.25, x = 0.5, xanchor = "center"),
-          margin = list(b = 80),
+          legend = list(
+            orientation = "v",
+            x = 1.02, y = 0.5, yanchor = "middle",
+            bgcolor = "rgba(255,255,255,0.8)"
+          ),
+          margin = list(l = 60, r = 120, t = 40, b = 60),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
@@ -773,8 +878,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
         title = list(text = paste(domain_name, "- Radar Comparison"), font = list(size = 14)),
         paper_bgcolor = "rgba(0,0,0,0)",
         showlegend = has_grouping,
-        legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
-        margin = list(b = 60)
+        legend = list(
+          orientation = "v",
+          x = 1.02, y = 0.5, yanchor = "middle",
+          bgcolor = "rgba(255,255,255,0.8)"
+        ),
+        margin = list(l = 40, r = 120, t = 40, b = 40)
       )
 
       annotations <- list()
@@ -1010,8 +1119,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
         ) |>
           layout(
             title = list(text = paste(domain_name, "- Heatmap"), font = list(size = 14)),
-            xaxis = list(title = "", tickangle = -45),
-            yaxis = list(title = ""),
+            xaxis = list(title = "", tickangle = -45, automargin = TRUE),
+            yaxis = list(title = "", automargin = TRUE),
+            margin = list(l = 80, r = 40, t = 40, b = 80),
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
@@ -1059,8 +1169,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
       ) |>
         layout(
           title = "Key Indicators by Sector",
-          xaxis = list(title = "", tickangle = -45),
-          yaxis = list(title = ""),
+          xaxis = list(title = "", tickangle = -45, automargin = TRUE),
+          yaxis = list(title = "", automargin = TRUE),
+          margin = list(l = 80, r = 40, t = 40, b = 80),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
@@ -1106,9 +1217,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "firms_with_generator_pct" = list(palette = "Oranges", label = "Generator Usage (%)"),
         list(palette = "YlOrRd", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$finance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "finance", input$chart_type) })
@@ -1130,9 +1240,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "collateral_required_pct" = list(palette = "YlOrRd", label = "Collateral Required (%)"),
         list(palette = "YlGn", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$governance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "governance", input$chart_type) })
@@ -1153,9 +1262,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "corruption_obstacle_pct" = list(palette = "Reds", label = "Corruption Obstacle (%)"),
         list(palette = "YlOrRd", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$workforce_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "workforce", input$chart_type) })
@@ -1176,9 +1284,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "female_workers_pct" = list(palette = "Purples", label = "Female Workers (%)"),
         list(palette = "PuRd", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$performance_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "performance", input$chart_type) })
@@ -1199,9 +1306,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "export_firms_pct" = list(palette = "Blues", label = "Export Firms (%)"),
         list(palette = "YlGn", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     output$crime_comparison <- renderPlotly({ req(comparison_data()); create_domain_chart(comparison_data(), "crime", input$chart_type) })
@@ -1222,9 +1328,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "security_costs_pct" = list(palette = "Oranges", label = "Security Costs (% Sales)"),
         list(palette = "YlOrRd", label = indicator)
       )
-      create_wbes_map_3d(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
-                         color_col = indicator, size_col = indicator,
-                         color_label = palette_info$label, size_label = palette_info$label, color_palette = palette_info$palette)
+      create_wbes_map(data = selected_sector_data(), coordinates = get_country_coordinates(wbes_data()),
+                         indicator_col = indicator, indicator_label = palette_info$label, color_palette = palette_info$palette)
     })
 
     # ============================================================
@@ -1524,7 +1629,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
       plot_ly(data, x = ~reorder(sector, annual_sales_growth_pct), y = ~annual_sales_growth_pct, type = "bar",
               marker = list(color = ~annual_sales_growth_pct, colorscale = list(c(0, "#dc3545"), c(0.5, "#ffc107"), c(1, "#28a745")))) |>
         layout(title = list(text = "Sales Growth by Sector", font = list(size = 14)),
-               xaxis = list(title = "", tickangle = -45), yaxis = list(title = "Annual Sales Growth (%)"),
+               xaxis = list(title = "", tickangle = -45, automargin = TRUE), yaxis = list(title = "Annual Sales Growth (%)", automargin = TRUE),
+               margin = list(l = 80, r = 40, t = 40, b = 80),
                paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
     })
 
@@ -1756,6 +1862,275 @@ server <- function(id, wbes_data, global_filters = NULL) {
         else plot_ly() |> layout(title = "No data available")
       },
       "sector_crime_radar"
+    )
+
+    # Analysis chart downloads - Infrastructure
+    output$dl_infra_outage_impact <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "power_outages_per_month", y_col = "capacity_utilization_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Outages vs Capacity Utilization", x_label = "Power Outages/Month", y_label = "Capacity Utilization (%)"
+        )
+      },
+      "sector_infra_outage_impact"
+    )
+    output$dl_infra_generator_correlation <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "power_outages_per_month", y_col = "firms_with_generator_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Outages vs Generator Adoption", x_label = "Power Outages/Month", y_label = "Firms with Generator (%)"
+        )
+      },
+      "sector_infra_generator_correlation"
+    )
+
+    # Analysis chart downloads - Finance
+    output$dl_finance_access_gap <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "firms_with_bank_account_pct", y_col = "firms_with_credit_line_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Bank Account vs Credit Access", x_label = "Firms with Bank Account (%)", y_label = "Firms with Credit Line (%)"
+        )
+      },
+      "sector_finance_access_gap"
+    )
+    output$dl_finance_collateral_burden <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "loan_rejection_rate_pct", y_col = "collateral_required_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Rejection Rate vs Collateral", x_label = "Loan Rejection Rate (%)", y_label = "Collateral Required (%)"
+        )
+      },
+      "sector_finance_collateral_burden"
+    )
+
+    # Analysis chart downloads - Governance
+    output$dl_governance_bribery_vs_corruption <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "bribery_incidence_pct", y_col = "corruption_obstacle_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Bribery vs Corruption Obstacle", x_label = "Bribery Incidence (%)", y_label = "Corruption as Obstacle (%)"
+        )
+      },
+      "sector_governance_bribery_vs_corruption"
+    )
+    output$dl_governance_regulatory_burden <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        # Check if mgmt_time_regulations_pct has valid data
+        if (!"mgmt_time_regulations_pct" %in% names(data) ||
+            all(is.na(data$mgmt_time_regulations_pct))) {
+          create_scatter_with_trend(
+            data = data, x_col = "corruption_obstacle_pct", y_col = "capacity_utilization_pct",
+            color_col = "sector", shape_col = shape_col,
+            title = "Corruption Impact on Productivity", x_label = "Corruption as Obstacle (%)", y_label = "Capacity Utilization (%)"
+          )
+        } else {
+          create_scatter_with_trend(
+            data = data, x_col = "mgmt_time_regulations_pct", y_col = "capacity_utilization_pct",
+            color_col = "sector", shape_col = shape_col,
+            title = "Regulatory Burden vs Productivity", x_label = "Mgmt Time on Regulations (%)", y_label = "Capacity Utilization (%)"
+          )
+        }
+      },
+      "sector_governance_regulatory_burden"
+    )
+
+    # Analysis chart downloads - Workforce
+    output$dl_workforce_gender_gap <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "female_workers_pct", y_col = "female_ownership_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Female Workers vs Ownership Gap", x_label = "Female Workers (%)", y_label = "Female Ownership (%)"
+        )
+      },
+      "sector_workforce_gender_gap"
+    )
+    output$dl_workforce_obstacle_correlation <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "workforce_obstacle_pct", y_col = "capacity_utilization_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Workforce Challenges vs Productivity", x_label = "Workforce as Obstacle (%)", y_label = "Capacity Utilization (%)"
+        )
+      },
+      "sector_workforce_obstacle_correlation"
+    )
+
+    # Analysis chart downloads - Performance
+    output$dl_performance_capacity_vs_exports <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "capacity_utilization_pct", y_col = "export_firms_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Capacity vs Export Activity", x_label = "Capacity Utilization (%)", y_label = "Export Firms (%)"
+        )
+      },
+      "sector_performance_capacity_vs_exports"
+    )
+    output$dl_performance_growth_distribution <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        data <- data[order(data$annual_sales_growth_pct, decreasing = TRUE), ]
+        plot_ly(data, x = ~reorder(sector, annual_sales_growth_pct), y = ~annual_sales_growth_pct, type = "bar",
+                marker = list(color = ~annual_sales_growth_pct, colorscale = list(c(0, "#dc3545"), c(0.5, "#ffc107"), c(1, "#28a745")))) |>
+          layout(title = list(text = "Sales Growth by Sector", font = list(size = 14)),
+                 xaxis = list(title = "", tickangle = -45, automargin = TRUE), yaxis = list(title = "Annual Sales Growth (%)", automargin = TRUE),
+                 margin = list(l = 80, r = 40, t = 40, b = 80),
+                 paper_bgcolor = "rgba(0,0,0,0)", plot_bgcolor = "rgba(0,0,0,0)") |> config(displayModeBar = FALSE)
+      },
+      "sector_performance_growth_distribution"
+    )
+
+    # Analysis chart downloads - Crime
+    output$dl_crime_vs_security_cost <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "crime_obstacle_pct", y_col = "security_costs_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Crime Obstacle vs Security Spending", x_label = "Crime as Obstacle (%)", y_label = "Security Costs (% of Sales)"
+        )
+      },
+      "sector_crime_vs_security_cost"
+    )
+    output$dl_crime_impact_performance <- create_plot_download(
+      function() {
+        req(comparison_data())
+        data <- comparison_data()
+        group_dim <- input$group_dimension
+        shape_col <- if (!is.null(group_dim) && group_dim != "none" && "group_value" %in% names(data)) "group_value" else NULL
+        create_scatter_with_trend(
+          data = data, x_col = "crime_obstacle_pct", y_col = "capacity_utilization_pct",
+          color_col = "sector", shape_col = shape_col,
+          title = "Crime Impact on Productivity", x_label = "Crime as Obstacle (%)", y_label = "Capacity Utilization (%)"
+        )
+      },
+      "sector_crime_impact_performance"
+    )
+
+    # Map downloads
+    output$dl_infra_map <- downloadHandler(
+      filename = function() { paste0("infrastructure_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$infra_map_indicator,
+          indicator_label = "Infrastructure"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_finance_map <- downloadHandler(
+      filename = function() { paste0("finance_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$finance_map_indicator,
+          indicator_label = "Finance"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_governance_map <- downloadHandler(
+      filename = function() { paste0("governance_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$governance_map_indicator,
+          indicator_label = "Governance"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_workforce_map <- downloadHandler(
+      filename = function() { paste0("workforce_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$workforce_map_indicator,
+          indicator_label = "Workforce"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_performance_map <- downloadHandler(
+      filename = function() { paste0("performance_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$performance_map_indicator,
+          indicator_label = "Performance"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
+    )
+
+    output$dl_crime_map <- downloadHandler(
+      filename = function() { paste0("crime_map_sector_", Sys.Date(), ".html") },
+      content = function(file) {
+        map <- create_wbes_map(
+          data = comparison_data(),
+          coordinates = get_country_coordinates(wbes_data()),
+          indicator_col = input$crime_map_indicator,
+          indicator_label = "Crime"
+        )
+        htmlwidgets::saveWidget(map, file)
+      }
     )
 
   })

@@ -225,11 +225,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Filtered data with global filters
     filtered <- reactive({
       req(wbes_data())
-      d <- wbes_data()$latest
+
+      # Use country_panel (has year) if year filter is active, otherwise use latest
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      d <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
 
       # Apply global filters if provided
-      if (!is.null(global_filters)) {
-        filters <- global_filters()
+      if (!is.null(filters)) {
         d <- apply_common_filters(
           d,
           region_value = filters$region,
@@ -240,6 +245,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
           custom_regions = filters$custom_regions,
           filter_by_region_fn = filter_by_region
         )
+      }
+
+      # Add coordinates if using panel data (for maps)
+      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+        coords <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+          d <- merge(d, coords, by = "country", all.x = TRUE)
+        }
       }
 
       # Apply local module filters if they exist
