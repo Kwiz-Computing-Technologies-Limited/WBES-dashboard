@@ -14,10 +14,11 @@ box::use(
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -92,11 +94,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("corruption_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected corruption indicator by country. Darker red indicates higher corruption."
-            )
+            map_with_caption(ns, "corruption_map", height = "400px", title = "Corruption Indicators by Country")
           )
         )
       )
@@ -109,7 +107,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Corruption by Country"),
           card_body(
-            chart_with_download(ns, "bar_chart", height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px", title = "Corruption by Country"),
             p(
               class = "text-muted small mt-2",
               "Horizontal bars show corruption or bribery rates by country; use the sort control to spotlight highest or lowest risk environments."
@@ -121,7 +119,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Comparison"),
           card_body(
-            chart_with_download(ns, "regional_chart", height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px", title = "Regional Comparison"),
             p(
               class = "text-muted small mt-2",
               "Stacked bars compare corruption pressure across regions, highlighting where governance challenges are concentrated."
@@ -138,7 +136,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Corruption vs. Business Growth"),
           card_body(
-            chart_with_download(ns, "scatter_growth", height = "350px"),
+            chart_with_download(ns, "scatter_growth", height = "350px", title = "Corruption vs. Business Growth"),
             p(
               class = "text-muted small mt-2",
               "Each point represents a country; the slope shows how corruption correlates with reported sales growth."
@@ -150,7 +148,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), " Corruption vs. Investment"),
           card_body(
-            chart_with_download(ns, "scatter_investment", height = "350px"),
+            chart_with_download(ns, "scatter_investment", height = "350px", title = "Corruption vs. Investment"),
             p(
               class = "text-muted small mt-2",
               "This scatter links corruption exposure to investment rates, indicating whether governance issues deter capital spending."
@@ -167,7 +165,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Corruption by Firm Size"),
           card_body(
-            chart_with_download(ns, "firm_size_box", height = "350px"),
+            chart_with_download(ns, "firm_size_box", height = "350px", title = "Corruption by Firm Size"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize corruption responses by firm size, showing typical levels and variability."
@@ -179,7 +177,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Bribery Depth vs. Breadth"),
           card_body(
-            chart_with_download(ns, "bribery_scatter", height = "350px"),
+            chart_with_download(ns, "bribery_scatter", height = "350px", title = "Bribery Depth vs. Breadth"),
             p(
               class = "text-muted small mt-2",
               "Points plot how widespread bribery requests are (breadth) against their frequency for affected firms (depth)."

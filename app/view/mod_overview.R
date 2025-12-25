@@ -16,10 +16,11 @@ box::use(
  htmlwidgets[saveWidget],
  utils[write.csv],
  app/logic/shared_filters[apply_common_filters],
- app/logic/custom_regions[filter_by_region]
+ app/logic/custom_regions[filter_by_region],
+ app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -35,7 +36,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -92,11 +94,7 @@ ui <- function(id) {
             ),
             width = "300px"
           ),
-          leafletOutput(ns("world_map"), height = "450px"),
-          p(
-            class = "text-muted small mt-2",
-            "Circle colors show how each selected indicator varies by country; darker markers highlight higher values while tooltips reveal country-specific figures."
-          )
+          map_with_caption(ns, "world_map", height = "450px", title = "Business Environment by Country")
         )
       )
     ),
@@ -104,7 +102,7 @@ ui <- function(id) {
       card(
         card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
         card_body(
-          chart_with_download(ns, "obstacles_chart", height = "500px"),
+          chart_with_download(ns, "obstacles_chart", height = "500px", title = "Top Business Constraints"),
           p(
             class = "text-muted small mt-2",
             "Bars rank the most frequently cited obstacles among surveyed firms, making it easy to see which constraints dominate the business landscape."
@@ -121,7 +119,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
         card_body(
-          chart_with_download(ns, "regional_comparison"),
+          chart_with_download(ns, "regional_comparison", title = "Regional Performance Comparison"),
           p(
             class = "text-muted small mt-2",
             "Grouped bars compare infrastructure reliability, access to finance, and bribery exposure across regions, highlighting where each region performs strongest."
@@ -141,7 +139,7 @@ ui <- function(id) {
           class = "card-header-secondary"
         ),
         card_body(
-          chart_with_download(ns, "infrastructure_gauge", height = "250px"),
+          chart_with_download(ns, "infrastructure_gauge", height = "250px", title = "Infrastructure Index"),
           p(
             class = "text-muted small mt-2",
             "The gauge summarizes regional infrastructure strength on a 0–100 scale; the threshold line marks the target resilience benchmark."
@@ -157,7 +155,7 @@ ui <- function(id) {
           class = "card-header-secondary"
         ),
         card_body(
-          chart_with_download(ns, "finance_gauge", height = "250px"),
+          chart_with_download(ns, "finance_gauge", height = "250px", title = "Finance Access Index"),
           p(
             class = "text-muted small mt-2",
             "This dial tracks how easily firms secure formal credit; scores below the threshold highlight markets where access remains constrained."

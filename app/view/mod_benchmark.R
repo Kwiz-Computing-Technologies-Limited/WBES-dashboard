@@ -13,6 +13,7 @@ box::use(
   stats[setNames, reorder],
   htmlwidgets[saveWidget],
   utils[write.csv],
+  rlang[sym],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
@@ -204,7 +205,7 @@ ui <- function(id) {
               )
             ),
             fluidRow(
-              column(12, chart_with_download(ns, "overview_heatmap", height = "500px"))
+              column(12, chart_with_download(ns, "overview_heatmap", height = "500px", title = "Multi-Indicator Comparison Heatmap"))
             ),
             fluidRow(class = "mt-4", column(12, table_with_download(ns, "overview_table")))
           ),
@@ -220,8 +221,8 @@ ui <- function(id) {
               column(3, uiOutput(ns("infra_kpi_water")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "infra_comparison")),
-              column(4, chart_with_download(ns, "infra_radar"))
+              column(8, chart_with_download(ns, "infra_comparison", title = "Infrastructure Comparison")),
+              column(4, chart_with_download(ns, "infra_radar", title = "Infrastructure Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("infra_map_indicator"), "Map Indicator",
@@ -232,8 +233,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "infra_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "infra_outage_impact", height = "350px")),
-              column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px"))
+              column(6, chart_with_download(ns, "infra_outage_impact", height = "350px", title = "Outage Impact Analysis")),
+              column(6, chart_with_download(ns, "infra_generator_correlation", height = "350px", title = "Generator Correlation"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Infrastructure Insights"), card_body(uiOutput(ns("infra_insights"))))))
           ),
@@ -249,8 +250,8 @@ ui <- function(id) {
               column(3, uiOutput(ns("finance_kpi_collateral")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "finance_comparison")),
-              column(4, chart_with_download(ns, "finance_radar"))
+              column(8, chart_with_download(ns, "finance_comparison", title = "Finance Access Comparison")),
+              column(4, chart_with_download(ns, "finance_radar", title = "Finance Access Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("finance_map_indicator"), "Map Indicator",
@@ -261,8 +262,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "finance_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "finance_access_gap", height = "350px")),
-              column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
+              column(6, chart_with_download(ns, "finance_access_gap", height = "350px", title = "Finance Access Gap")),
+              column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px", title = "Collateral Burden"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Finance Insights"), card_body(uiOutput(ns("finance_insights"))))))
           ),
@@ -277,8 +278,8 @@ ui <- function(id) {
               column(4, uiOutput(ns("governance_kpi_regulations")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "governance_comparison")),
-              column(4, chart_with_download(ns, "governance_radar"))
+              column(8, chart_with_download(ns, "governance_comparison", title = "Governance Comparison")),
+              column(4, chart_with_download(ns, "governance_radar", title = "Governance Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("governance_map_indicator"), "Map Indicator",
@@ -288,8 +289,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "governance_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px")),
-              column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
+              column(6, chart_with_download(ns, "governance_bribery_vs_corruption", height = "350px", title = "Bribery vs Corruption")),
+              column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px", title = "Regulatory Burden"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Governance Insights"), card_body(uiOutput(ns("governance_insights"))))))
           ),
@@ -304,8 +305,8 @@ ui <- function(id) {
               column(4, uiOutput(ns("workforce_kpi_obstacle")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "workforce_comparison")),
-              column(4, chart_with_download(ns, "workforce_radar"))
+              column(8, chart_with_download(ns, "workforce_comparison", title = "Workforce Comparison")),
+              column(4, chart_with_download(ns, "workforce_radar", title = "Workforce Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("workforce_map_indicator"), "Map Indicator",
@@ -315,8 +316,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "workforce_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px")),
-              column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
+              column(6, chart_with_download(ns, "workforce_gender_gap", height = "350px", title = "Gender Gap Analysis")),
+              column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px", title = "Workforce Obstacle Correlation"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Workforce Insights"), card_body(uiOutput(ns("workforce_insights"))))))
           ),
@@ -332,8 +333,8 @@ ui <- function(id) {
               column(3, uiOutput(ns("performance_kpi_growth")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "performance_comparison")),
-              column(4, chart_with_download(ns, "performance_radar"))
+              column(8, chart_with_download(ns, "performance_comparison", title = "Performance Comparison")),
+              column(4, chart_with_download(ns, "performance_radar", title = "Performance Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("performance_map_indicator"), "Map Indicator",
@@ -344,8 +345,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "performance_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px")),
-              column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
+              column(6, chart_with_download(ns, "performance_capacity_vs_exports", height = "350px", title = "Capacity vs Exports")),
+              column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px", title = "Growth Distribution"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Performance Insights"), card_body(uiOutput(ns("performance_insights"))))))
           ),
@@ -359,8 +360,8 @@ ui <- function(id) {
               column(6, uiOutput(ns("crime_kpi_security")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "crime_comparison")),
-              column(4, chart_with_download(ns, "crime_radar"))
+              column(8, chart_with_download(ns, "crime_comparison", title = "Crime Comparison")),
+              column(4, chart_with_download(ns, "crime_radar", title = "Crime & Security Radar"))
             ),
             fluidRow(class = "mt-3",
               column(4, selectInput(ns("crime_map_indicator"), "Map Indicator",
@@ -369,8 +370,8 @@ ui <- function(id) {
               column(12, map_with_caption(ns, "crime_map"))
             ),
             fluidRow(class = "mt-3",
-              column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px")),
-              column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
+              column(6, chart_with_download(ns, "crime_vs_security_cost", height = "350px", title = "Crime vs Security Cost")),
+              column(6, chart_with_download(ns, "crime_impact_performance", height = "350px", title = "Crime Impact on Performance"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights"))))))
           )
@@ -444,6 +445,43 @@ server <- function(id, wbes_data, global_filters = NULL) {
       data
     })
 
+    # Get the current grouping dimension
+    group_dim <- reactive({
+      if (is.null(input$group_dimension)) "none" else input$group_dimension
+    })
+
+    # Helper function to aggregate data by grouping dimension
+    aggregate_by_group <- function(data, indicators) {
+      req(data)
+      dim <- group_dim()
+
+      if (dim == "none") {
+        # No grouping - aggregate by country
+        result <- data |>
+          group_by(country) |>
+          summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
+        result$group_label <- result$country
+        return(result)
+      }
+
+      # Check if dimension column exists
+      if (!dim %in% names(data)) {
+        # Fall back to country grouping if dimension not available
+        result <- data |>
+          group_by(country) |>
+          summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
+        result$group_label <- result$country
+        return(result)
+      }
+
+      # Group by the selected dimension
+      result <- data |>
+        group_by(!!rlang::sym(dim)) |>
+        summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
+      result$group_label <- as.character(result[[dim]])
+      result
+    }
+
     # ==============================================================================
     # OVERVIEW TAB OUTPUTS
     # ==============================================================================
@@ -464,11 +502,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
         return(plot_ly() |> layout(annotations = list(list(text = "No data available", showarrow = FALSE))))
       }
 
-      countries <- unique(data$country)
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available)
+      groups <- unique(agg_data$group_label)
+
       # Create matrix for heatmap
       z_matrix <- sapply(available, function(ind) {
-        sapply(countries, function(c) {
-          val <- data[data$country == c, ind, drop = TRUE]
+        sapply(groups, function(g) {
+          val <- agg_data[agg_data$group_label == g, ind, drop = TRUE]
           if (length(val) > 0) {
             mean_val <- mean(val, na.rm = TRUE)
             if (!is.na(mean_val)) mean_val else NA
@@ -484,7 +525,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       plot_ly(
         x = labels_subset,
-        y = countries,
+        y = groups,
         z = z_matrix,
         type = "heatmap",
         colorscale = list(c(0, "#f7fbff"), c(0.5, "#6baed6"), c(1, "#08306b")),
@@ -503,12 +544,32 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(comparison_data())
       data <- comparison_data()
 
-      display_cols <- c("country", "region", "income",
-                        "power_outages_per_month", "firms_with_credit_line_pct",
-                        "IC.FRM.BRIB.ZS", "capacity_utilization_pct",
-                        "female_ownership_pct", "export_firms_pct")
+      dim <- group_dim()
+      indicator_cols <- c("power_outages_per_month", "firms_with_credit_line_pct",
+                          "IC.FRM.BRIB.ZS", "capacity_utilization_pct",
+                          "female_ownership_pct", "export_firms_pct")
 
-      data <- select(data, any_of(display_cols))
+      if (dim == "none") {
+        # Show by country
+        display_cols <- c("country", "region", "income", indicator_cols)
+        data <- select(data, any_of(display_cols))
+      } else {
+        # Aggregate by grouping dimension
+        agg_data <- aggregate_by_group(data, indicator_cols)
+        data <- agg_data
+        # Rename group_label to dimension name
+        if (dim == "region") {
+          names(data)[names(data) == "group_label"] <- "Region"
+        } else if (dim == "firm_size") {
+          names(data)[names(data) == "group_label"] <- "Firm Size"
+        } else if (dim == "income") {
+          names(data)[names(data) == "group_label"] <- "Income Group"
+        }
+        # Remove the original grouping column if it exists
+        if (dim %in% names(data)) {
+          data <- data[, !names(data) %in% dim, drop = FALSE]
+        }
+      }
 
       datatable(
         data,
@@ -581,31 +642,34 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(comparison_data())
       data <- comparison_data()
 
-      countries <- unique(data$country)
       indicators <- c("power_outages_per_month", "avg_outage_duration_hrs",
                       "firms_with_generator_pct", "water_insufficiency_pct")
       labels <- c("Power Outages", "Outage Duration", "Generator %", "Water Insufficiency %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
 
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
 
         traces[[i]] <- list(
           x = labels,
           y = values,
-          name = country,
+          name = group,
           type = "bar"
         )
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -631,21 +695,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
       # Calculate max value for range
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -654,7 +721,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )
@@ -782,26 +849,29 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(comparison_data())
       data <- comparison_data()
 
-      countries <- unique(data$country)
       indicators <- c("firms_with_credit_line_pct", "firms_with_bank_account_pct",
                       "loan_rejection_rate_pct", "collateral_required_pct")
       labels <- c("Credit Access %", "Bank Account %", "Loan Rejection %", "Collateral %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
 
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
 
-        traces[[i]] <- list(x = labels, y = values, name = country, type = "bar")
+        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -822,20 +892,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -844,7 +917,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )
@@ -923,23 +996,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$governance_comparison <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      countries <- unique(data$country)
       indicators <- c("IC.FRM.BRIB.ZS", "IC.FRM.CORR.ZS", "mgmt_time_regulations_pct")
       labels <- c("Bribery %", "Corruption %", "Regulations %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
-        traces[[i]] <- list(x = labels, y = values, name = country, type = "bar")
+        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -960,20 +1036,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -982,7 +1061,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )
@@ -1059,23 +1138,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$workforce_comparison <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      countries <- unique(data$country)
       indicators <- c("female_ownership_pct", "female_workers_pct", "workforce_obstacle_pct")
       labels <- c("Female Own %", "Female Workers %", "Obstacle %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
-        traces[[i]] <- list(x = labels, y = values, name = country, type = "bar")
+        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -1096,20 +1178,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -1118,7 +1203,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )
@@ -1200,23 +1285,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$performance_comparison <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      countries <- unique(data$country)
       indicators <- c("capacity_utilization_pct", "export_firms_pct", "export_share_pct", "annual_sales_growth_pct")
       labels <- c("Capacity %", "Export Firms %", "Export Share %", "Growth %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
-        traces[[i]] <- list(x = labels, y = values, name = country, type = "bar")
+        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -1237,20 +1325,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -1259,7 +1350,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )
@@ -1328,23 +1419,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$crime_comparison <- renderPlotly({
       req(comparison_data())
       data <- comparison_data()
-      countries <- unique(data$country)
       indicators <- c("crime_obstacle_pct", "security_costs_pct")
       labels <- c("Crime Obstacle %", "Security Costs %")
 
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, indicators)
+      groups <- unique(agg_data$group_label)
+
       traces <- list()
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(indicators, function(ind) {
-          val <- country_data[[ind]]
+          val <- group_data[[ind]]
           if (length(val) > 0) mean(val, na.rm = TRUE) else NA
         })
-        traces[[i]] <- list(x = labels, y = values, name = country, type = "bar")
+        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
       }
 
       p <- plot_ly()
-      for (i in seq_along(countries)) {
+      for (i in seq_along(groups)) {
         p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
       }
       p |>
@@ -1365,20 +1459,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       available_labels <- labels[match(available_indicators, indicators)]
-      countries <- unique(data$country)
+
+      # Use grouping dimension
+      agg_data <- aggregate_by_group(data, available_indicators)
+      groups <- unique(agg_data$group_label)
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
-      all_vals <- unlist(lapply(available_indicators, function(ind) data[[ind]]))
+      all_vals <- unlist(lapply(available_indicators, function(ind) agg_data[[ind]]))
       max_val <- max(all_vals, na.rm = TRUE)
       if (is.na(max_val) || max_val == 0) max_val <- 100
       range_max <- ceiling(max_val * 1.1 / 10) * 10
 
       p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
-      for (i in seq_along(countries)) {
-        country <- countries[i]
-        country_data <- data[data$country == country, ]
+      for (i in seq_along(groups)) {
+        group <- groups[i]
+        group_data <- agg_data[agg_data$group_label == group, ]
         values <- sapply(available_indicators, function(ind) {
-          val <- mean(country_data[[ind]], na.rm = TRUE)
+          val <- mean(group_data[[ind]], na.rm = TRUE)
           if (is.na(val)) 0 else val
         })
         values <- c(values, values[1])
@@ -1387,7 +1484,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
         p <- p |> add_trace(
           r = values,
           theta = theta,
-          name = country,
+          name = group,
           line = list(color = colors[((i - 1) %% length(colors)) + 1]),
           fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
         )

@@ -14,10 +14,11 @@ box::use(
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -99,11 +101,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("country_profile_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected country's location and regional context. Click markers for details."
-            )
+            map_with_caption(ns, "country_profile_map", height = "400px", title = "Country Geographic Context")
           )
         )
       )
@@ -116,7 +114,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            chart_with_download(ns, "radar_chart"),
+            chart_with_download(ns, "radar_chart", height = "400px", title = "Business Environment Radar"),
             p(
               class = "text-muted small mt-2",
               "The radar highlights how the selected country scores across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
@@ -146,7 +144,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "infra_chart1", height = "300px"),
+                  chart_with_download(ns, "infra_chart1", height = "300px", title = "Infrastructure Obstacles"),
                   p(
                     class = "text-muted small mt-2",
                     "Bars rank which infrastructure services firms flag as biggest obstacles, indicating where reliability investments are needed."
@@ -155,7 +153,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "infra_chart2", height = "300px"),
+                  chart_with_download(ns, "infra_chart2", height = "300px", title = "Power Source Distribution"),
                   p(
                     class = "text-muted small mt-2",
                     "The pie shows how firms power operations (grid, generator, mixed), revealing dependence on backup generation."
@@ -167,7 +165,7 @@ ui <- function(id) {
               class = "mt-3",
               column(6,
                 tagList(
-                  chart_with_download(ns, "infra_chart3", height = "300px"),
+                  chart_with_download(ns, "infra_chart3", height = "300px", title = "Water & Transport Constraints"),
                   p(
                     class = "text-muted small mt-2",
                     "Shows water and transport infrastructure constraints affecting business operations."
@@ -176,7 +174,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "infra_chart4", height = "300px"),
+                  chart_with_download(ns, "infra_chart4", height = "300px", title = "Internet & Telecom Access"),
                   p(
                     class = "text-muted small mt-2",
                     "Displays telecommunications access and internet connectivity rates for the country."
@@ -192,7 +190,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "finance_chart1", height = "300px"),
+                  chart_with_download(ns, "finance_chart1", height = "300px", title = "Financial Access Overview"),
                   p(
                     class = "text-muted small mt-2",
                     "Financial product uptake across credit and deposit instruments highlights where inclusion gaps remain."
@@ -201,7 +199,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "finance_chart2", height = "300px"),
+                  chart_with_download(ns, "finance_chart2", height = "300px", title = "Collateral Requirements"),
                   p(
                     class = "text-muted small mt-2",
                     "The gauge reports average collateral required for loans; higher values signal tighter lending conditions."
@@ -217,7 +215,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "gov_chart1", height = "300px"),
+                  chart_with_download(ns, "gov_chart1", height = "300px", title = "Bribery by Transaction Type"),
                   p(
                     class = "text-muted small mt-2",
                     "Bribery prevalence by transaction type surfaces which interactions with government most often trigger informal payments."
@@ -226,7 +224,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "gov_chart2", height = "300px"),
+                  chart_with_download(ns, "gov_chart2", height = "300px", title = "Regulatory Burden"),
                   p(
                     class = "text-muted small mt-2",
                     "Management time spent on regulatory tasks highlights the bureaucracy burden affecting daily operations."
@@ -242,7 +240,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "workforce_chart1", height = "300px"),
+                  chart_with_download(ns, "workforce_chart1", height = "300px", title = "Workforce Composition"),
                   p(
                     class = "text-muted small mt-2",
                     "Shows workforce composition including female participation and skill levels."
@@ -251,7 +249,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "workforce_chart2", height = "300px"),
+                  chart_with_download(ns, "workforce_chart2", height = "300px", title = "Training & Development"),
                   p(
                     class = "text-muted small mt-2",
                     "Displays training programs and workforce development initiatives."
@@ -267,7 +265,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "crime_chart1", height = "300px"),
+                  chart_with_download(ns, "crime_chart1", height = "300px", title = "Crime as Business Obstacle"),
                   p(
                     class = "text-muted small mt-2",
                     "Shows crime and security costs as obstacles to business operations."
@@ -276,7 +274,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "crime_chart2", height = "300px"),
+                  chart_with_download(ns, "crime_chart2", height = "300px", title = "Security Expenditure & Losses"),
                   p(
                     class = "text-muted small mt-2",
                     "Displays security expenditure and crime-related losses."
@@ -292,7 +290,7 @@ ui <- function(id) {
             fluidRow(
               column(6,
                 tagList(
-                  chart_with_download(ns, "performance_chart1", height = "300px"),
+                  chart_with_download(ns, "performance_chart1", height = "300px", title = "Capacity Utilization"),
                   p(
                     class = "text-muted small mt-2",
                     "Shows capacity utilization and operational efficiency metrics."
@@ -301,7 +299,7 @@ ui <- function(id) {
               ),
               column(6,
                 tagList(
-                  chart_with_download(ns, "performance_chart2", height = "300px"),
+                  chart_with_download(ns, "performance_chart2", height = "300px", title = "Export Orientation"),
                   p(
                     class = "text-muted small mt-2",
                     "Displays export orientation and international market participation."
@@ -315,7 +313,7 @@ ui <- function(id) {
             title = "Time Series",
             icon = icon("area-chart"),
             tagList(
-              chart_with_download(ns, "time_series"),
+              chart_with_download(ns, "time_series", height = "400px", title = "Indicator Trends Over Time"),
               p(
                 class = "text-muted small mt-2",
                 "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."

@@ -211,7 +211,7 @@ ui <- function(id) {
               )
             ),
             fluidRow(
-              column(12, chart_with_download(ns, "overview_heatmap", height = "500px"))
+              column(12, chart_with_download(ns, "overview_heatmap", height = "500px", title = "Cross-Sector Comparison Heatmap"))
             ),
             fluidRow(class = "mt-4", column(12, table_with_download(ns, "overview_table")))
           ),

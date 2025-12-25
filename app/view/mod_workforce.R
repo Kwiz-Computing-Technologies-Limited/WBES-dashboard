@@ -14,10 +14,11 @@ box::use(
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -75,11 +77,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("workforce_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected workforce/gender indicator by country."
-            )
+            map_with_caption(ns, "workforce_map", height = "400px", title = "Workforce & Gender Indicators by Country")
           )
         )
       )
@@ -111,7 +109,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Workforce Indicators by Country"),
           card_body(
-            chart_with_download(ns, "bar_chart", height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px", title = "Workforce Indicators by Country"),
             p(
               class = "text-muted small mt-2",
               "Bars compare workforce-related indicators across countries, surfacing where labor challenges or gender gaps are most severe."
@@ -123,7 +121,7 @@ ui <- function(id) {
         card(
           card_header(icon("venus-mars"), " Gender Balance Overview"),
           card_body(
-            chart_with_download(ns, "gender_overview", height = "450px"),
+            chart_with_download(ns, "gender_overview", height = "450px", title = "Gender Balance Overview"),
             p(
               class = "text-muted small mt-2",
               "The composition chart shows the share of female workers and leaders, highlighting representation gaps."
@@ -140,7 +138,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-line"), " Female Participation Trends"),
           card_body(
-            chart_with_download(ns, "participation_chart", height = "350px"),
+            chart_with_download(ns, "participation_chart", height = "350px", title = "Female Participation Trends"),
             p(
               class = "text-muted small mt-2",
               "Lines trace how female employment indicators evolve across income groups, flagging progress or setbacks."
@@ -152,7 +150,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Workforce vs. Productivity"),
           card_body(
-            chart_with_download(ns, "scatter_productivity", height = "350px"),
+            chart_with_download(ns, "scatter_productivity", height = "350px", title = "Workforce vs. Productivity"),
             p(
               class = "text-muted small mt-2",
               "Each point connects workforce constraints with capacity utilization, highlighting whether labor shortages coincide with lower productivity."
@@ -169,7 +167,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Female Ownership by Region"),
           card_body(
-            chart_with_download(ns, "regional_gender", height = "350px"),
+            chart_with_download(ns, "regional_gender", height = "350px", title = "Female Ownership by Region"),
             p(
               class = "text-muted small mt-2",
               "Bars summarize female ownership prevalence by region, revealing where women-led firms are most common."
@@ -181,7 +179,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Gender Gap Analysis"),
           card_body(
-            chart_with_download(ns, "gender_gap_chart", height = "350px"),
+            chart_with_download(ns, "gender_gap_chart", height = "350px", title = "Gender Gap Analysis"),
             p(
               class = "text-muted small mt-2",
               "This chart contrasts employment and ownership gaps, showing where representation diverges the most."
@@ -198,7 +196,7 @@ ui <- function(id) {
         card(
           card_header(icon("coins"), " Workforce Challenge by Firm Size"),
           card_body(
-            chart_with_download(ns, "firm_size_comparison", height = "350px"),
+            chart_with_download(ns, "firm_size_comparison", height = "350px", title = "Workforce Challenge by Firm Size"),
             p(
               class = "text-muted small mt-2",
               "Firm size box plots show how workforce obstacles differ by company size."
@@ -210,7 +208,7 @@ ui <- function(id) {
         card(
           card_header(icon("graduation-cap"), " Skills & Gender Correlation"),
           card_body(
-            chart_with_download(ns, "skills_correlation", height = "350px"),
+            chart_with_download(ns, "skills_correlation", height = "350px", title = "Skills & Gender Correlation"),
             p(
               class = "text-muted small mt-2",
               "Scatter points compare skilled labor availability with female employment shares to reveal inclusion linkages."

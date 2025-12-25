@@ -14,10 +14,11 @@ box::use(
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -74,11 +76,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("crime_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected crime/security indicator by country. Darker red indicates higher values."
-            )
+            map_with_caption(ns, "crime_map", height = "400px", title = "Crime & Security Indicators by Country")
           )
         )
       )
@@ -109,7 +107,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Security Indicators by Country"),
           card_body(
-            chart_with_download(ns, "bar_chart", height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px", title = "Security Indicators by Country"),
             p(
               class = "text-muted small mt-2",
               "Bars benchmark crime-related obstacles or security costs by country, surfacing the highest-risk environments."
@@ -121,7 +119,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Security Overview"),
           card_body(
-            chart_with_download(ns, "regional_chart", height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px", title = "Regional Security Overview"),
             p(
               class = "text-muted small mt-2",
               "Regional averages reveal how security pressures vary across geographies, contextualizing country performance."
@@ -138,7 +136,7 @@ ui <- function(id) {
         card(
           card_header(icon("project-diagram"), " Crime vs. Business Performance"),
           card_body(
-            chart_with_download(ns, "crime_performance", height = "350px"),
+            chart_with_download(ns, "crime_performance", height = "350px", title = "Crime vs. Business Performance"),
             p(
               class = "text-muted small mt-2",
               "Scatter points show how crime obstacles relate to operational performance, signaling whether insecurity dampens output."
@@ -155,7 +153,7 @@ ui <- function(id) {
         card(
           card_header(icon("layer-group"), " Security by Firm Size"),
           card_body(
-            chart_with_download(ns, "firm_size_security", height = "350px"),
+            chart_with_download(ns, "firm_size_security", height = "350px", title = "Security by Firm Size"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize crime and security costs across firm sizes, highlighting risk dispersion."
@@ -167,7 +165,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Crime Impact Matrix"),
           card_body(
-            chart_with_download(ns, "impact_matrix", height = "350px"),
+            chart_with_download(ns, "impact_matrix", height = "350px", title = "Crime Impact Matrix"),
             p(
               class = "text-muted small mt-2",
               "Matrix cells combine crime prevalence and severity to pinpoint the most disruptive contexts."
@@ -184,7 +182,7 @@ ui <- function(id) {
         card(
           card_header(icon("balance-scale"), " Crime vs. Corruption"),
           card_body(
-            chart_with_download(ns, "crime_corruption", height = "350px"),
+            chart_with_download(ns, "crime_corruption", height = "350px", title = "Crime vs. Corruption"),
             p(
               class = "text-muted small mt-2",
               "Scatter compares security risks with corruption incidence to see how governance and crime challenges overlap."
@@ -196,7 +194,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), " Risk Distribution"),
           card_body(
-            chart_with_download(ns, "risk_distribution", height = "350px"),
+            chart_with_download(ns, "risk_distribution", height = "350px", title = "Risk Distribution"),
             p(
               class = "text-muted small mt-2",
               "The pie segments firms by reported risk level, providing a quick view of how pervasive security threats are."

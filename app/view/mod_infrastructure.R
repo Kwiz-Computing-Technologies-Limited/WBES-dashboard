@@ -2,7 +2,7 @@
 # Infrastructure Constraints Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
+  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
         downloadButton, downloadHandler],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
@@ -14,10 +14,11 @@ box::use(
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -85,11 +87,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("infra_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected infrastructure indicator by country. Darker colors indicate more severe issues."
-            )
+            map_with_caption(ns, "infra_map", height = "400px", title = "Infrastructure Indicators by Country")
           )
         )
       )
@@ -126,7 +124,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "Infrastructure Quality by Country"),
         card_body(
-          chart_with_download(ns, "infra_bar_chart", height = "450px"),
+          chart_with_download(ns, "infra_bar_chart", height = "450px", title = "Infrastructure Quality by Country"),
           p(
             class = "text-muted small mt-2",
             "Horizontal bars compare the selected infrastructure indicator for the top countries, with higher values signaling greater constraint."
@@ -138,7 +136,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-pie"), "Power Source Distribution"),
         card_body(
-          chart_with_download(ns, "power_source_pie", height = "450px"),
+          chart_with_download(ns, "power_source_pie", height = "450px", title = "Power Source Distribution"),
           p(
             class = "text-muted small mt-2",
             "Slices show how firms split between grid-only power, generators, or mixed sources, highlighting reliance on backups."
@@ -155,7 +153,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-line"), "Outages vs. Productivity"),
         card_body(
-          chart_with_download(ns, "outage_productivity", height = "350px"),
+          chart_with_download(ns, "outage_productivity", height = "350px", title = "Power Outages vs. Capacity Utilization"),
           p(
             class = "text-muted small mt-2",
             "The fitted line illustrates how rising outage frequency relates to declines in capacity utilization."
@@ -167,7 +165,7 @@ ui <- function(id) {
       card(
         card_header(icon("money-bill-wave"), "Cost of Infrastructure Gaps"),
         card_body(
-          chart_with_download(ns, "cost_chart", height = "350px"),
+          chart_with_download(ns, "cost_chart", height = "350px", title = "Cost of Infrastructure Gaps"),
           p(
             class = "text-muted small mt-2",
             "Bars translate outages into estimated sales losses, showing which regions bear the largest revenue impact."
@@ -183,7 +181,7 @@ ui <- function(id) {
       card(
         card_header(icon("th"), "Regional Infrastructure Heatmap"),
         card_body(
-          chart_with_download(ns, "infra_heatmap"),
+          chart_with_download(ns, "infra_heatmap", height = "400px", title = "Regional Infrastructure Heatmap"),
           p(
             class = "text-muted small mt-2",
             "The heatmap compares infrastructure indicators across regions and metrics; darker cells flag hotspots needing attention."

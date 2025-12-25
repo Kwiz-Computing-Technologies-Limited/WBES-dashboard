@@ -11,8 +11,19 @@ box::use(
   stats[setNames],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
+
+# Helper function to create chart container with caption
+chart_with_caption <- function(ns, output_id, height = "400px", title = NULL) {
+  div(
+    class = "position-relative",
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -64,11 +75,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("size_profile_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing geographic distribution for this firm size category. Click markers for details."
-            )
+            map_with_caption(ns, "size_profile_map", height = "400px", title = "Firm Size Geographic Distribution")
           )
         )
       )
@@ -81,11 +88,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Business Environment Radar"),
           card_body(
-            plotlyOutput(ns("radar_chart"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "The radar highlights how firms in this size category score across infrastructure, finance, governance, capacity, exports, and gender equity relative to a 0–100 scale."
-            )
+            chart_with_caption(ns, "radar_chart", height = "400px", title = "Business Environment Radar")
           )
         )
       ),

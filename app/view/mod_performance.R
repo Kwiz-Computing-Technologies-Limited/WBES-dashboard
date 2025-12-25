@@ -14,10 +14,11 @@ box::use(
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -33,7 +34,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -75,11 +77,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("performance_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing the selected performance indicator by country. Darker colors indicate higher values."
-            )
+            map_with_caption(ns, "performance_map", height = "400px", title = "Business Performance Indicators by Country")
           )
         )
       )
@@ -110,7 +108,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-bar"), " Performance Indicators by Country"),
           card_body(
-            chart_with_download(ns, "bar_chart", height = "450px"),
+            chart_with_download(ns, "bar_chart", height = "450px", title = "Performance Indicators by Country"),
             p(
               class = "text-muted small mt-2",
               "Bars compare capacity utilization or export participation across countries to spotlight standout performers."
@@ -122,7 +120,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), " Regional Performance"),
           card_body(
-            chart_with_download(ns, "regional_chart", height = "450px"),
+            chart_with_download(ns, "regional_chart", height = "450px", title = "Regional Performance"),
             p(
               class = "text-muted small mt-2",
               "Regional averages reveal how performance differs across geographies, contextualizing country scores."
@@ -139,7 +137,7 @@ ui <- function(id) {
         card(
           card_header(icon("shipping-fast"), " Export Intensity Matrix"),
           card_body(
-            chart_with_download(ns, "export_matrix", height = "350px"),
+            chart_with_download(ns, "export_matrix", height = "350px", title = "Export Intensity Matrix"),
             p(
               class = "text-muted small mt-2",
               "The matrix contrasts export participation with firm characteristics, helping identify segments driving trade."
@@ -151,7 +149,7 @@ ui <- function(id) {
         card(
           card_header(icon("industry"), " Capacity vs. Obstacles"),
           card_body(
-            chart_with_download(ns, "capacity_obstacles", height = "350px"),
+            chart_with_download(ns, "capacity_obstacles", height = "350px", title = "Capacity vs. Obstacles"),
             p(
               class = "text-muted small mt-2",
               "Scatter points show how operational capacity aligns with reported obstacles, highlighting binding constraints."
@@ -168,7 +166,7 @@ ui <- function(id) {
         card(
           card_header(icon("trophy"), " Competitiveness Index"),
           card_body(
-            chart_with_download(ns, "competitiveness_chart", height = "350px"),
+            chart_with_download(ns, "competitiveness_chart", height = "350px", title = "Competitiveness Index"),
             p(
               class = "text-muted small mt-2",
               "This index blends performance indicators to benchmark overall competitiveness across markets."
@@ -180,7 +178,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-area"), " Performance by Firm Size"),
           card_body(
-            chart_with_download(ns, "firm_size_performance", height = "350px"),
+            chart_with_download(ns, "firm_size_performance", height = "350px", title = "Performance by Firm Size"),
             p(
               class = "text-muted small mt-2",
               "Box plots summarize performance dispersion by firm size to reveal variability."
@@ -197,7 +195,7 @@ ui <- function(id) {
         card(
           card_header(icon("balance-scale"), " Export vs. Infrastructure"),
           card_body(
-            chart_with_download(ns, "export_infra", height = "350px"),
+            chart_with_download(ns, "export_infra", height = "350px", title = "Export vs. Infrastructure"),
             p(
               class = "text-muted small mt-2",
               "Scatter compares export participation with infrastructure reliability to show how logistics affect trade."
@@ -209,7 +207,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), " Performance Segmentation"),
           card_body(
-            chart_with_download(ns, "performance_segments", height = "350px"),
+            chart_with_download(ns, "performance_segments", height = "350px", title = "Performance Segmentation"),
             p(
               class = "text-muted small mt-2",
               "The pie groups firms into performance tiers, clarifying how many operate at high, medium, or low capacity."

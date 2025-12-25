@@ -2,7 +2,7 @@
 # Access to Finance Analysis Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, p,
+  shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent,
         downloadButton, downloadHandler],
   bslib[card, card_header, card_body],
@@ -16,10 +16,11 @@ box::use(
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
-  app/logic/wbes_map[create_wbes_map, get_country_coordinates]
+  app/logic/wbes_map[create_wbes_map, get_country_coordinates],
+  app/logic/chart_utils[create_chart_caption, map_with_caption]
 )
 
-# Helper function to create chart container with download button
+# Helper function to create chart container with download button and caption
 chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
   div(
     class = "position-relative",
@@ -35,7 +36,8 @@ chart_with_download <- function(ns, output_id, height = "400px", title = NULL) {
         title = "Download chart"
       )
     ),
-    plotlyOutput(ns(output_id), height = height)
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
   )
 }
 
@@ -88,11 +90,7 @@ ui <- function(id) {
                 )
               )
             ),
-            leafletOutput(ns("finance_map"), height = "400px"),
-            p(
-              class = "text-muted small mt-2",
-              "Interactive map showing selected finance metric by country. Choose different indicators from the dropdown above."
-            )
+            map_with_caption(ns, "finance_map", height = "400px", title = "Finance Access Indicators by Country")
           )
         )
       )
@@ -125,7 +123,7 @@ ui <- function(id) {
       card(
         card_header(icon("credit-card"), "Financial Products Access by Region"),
         card_body(
-          chart_with_download(ns, "finance_by_region"),
+          chart_with_download(ns, "finance_by_region", height = "400px", title = "Financial Products Access by Region"),
           p(
             class = "text-muted small mt-2",
             "Regional bars show uptake of formal financial products, highlighting where bank outreach is strongest."
@@ -137,7 +135,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-pie"), "Reasons for Not Applying for Loans"),
         card_body(
-          chart_with_download(ns, "no_apply_reasons"),
+          chart_with_download(ns, "no_apply_reasons", height = "400px", title = "Reasons for Not Applying for Loans"),
           p(
             class = "text-muted small mt-2",
             "The pie breaks down why firms opt out of loan applications, distinguishing demand-side gaps from perceived rejection risk."
@@ -154,7 +152,7 @@ ui <- function(id) {
       card(
         card_header(icon("chart-bar"), "SME Finance Gap by Country"),
         card_body(
-          chart_with_download(ns, "sme_finance_gap"),
+          chart_with_download(ns, "sme_finance_gap", height = "400px", title = "SME Finance Gap by Country"),
           p(
             class = "text-muted small mt-2",
             "Bars estimate the financing gap faced by SMEs, spotlighting markets where credit shortfalls are most acute."
@@ -166,7 +164,7 @@ ui <- function(id) {
       card(
         card_header(icon("venus"), "Gender Gap in Finance Access"),
         card_body(
-          chart_with_download(ns, "gender_gap"),
+          chart_with_download(ns, "gender_gap", height = "400px", title = "Gender Gap in Finance Access"),
           p(
             class = "text-muted small mt-2",
             "Bars compare credit access for female- versus male-owned firms, illustrating gender disparities in financing."
@@ -183,7 +181,7 @@ ui <- function(id) {
       card(
         card_header(icon("landmark"), "Collateral Requirements"),
         card_body(
-          chart_with_download(ns, "collateral_chart", height = "350px"),
+          chart_with_download(ns, "collateral_chart", height = "350px", title = "Collateral Requirements by Country"),
           p(
             class = "text-muted small mt-2",
             "Box plots summarize collateral requested as a share of loan value, highlighting variability across segments."
@@ -195,7 +193,7 @@ ui <- function(id) {
       card(
         card_header(icon("clock"), "Loan Processing Time"),
         card_body(
-          chart_with_download(ns, "processing_time", height = "350px"),
+          chart_with_download(ns, "processing_time", height = "350px", title = "Loan Processing Time by Region"),
           p(
             class = "text-muted small mt-2",
             "Processing time distributions show how quickly banks deliver decisions, indicating procedural efficiency."

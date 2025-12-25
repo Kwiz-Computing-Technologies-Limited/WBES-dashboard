@@ -10,8 +10,18 @@ box::use(
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, accordion, accordion_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_annotations],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate, case_when, group_by, summarise, n, across, all_of, desc]
+  dplyr[filter, select, arrange, mutate, case_when, group_by, summarise, n, across, all_of, desc],
+  app/logic/chart_utils[create_chart_caption]
 )
+
+# Helper function to create chart with caption
+chart_with_caption <- function(ns, output_id, height = "350px", title = NULL) {
+  div(
+    if (!is.null(title)) h4(title, class = "text-primary-teal mb-2"),
+    plotlyOutput(ns(output_id), height = height),
+    create_chart_caption(output_id)
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -86,7 +96,7 @@ ui <- function(id) {
         card(
           card_header(icon("chart-pie"), "Data Completeness by Indicator"),
           card_body(
-            plotlyOutput(ns("completeness_chart"), height = "350px"),
+            chart_with_caption(ns, "completeness_chart", height = "350px", title = "Indicator Data Completeness"),
             p(
               class = "text-muted small mt-2",
               "Bars show the share of non-missing responses for each key indicator so you can judge reliability before analysis."
@@ -98,7 +108,7 @@ ui <- function(id) {
         card(
           card_header(icon("globe-africa"), "Completeness by Region"),
           card_body(
-            plotlyOutput(ns("regional_completeness"), height = "350px"),
+            chart_with_caption(ns, "regional_completeness", height = "350px", title = "Regional Data Completeness"),
             p(
               class = "text-muted small mt-2",
               "Regional completeness highlights where survey coverage is thinner, guiding cautious interpretation."
