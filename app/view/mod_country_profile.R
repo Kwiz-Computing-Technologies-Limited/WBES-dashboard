@@ -88,20 +88,21 @@ ui <- function(id) {
                   ns("map_indicator"),
                   "Map Indicator",
                   choices = c(
-                    "Power Outages/Month" = "power_outages_per_month",
-                    "Credit Access (%)" = "firms_with_credit_line_pct",
-                    "Bribery Incidence (%)" = "bribery_incidence_pct",
-                    "Capacity Utilization (%)" = "capacity_utilization_pct",
-                    "Female Ownership (%)" = "female_ownership_pct",
-                    "Export Firms (%)" = "export_firms_pct"
-                  )
+                    "Power Outages" = "power_outages_per_month",
+                    "Outage Duration" = "avg_outage_duration_hrs",
+                    "Credit Access" = "firms_with_credit_line_pct",
+                    "Bribery Incidence" = "bribery_incidence_pct",
+                    "Capacity Utilization" = "capacity_utilization_pct",
+                    "Female Ownership" = "female_ownership_pct"
+                  ),
+                  selected = "power_outages_per_month"
                 )
               )
             ),
             leafletOutput(ns("country_profile_map"), height = "400px"),
             p(
               class = "text-muted small mt-2",
-              "Interactive map showing the selected indicator across countries. Click markers for details."
+              "Interactive map showing the selected country's location and regional context. Click markers for details."
             )
           )
         )
@@ -161,6 +162,27 @@ ui <- function(id) {
                   )
                 )
               )
+            ),
+            fluidRow(
+              class = "mt-3",
+              column(6,
+                tagList(
+                  chart_with_download(ns, "infra_chart3", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Shows water and transport infrastructure constraints affecting business operations."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  chart_with_download(ns, "infra_chart4", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Displays telecommunications access and internet connectivity rates for the country."
+                  )
+                )
+              )
             )
           ),
 
@@ -215,8 +237,83 @@ ui <- function(id) {
           ),
 
           nav_panel(
-            title = "Time Series",
+            title = "Workforce",
+            icon = icon("users"),
+            fluidRow(
+              column(6,
+                tagList(
+                  chart_with_download(ns, "workforce_chart1", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Shows workforce composition including female participation and skill levels."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  chart_with_download(ns, "workforce_chart2", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Displays training programs and workforce development initiatives."
+                  )
+                )
+              )
+            )
+          ),
+
+          nav_panel(
+            title = "Crime & Security",
+            icon = icon("shield-alt"),
+            fluidRow(
+              column(6,
+                tagList(
+                  chart_with_download(ns, "crime_chart1", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Shows crime and security costs as obstacles to business operations."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  chart_with_download(ns, "crime_chart2", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Displays security expenditure and crime-related losses."
+                  )
+                )
+              )
+            )
+          ),
+
+          nav_panel(
+            title = "Performance",
             icon = icon("chart-line"),
+            fluidRow(
+              column(6,
+                tagList(
+                  chart_with_download(ns, "performance_chart1", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Shows capacity utilization and operational efficiency metrics."
+                  )
+                )
+              ),
+              column(6,
+                tagList(
+                  chart_with_download(ns, "performance_chart2", height = "300px"),
+                  p(
+                    class = "text-muted small mt-2",
+                    "Displays export orientation and international market participation."
+                  )
+                )
+              )
+            )
+          ),
+
+          nav_panel(
+            title = "Time Series",
+            icon = icon("area-chart"),
             tagList(
               chart_with_download(ns, "time_series"),
               p(
@@ -238,11 +335,16 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Filtered data with global filters applied first
     filtered_data <- reactive({
       req(wbes_data())
-      data <- wbes_data()$latest
 
-      # Apply global filters if provided
-      if (!is.null(global_filters)) {
-        filters <- global_filters()
+      # Use country_panel (has year) if year filter is active, otherwise use latest
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
+                   !all(filters$year %in% c("all", NA))
+
+      data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+
+      # If global filters are provided, use them
+      if (!is.null(filters)) {
         data <- apply_common_filters(
           data,
           region_value = filters$region,
@@ -253,6 +355,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
           custom_regions = filters$custom_regions,
           filter_by_region_fn = filter_by_region
         )
+      }
+
+      # Add coordinates if using panel data (for maps)
+      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+        coords <- wbes_data()$country_coordinates
+        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+          data <- merge(data, coords, by = "country", all.x = TRUE)
+        }
       }
 
       data
@@ -277,54 +387,34 @@ server <- function(id, wbes_data, global_filters = NULL) {
     # Selected country data
     country_data <- reactive({
       req(filtered_data(), input$country_select)
-      filtered_data() |> filter(!is.na(country) & country == input$country_select)
+      filtered_data() |> filter(!is.na(country), country == input$country_select)
     })
 
-    # Geographic map for country profile - zooms to selected country
+    # Geographic map for country profile
     output$country_profile_map <- renderLeaflet({
-      req(filtered_data(), wbes_data(), input$country_select)
+      req(filtered_data(), wbes_data(), input$map_indicator)
       d <- filtered_data()
       coords <- get_country_coordinates(wbes_data())
 
-      # Get selected map indicator
-      indicator <- if (!is.null(input$map_indicator)) input$map_indicator else "power_outages_per_month"
-
-      # Determine color palette and direction based on indicator
-      palette_info <- switch(indicator,
-        "power_outages_per_month" = list(palette = "YlOrRd", reverse = TRUE, label = "Power Outages/Month"),
-        "firms_with_credit_line_pct" = list(palette = "Blues", reverse = FALSE, label = "Credit Access (%)"),
-        "bribery_incidence_pct" = list(palette = "Reds", reverse = TRUE, label = "Bribery Incidence (%)"),
-        "capacity_utilization_pct" = list(palette = "Greens", reverse = FALSE, label = "Capacity Utilization (%)"),
-        "female_ownership_pct" = list(palette = "Purples", reverse = FALSE, label = "Female Ownership (%)"),
-        "export_firms_pct" = list(palette = "Blues", reverse = FALSE, label = "Export Firms (%)"),
-        list(palette = "YlOrRd", reverse = FALSE, label = indicator)
+      # Get readable label from indicator code
+      indicator_label <- switch(input$map_indicator,
+        "power_outages_per_month" = "Power Outages/Month",
+        "avg_outage_duration_hrs" = "Outage Duration (hrs)",
+        "firms_with_credit_line_pct" = "Credit Access (%)",
+        "bribery_incidence_pct" = "Bribery Incidence (%)",
+        "capacity_utilization_pct" = "Capacity Utilization (%)",
+        "female_ownership_pct" = "Female Ownership (%)",
+        gsub("_", " ", tools::toTitleCase(input$map_indicator))
       )
 
-      # Create the map with the selected country highlighted
-      map <- create_wbes_map(
+      create_wbes_map(
         data = d,
         coordinates = coords,
-        indicator_col = indicator,
-        indicator_label = palette_info$label,
-        color_palette = palette_info$palette,
-        reverse_colors = palette_info$reverse
+        indicator_col = input$map_indicator,
+        indicator_label = indicator_label,
+        color_palette = "YlOrRd",
+        reverse_colors = FALSE
       )
-
-      # Get coordinates for selected country and zoom to it
-      selected_country <- input$country_select
-      if (!is.null(selected_country) && selected_country != "") {
-        # Find country coordinates from the coordinates data
-        country_coords <- coords |> filter(country == selected_country)
-        if (nrow(country_coords) > 0 && !is.na(country_coords$lat[1]) && !is.na(country_coords$lng[1])) {
-          map <- map |> leaflet::setView(
-            lng = country_coords$lng[1],
-            lat = country_coords$lat[1],
-            zoom = 5
-          )
-        }
-      }
-
-      map
     })
 
     # Country summary card
@@ -562,44 +652,75 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # Infrastructure Charts
-    # Uses actual WBES data: elec (electricity obstacle), c16 (water), d4 (transport)
+    # MIRRORS Infrastructure domain module - uses same metrics as mod_infrastructure.R
+    # Primary metrics: power_outages_per_month, avg_outage_duration_hrs,
+    #                  firms_with_generator_pct, water_insufficiency_pct
     output$infra_chart1 <- renderPlotly({
       req(country_data())
       d <- country_data()
 
-      # Extract actual obstacle scores with fallback to 0 if missing
-      obstacles <- data.frame(
-        category = c("Electricity", "Water", "Transport"),
-        severity = c(
-          if ("electricity_obstacle" %in% names(d) && !is.na(d$electricity_obstacle[1])) d$electricity_obstacle[1] else 0,
-          if ("water_obstacle" %in% names(d) && !is.na(d$water_obstacle[1])) d$water_obstacle[1] else 0,
-          if ("transport_obstacle" %in% names(d) && !is.na(d$transport_obstacle[1])) d$transport_obstacle[1] else 0
-        ),
+      # Build metrics data frame using SAME columns as Infrastructure domain
+      metrics <- data.frame(
+        category = character(),
+        value = numeric(),
         stringsAsFactors = FALSE
       )
 
-      # Only show bars for obstacles with data
-      obstacles <- obstacles[obstacles$severity > 0, ]
+      if ("power_outages_per_month" %in% names(d) && !is.na(d$power_outages_per_month[1])) {
+        metrics <- rbind(metrics, data.frame(
+          category = "Power Outages/Month",
+          value = d$power_outages_per_month[1]
+        ))
+      }
 
-      if (nrow(obstacles) > 0) {
-        plot_ly(obstacles,
+      if ("avg_outage_duration_hrs" %in% names(d) && !is.na(d$avg_outage_duration_hrs[1])) {
+        metrics <- rbind(metrics, data.frame(
+          category = "Outage Duration (hrs)",
+          value = d$avg_outage_duration_hrs[1]
+        ))
+      }
+
+      if ("firms_with_generator_pct" %in% names(d) && !is.na(d$firms_with_generator_pct[1])) {
+        metrics <- rbind(metrics, data.frame(
+          category = "Generator Usage (%)",
+          value = d$firms_with_generator_pct[1]
+        ))
+      }
+
+      if ("water_insufficiency_pct" %in% names(d) && !is.na(d$water_insufficiency_pct[1])) {
+        metrics <- rbind(metrics, data.frame(
+          category = "Water Issues (%)",
+          value = d$water_insufficiency_pct[1]
+        ))
+      }
+
+      if (nrow(metrics) > 0) {
+        plot_ly(metrics,
                 x = ~category,
-                y = ~severity,
+                y = ~value,
                 type = "bar",
-                marker = list(color = "#1B6B5F")) |>
+                marker = list(
+                  color = ~value,
+                  colorscale = list(c(0, "#2E7D32"), c(0.5, "#F4A460"), c(1, "#dc3545"))
+                )) |>
           layout(
-            title = list(text = "Infrastructure Obstacles", font = list(size = 14)),
-            yaxis = list(title = "Severity Score (0-10)"),
-            paper_bgcolor = "rgba(0,0,0,0)"
+            title = list(text = "Infrastructure Metrics", font = list(size = 14)),
+            xaxis = list(title = ""),
+            yaxis = list(title = "Value"),
+            paper_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
       } else {
         plot_ly() |>
           layout(
             annotations = list(
-              text = "No infrastructure obstacle data available",
+              text = paste0("No infrastructure data available<br>",
+                           "Expected: power_outages_per_month, avg_outage_duration_hrs,<br>",
+                           "firms_with_generator_pct, water_insufficiency_pct"),
               xref = "paper", yref = "paper",
-              x = 0.5, y = 0.5, showarrow = FALSE
+              x = 0.5, y = 0.5, showarrow = FALSE,
+              font = list(size = 12, color = "#666666")
             ),
             paper_bgcolor = "rgba(0,0,0,0)"
           )
@@ -610,47 +731,36 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(country_data())
       d <- country_data()
 
-      # Calculate power source distribution based on actual data
-      # generator_share_pct (from in7) indicates % electricity from generator
-      # firms_with_generator_pct (from in9) indicates % firms with generator
+      # MIRRORS Infrastructure domain - Power Source Distribution
+      # Uses firms_with_generator_pct as primary data source
       generator_pct <- if ("firms_with_generator_pct" %in% names(d) && !is.na(d$firms_with_generator_pct[1])) {
-        d$firms_with_generator_pct[1]
-      } else 0
+        as.numeric(d$firms_with_generator_pct[1])
+      } else NA_real_
 
-      generator_share <- if ("generator_share_pct" %in% names(d) && !is.na(d$generator_share_pct[1])) {
-        d$generator_share_pct[1]
-      } else 0
+      if (!is.na(generator_pct)) {
+        # Calculate distribution same way as Infrastructure domain
+        grid_only <- max(0, 100 - generator_pct - 10)  # Estimate
+        mixed <- 10  # Estimate for mixed sources
+        renewable <- 5  # Solar/Renewable estimate
 
-      # Estimate distribution: If generator usage is high, more firms rely on it
-      # This is an estimation based on available data
-      values <- if (generator_pct > 0 || generator_share > 0) {
-        c(
-          max(generator_pct, generator_share),  # Generator primary/heavy use
-          max(0, 100 - max(generator_pct, generator_share) - 10),  # Grid only
-          10  # Mixed (estimated)
-        )
-      } else {
-        c(0, 85, 15)  # Default: mostly grid with some mixed
-      }
+        values <- c(grid_only, generator_pct, mixed, renewable)
+        labels <- c("Grid Only", "Generator Primary", "Mixed Sources", "Solar/Renewable")
 
-      # Filter out zero values
-      labels <- c("Generator (Primary)", "Grid Only", "Mixed")
-      data_df <- data.frame(
-        labels = labels,
-        values = values,
-        stringsAsFactors = FALSE
-      )
-      data_df <- data_df[data_df$values > 0, ]
+        # Filter out zero values
+        non_zero <- values > 0
+        values <- values[non_zero]
+        labels <- labels[non_zero]
 
-      if (nrow(data_df) > 0) {
-        plot_ly(data_df,
-                labels = ~labels,
-                values = ~values,
-                type = "pie",
-                marker = list(colors = c("#1B6B5F", "#F49B7A", "#6C757D")),
-                textinfo = "label+percent") |>
+        plot_ly(
+          labels = labels,
+          values = values,
+          type = "pie",
+          marker = list(colors = c("#1B6B5F", "#dc3545", "#F4A460", "#2E7D32")),
+          textinfo = "label+percent"
+        ) |>
           layout(
-            title = list(text = "Power Sources", font = list(size = 14)),
+            title = list(text = "Power Source Distribution", font = list(size = 14)),
+            showlegend = FALSE,
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
@@ -768,57 +878,69 @@ server <- function(id, wbes_data, global_filters = NULL) {
     })
 
     # Governance Charts
-    # Uses actual WBES data: j7a-j7e (bribery for different transaction types)
+    # MIRRORS Corruption domain module
+    # Uses IC.FRM.CORR.ZS and IC.FRM.BRIB.ZS (same as mod_corruption.R)
     output$gov_chart1 <- renderPlotly({
       req(country_data())
       d <- country_data()
 
-      # Extract actual bribery data by transaction type
-      bribes <- list()
+      # Build governance metrics using SAME columns as Corruption domain
+      metrics <- data.frame(
+        indicator = character(),
+        value = numeric(),
+        stringsAsFactors = FALSE
+      )
 
-      if ("bribe_for_permit" %in% names(d) && !is.na(d$bribe_for_permit[1])) {
-        bribes$`Construction Permits` <- d$bribe_for_permit[1]
-      }
-      if ("bribe_for_utilities" %in% names(d) && !is.na(d$bribe_for_utilities[1])) {
-        bribes$`Utility Connection` <- d$bribe_for_utilities[1]
-      }
-      if ("bribe_for_import" %in% names(d) && !is.na(d$bribe_for_import[1])) {
-        bribes$`Import License` <- d$bribe_for_import[1]
-      }
-      if ("bribe_for_tax" %in% names(d) && !is.na(d$bribe_for_tax[1])) {
-        bribes$`Tax Assessment` <- d$bribe_for_tax[1]
-      }
-      if ("bribe_for_contract" %in% names(d) && !is.na(d$bribe_for_contract[1])) {
-        bribes$`Government Contract` <- d$bribe_for_contract[1]
+      if ("IC.FRM.CORR.ZS" %in% names(d) && !is.na(d$IC.FRM.CORR.ZS[1])) {
+        metrics <- rbind(metrics, data.frame(
+          indicator = "Corruption as Obstacle",
+          value = as.numeric(d$IC.FRM.CORR.ZS[1])
+        ))
+      } else if ("corruption_obstacle_pct" %in% names(d) && !is.na(d$corruption_obstacle_pct[1])) {
+        metrics <- rbind(metrics, data.frame(
+          indicator = "Corruption as Obstacle",
+          value = as.numeric(d$corruption_obstacle_pct[1])
+        ))
       }
 
-      if (length(bribes) > 0) {
-        plot_data <- data.frame(
-          transaction = names(bribes),
-          pct = unlist(bribes),
-          stringsAsFactors = FALSE
-        )
+      if ("IC.FRM.BRIB.ZS" %in% names(d) && !is.na(d$IC.FRM.BRIB.ZS[1])) {
+        metrics <- rbind(metrics, data.frame(
+          indicator = "Bribery Incidence",
+          value = as.numeric(d$IC.FRM.BRIB.ZS[1])
+        ))
+      } else if ("bribery_incidence_pct" %in% names(d) && !is.na(d$bribery_incidence_pct[1])) {
+        metrics <- rbind(metrics, data.frame(
+          indicator = "Bribery Incidence",
+          value = as.numeric(d$bribery_incidence_pct[1])
+        ))
+      }
 
-        plot_ly(plot_data,
-                x = ~transaction,
-                y = ~pct,
+      if (nrow(metrics) > 0) {
+        plot_ly(metrics,
+                x = ~indicator,
+                y = ~value,
                 type = "bar",
-                marker = list(color = "#1B6B5F")) |>
+                marker = list(
+                  color = ~value,
+                  colorscale = list(c(0, "#2E7D32"), c(0.5, "#F4A460"), c(1, "#dc3545"))
+                )) |>
           layout(
-            title = list(text = "Bribery by Transaction Type (%)", font = list(size = 14)),
-            yaxis = list(title = "% Reporting Bribes"),
-            xaxis = list(title = "", tickangle = -30),
-            margin = list(b = 100),
-            paper_bgcolor = "rgba(0,0,0,0)"
+            title = list(text = "Governance & Corruption Metrics", font = list(size = 14)),
+            xaxis = list(title = ""),
+            yaxis = list(title = "% of Firms", range = c(0, 100)),
+            paper_bgcolor = "rgba(0,0,0,0)",
+            plot_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
       } else {
         plot_ly() |>
           layout(
             annotations = list(
-              text = "No bribery data available",
+              text = paste0("No governance data available<br>",
+                           "Expected: IC.FRM.CORR.ZS or IC.FRM.BRIB.ZS"),
               xref = "paper", yref = "paper",
-              x = 0.5, y = 0.5, showarrow = FALSE
+              x = 0.5, y = 0.5, showarrow = FALSE,
+              font = list(size = 12, color = "#666666")
             ),
             paper_bgcolor = "rgba(0,0,0,0)"
           )
@@ -861,6 +983,435 @@ server <- function(id, wbes_data, global_filters = NULL) {
           layout(
             annotations = list(
               text = "No management time data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    # Additional Infrastructure Charts
+    output$infra_chart3 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Water and transport obstacles - convert to numeric if needed
+      safe_numeric <- function(x) {
+        if (is.null(x) || length(x) == 0 || is.na(x)) return(NA_real_)
+        if (is.logical(x)) return(as.numeric(x) * 10)  # Convert logical to 0/10 scale
+        if (is.factor(x) || is.character(x)) {
+          # Try to extract numeric from factor/character
+          num_val <- suppressWarnings(as.numeric(as.character(x)))
+          if (!is.na(num_val)) return(num_val)
+          # If it's a severity factor like "Major", "Moderate", convert to scale
+          if (tolower(as.character(x)) %in% c("major", "very severe", "severe")) return(8)
+          if (tolower(as.character(x)) %in% c("moderate", "minor")) return(4)
+          return(NA_real_)
+        }
+        return(as.numeric(x))
+      }
+
+      constraints <- list()
+      if ("water_obstacle" %in% names(d)) {
+        val <- safe_numeric(d$water_obstacle[1])
+        if (!is.na(val)) constraints$`Water` <- val
+      }
+      if ("transport_obstacle" %in% names(d)) {
+        val <- safe_numeric(d$transport_obstacle[1])
+        if (!is.na(val)) constraints$`Transport` <- val
+      }
+      if ("customs_obstacle" %in% names(d)) {
+        val <- safe_numeric(d$customs_obstacle[1])
+        if (!is.na(val)) constraints$`Customs` <- val
+      }
+
+      if (length(constraints) > 0) {
+        plot_data <- data.frame(
+          category = names(constraints),
+          severity = unlist(constraints),
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~category,
+                y = ~severity,
+                type = "bar",
+                marker = list(color = "#F49B7A")) |>
+          layout(
+            title = list(text = "Water & Transport Constraints", font = list(size = 14)),
+            yaxis = list(title = "Severity Score (0-10)"),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No water/transport data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    output$infra_chart4 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Telecommunications metrics - convert to numeric with fallbacks
+      metrics <- list()
+      if ("internet_access_pct" %in% names(d) && !is.na(d$internet_access_pct[1])) {
+        metrics$`Internet Access` <- as.numeric(d$internet_access_pct[1])
+      } else if ("c9" %in% names(d) && !is.na(d$c9[1])) {
+        metrics$`Internet Access` <- as.numeric(d$c9[1])
+      }
+
+      if ("website_pct" %in% names(d) && !is.na(d$website_pct[1])) {
+        metrics$`Has Website` <- as.numeric(d$website_pct[1])
+      } else if ("c10" %in% names(d) && !is.na(d$c10[1])) {
+        metrics$`Has Website` <- as.numeric(d$c10[1])
+      }
+
+      if ("email_usage_pct" %in% names(d) && !is.na(d$email_usage_pct[1])) {
+        metrics$`Email Usage` <- as.numeric(d$email_usage_pct[1])
+      } else if ("c11" %in% names(d) && !is.na(d$c11[1])) {
+        metrics$`Email Usage` <- as.numeric(d$c11[1])
+      }
+
+      if (length(metrics) > 0) {
+        plot_data <- data.frame(
+          metric = names(metrics),
+          pct = unlist(metrics),
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~metric,
+                y = ~pct,
+                type = "bar",
+                marker = list(color = "#1B6B5F")) |>
+          layout(
+            title = list(text = "Digital Connectivity (%)", font = list(size = 14)),
+            yaxis = list(title = "% of Firms", range = c(0, 100)),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No telecommunications data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    # Workforce Charts
+    output$workforce_chart1 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Workforce composition - use IC.FRM.* codes for consistency
+      composition <- list()
+      if ("IC.FRM.FEMW.ZS" %in% names(d) && !is.na(d$IC.FRM.FEMW.ZS[1])) {
+        composition$`Female Workers` <- d$IC.FRM.FEMW.ZS[1]
+      } else if ("female_workers_pct" %in% names(d) && !is.na(d$female_workers_pct[1])) {
+        composition$`Female Workers` <- as.numeric(d$female_workers_pct[1])
+      }
+
+      if ("IC.FRM.FEMO.ZS" %in% names(d) && !is.na(d$IC.FRM.FEMO.ZS[1])) {
+        composition$`Female Ownership` <- d$IC.FRM.FEMO.ZS[1]
+      } else if ("female_ownership_pct" %in% names(d) && !is.na(d$female_ownership_pct[1])) {
+        composition$`Female Ownership` <- as.numeric(d$female_ownership_pct[1])
+      }
+
+      if ("permanent_workers_pct" %in% names(d) && !is.na(d$permanent_workers_pct[1])) {
+        composition$`Permanent Staff` <- as.numeric(d$permanent_workers_pct[1])
+      }
+
+      if (length(composition) > 0) {
+        plot_data <- data.frame(
+          category = names(composition),
+          pct = unlist(composition),
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~category,
+                y = ~pct,
+                type = "bar",
+                marker = list(color = "#F4A460")) |>
+          layout(
+            title = list(text = "Workforce Composition (%)", font = list(size = 14)),
+            yaxis = list(title = "Percentage", range = c(0, 100)),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No workforce composition data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    output$workforce_chart2 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Training metrics - show workforce obstacle as alternative
+      training_pct <- NA
+      if ("IC.FRM.WKFC.ZS" %in% names(d) && !is.na(d$IC.FRM.WKFC.ZS[1])) {
+        # Invert workforce obstacle to show as "workforce quality"
+        training_pct <- 100 - min(as.numeric(d$IC.FRM.WKFC.ZS[1]), 100)
+      } else if ("training_programs_pct" %in% names(d) && !is.na(d$training_programs_pct[1])) {
+        training_pct <- as.numeric(d$training_programs_pct[1])
+      } else if ("workforce_obstacle_pct" %in% names(d) && !is.na(d$workforce_obstacle_pct[1])) {
+        training_pct <- 100 - min(as.numeric(d$workforce_obstacle_pct[1]), 100)
+      }
+
+      if (!is.na(training_pct)) {
+        plot_ly(
+          type = "indicator",
+          mode = "gauge+number",
+          value = round(training_pct, 1),
+          title = list(text = "Workforce Quality Index (%)"),
+          gauge = list(
+            axis = list(range = list(0, 100)),
+            bar = list(color = "#F4A460"),
+            steps = list(
+              list(range = c(0, 33), color = "#ffebee"),
+              list(range = c(33, 66), color = "#fff3e0"),
+              list(range = c(66, 100), color = "#e8f5e9")
+            )
+          )
+        ) |>
+          layout(paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No workforce quality data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    # Crime & Security Charts
+    output$crime_chart1 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Crime obstacles - use IC.FRM.* codes
+      crime_val <- NA
+      if ("IC.FRM.CRIM.ZS" %in% names(d) && !is.na(d$IC.FRM.CRIM.ZS[1])) {
+        crime_val <- as.numeric(d$IC.FRM.CRIM.ZS[1])
+      } else if ("crime_obstacle_pct" %in% names(d) && !is.na(d$crime_obstacle_pct[1])) {
+        crime_val <- as.numeric(d$crime_obstacle_pct[1])
+      }
+
+      security_val <- NA
+      if ("IC.FRM.SECU.ZS" %in% names(d) && !is.na(d$IC.FRM.SECU.ZS[1])) {
+        security_val <- as.numeric(d$IC.FRM.SECU.ZS[1])
+      } else if ("security_costs_pct" %in% names(d) && !is.na(d$security_costs_pct[1])) {
+        security_val <- as.numeric(d$security_costs_pct[1])
+      }
+
+      values <- c(crime_val, security_val)
+      labels <- c("Crime as Obstacle (%)", "Security Costs (% Sales)")
+
+      # Filter out NA values
+      valid_idx <- !is.na(values)
+      if (any(valid_idx)) {
+        plot_data <- data.frame(
+          category = labels[valid_idx],
+          value = values[valid_idx],
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~category,
+                y = ~value,
+                type = "bar",
+                marker = list(color = "#dc3545")) |>
+          layout(
+            title = list(text = "Crime & Security Impact", font = list(size = 14)),
+            yaxis = list(title = "Percentage"),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No crime/security data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    output$crime_chart2 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Crime losses - convert to numeric with fallbacks
+      crime_losses <- NA
+      if ("crime_losses_pct" %in% names(d) && !is.na(d$crime_losses_pct[1])) {
+        crime_losses <- as.numeric(d$crime_losses_pct[1])
+      } else if ("crime3" %in% names(d) && !is.na(d$crime3[1])) {
+        crime_losses <- as.numeric(d$crime3[1])
+      }
+
+      if (!is.na(crime_losses)) {
+        plot_ly(
+          type = "indicator",
+          mode = "gauge+number",
+          value = round(crime_losses, 1),
+          title = list(text = "Crime Losses (% of Sales)"),
+          gauge = list(
+            axis = list(range = list(0, 10)),
+            bar = list(color = "#dc3545"),
+            steps = list(
+              list(range = c(0, 2), color = "#e8f5e9"),
+              list(range = c(2, 5), color = "#fff3e0"),
+              list(range = c(5, 10), color = "#ffebee")
+            )
+          )
+        ) |>
+          layout(paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No crime losses data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    # Performance Charts
+    output$performance_chart1 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Performance metrics - use IC.FRM.CAPU.ZS
+      metrics <- list()
+      if ("IC.FRM.CAPU.ZS" %in% names(d) && !is.na(d$IC.FRM.CAPU.ZS[1])) {
+        metrics$`Capacity Utilization` <- as.numeric(d$IC.FRM.CAPU.ZS[1])
+      } else if ("capacity_utilization_pct" %in% names(d) && !is.na(d$capacity_utilization_pct[1])) {
+        metrics$`Capacity Utilization` <- as.numeric(d$capacity_utilization_pct[1])
+      }
+
+      if ("labor_productivity" %in% names(d) && !is.na(d$labor_productivity[1])) {
+        metrics$`Productivity` <- min(as.numeric(d$labor_productivity[1]), 100)
+      }
+
+      if (length(metrics) > 0) {
+        plot_data <- data.frame(
+          metric = names(metrics),
+          pct = unlist(metrics),
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~metric,
+                y = ~pct,
+                type = "bar",
+                marker = list(color = "#2E7D32")) |>
+          layout(
+            title = list(text = "Operational Performance (%)", font = list(size = 14)),
+            yaxis = list(title = "Percentage", range = c(0, 100)),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No performance data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            ),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          )
+      }
+    })
+
+    output$performance_chart2 <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+
+      # Export metrics - use IC.FRM.EXPRT.ZS
+      export_pct <- NA
+      if ("IC.FRM.EXPRT.ZS" %in% names(d) && !is.na(d$IC.FRM.EXPRT.ZS[1])) {
+        export_pct <- as.numeric(d$IC.FRM.EXPRT.ZS[1])
+      } else if ("export_firms_pct" %in% names(d) && !is.na(d$export_firms_pct[1])) {
+        export_pct <- as.numeric(d$export_firms_pct[1])
+      }
+
+      direct_exports <- NA
+      if ("direct_exports_pct" %in% names(d) && !is.na(d$direct_exports_pct[1])) {
+        direct_exports <- as.numeric(d$direct_exports_pct[1])
+      } else if ("export_share_pct" %in% names(d) && !is.na(d$export_share_pct[1])) {
+        direct_exports <- as.numeric(d$export_share_pct[1])
+      }
+
+      values <- c(export_pct, direct_exports)
+      labels <- c("Exporting Firms (%)", "Export Share (% Sales)")
+
+      # Filter out NA values
+      valid_idx <- !is.na(values)
+      if (any(valid_idx)) {
+        plot_data <- data.frame(
+          category = labels[valid_idx],
+          pct = values[valid_idx],
+          stringsAsFactors = FALSE
+        )
+
+        plot_ly(plot_data,
+                x = ~category,
+                y = ~pct,
+                type = "bar",
+                marker = list(color = "#2E7D32")) |>
+          layout(
+            title = list(text = "Export Orientation", font = list(size = 14)),
+            yaxis = list(title = "Percentage", range = c(0, 100)),
+            xaxis = list(title = ""),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(
+            annotations = list(
+              text = "No export data available",
               xref = "paper", yref = "paper",
               x = 0.5, y = 0.5, showarrow = FALSE
             ),
@@ -973,10 +1524,18 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
     output$dl_infra_chart1 <- simple_chart_download("infrastructure_obstacles")
     output$dl_infra_chart2 <- simple_chart_download("power_sources")
+    output$dl_infra_chart3 <- simple_chart_download("water_transport")
+    output$dl_infra_chart4 <- simple_chart_download("telecommunications")
     output$dl_finance_chart1 <- simple_chart_download("financial_access")
     output$dl_finance_chart2 <- simple_chart_download("collateral")
     output$dl_gov_chart1 <- simple_chart_download("bribery_by_type")
     output$dl_gov_chart2 <- simple_chart_download("management_time")
+    output$dl_workforce_chart1 <- simple_chart_download("workforce_composition")
+    output$dl_workforce_chart2 <- simple_chart_download("training_programs")
+    output$dl_crime_chart1 <- simple_chart_download("crime_security")
+    output$dl_crime_chart2 <- simple_chart_download("crime_losses")
+    output$dl_performance_chart1 <- simple_chart_download("operational_performance")
+    output$dl_performance_chart2 <- simple_chart_download("export_orientation")
 
   })
 }

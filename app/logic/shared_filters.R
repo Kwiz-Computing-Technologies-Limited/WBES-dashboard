@@ -4,7 +4,7 @@
 
 box::use(
   shiny[reactive, reactiveVal, observeEvent],
-  dplyr[filter, select, contains],
+  dplyr[filter, select, contains, group_by, ungroup],
   stats[na.omit]
 )
 
@@ -123,11 +123,26 @@ apply_common_filters <- function(data,
 
   # Apply year filter
   if (should_filter(year_value) && "year" %in% names(data)) {
-    # Convert to numeric for comparison
-    year_nums <- as.numeric(year_value)
-    year_nums <- year_nums[!is.na(year_nums)]
-    if (length(year_nums) > 0) {
-      data <- data |> filter(!is.na(year) & year %in% year_nums)
+    # Check if "latest" is selected (and ignore other values like "all")
+    if ("latest" %in% year_value) {
+      # Get latest year per country
+      if ("country" %in% names(data)) {
+        data <- data |>
+          group_by(country) |>
+          filter(year == max(year, na.rm = TRUE)) |>
+          ungroup()
+      }
+    } else {
+      # Filter out "all" from year_value before converting
+      year_value_clean <- year_value[year_value != "all"]
+
+      # Convert to numeric for comparison
+      year_nums <- as.numeric(year_value_clean)
+      year_nums <- year_nums[!is.na(year_nums)]
+
+      if (length(year_nums) > 0) {
+        data <- data |> filter(!is.na(year) & year %in% year_nums)
+      }
     }
   }
 
