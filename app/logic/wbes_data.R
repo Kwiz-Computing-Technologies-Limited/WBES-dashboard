@@ -176,8 +176,20 @@ load_from_zip <- function(zip_file, data_path) {
       gc()
 
       # Process the raw data
-      result <- process_microdata(raw_data)
-      return(result)
+      processed <- process_microdata(raw_data)
+
+      # Enrich with World Bank income classifications
+      log_info("Enriching data with World Bank income classifications...")
+      processed <- tryCatch({
+        enrich_wbes_with_income(processed)
+      }, error = function(e) {
+        log_warn(paste("Failed to enrich with WB income data:", e$message))
+        log_warn("Continuing with original income column (may contain NAs)")
+        processed
+      })
+      gc()
+
+      return(processed)
     }
 
     # FALLBACK: Look for .dta files (requires temp extraction due to haven::read_dta limitation)
@@ -340,6 +352,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
+      income = first_non_na(income),
       firm_size = first_non_na(firm_size),
       sector = first_non_na(sector),
       sample_size = n(),
@@ -354,6 +367,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
+      income = first_non_na(income),
       firm_size = first_non_na(firm_size),
       sample_size = n(),
       .groups = "drop"
@@ -367,6 +381,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
+      income = first_non_na(income),
       firm_size = first_non_na(firm_size),
       sample_size = n(),
       .groups = "drop"
@@ -380,6 +395,7 @@ load_microdata <- function(dta_files) {
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
       region = first_non_na(region),
+      income = first_non_na(income),
       sector = first_non_na(sector),
       sample_size = n(),
       .groups = "drop"
@@ -392,6 +408,7 @@ load_microdata <- function(dta_files) {
     group_by(country, country_code, region) |>
     summarise(
       across(all_of(available_metric_cols), ~mean(.x, na.rm = TRUE), .names = "{.col}"),
+      income = first_non_na(income),
       firm_size = first_non_na(firm_size),
       sector = first_non_na(sector),
       sample_size = n(),

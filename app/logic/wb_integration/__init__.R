@@ -4,6 +4,7 @@
 box::use(
   app/logic/wb_integration/wb_api[
     get_wb_income_classifications,
+    get_wb_income_classifications_historical,
     map_wbes_countries_to_iso3,
     enrich_wbes_with_income,
     fetch_wb_indicator,
@@ -21,6 +22,9 @@ box::use(
 
 #' @export
 get_wb_income_classifications <- get_wb_income_classifications
+
+#' @export
+get_wb_income_classifications_historical <- get_wb_income_classifications_historical
 
 #' @export
 map_wbes_countries_to_iso3 <- map_wbes_countries_to_iso3
