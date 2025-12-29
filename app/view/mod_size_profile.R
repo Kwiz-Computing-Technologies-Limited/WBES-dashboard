@@ -331,6 +331,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }

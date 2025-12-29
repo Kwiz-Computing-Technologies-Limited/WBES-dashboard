@@ -8,7 +8,18 @@ box::use(
     map_wbes_countries_to_iso3,
     enrich_wbes_with_income,
     fetch_wb_indicator,
-    search_wb_indicators
+    search_wb_indicators,
+    # Databank functions
+    get_wb_databank_indicators,
+    fetch_wb_indicators_batch,
+    get_wb_country_context,
+    get_wb_databank_for_wbes,
+    format_wb_indicator,
+    get_wb_indicator_label,
+    # Prefetch functions for startup caching
+    prefetch_wb_data_for_countries,
+    get_wb_context_from_cache,
+    extract_cached_value
   ],
   app/logic/wb_integration/wb_cache[
     is_wb_cache_fresh,
@@ -55,3 +66,32 @@ clear_wb_cache <- clear_wb_cache
 
 #' @export
 get_wb_cache_status <- get_wb_cache_status
+
+# New Databank exports
+#' @export
+get_wb_databank_indicators <- get_wb_databank_indicators
+
+#' @export
+fetch_wb_indicators_batch <- fetch_wb_indicators_batch
+
+#' @export
+get_wb_country_context <- get_wb_country_context
+
+#' @export
+get_wb_databank_for_wbes <- get_wb_databank_for_wbes
+
+#' @export
+format_wb_indicator <- format_wb_indicator
+
+#' @export
+get_wb_indicator_label <- get_wb_indicator_label
+
+# Prefetch functions for startup caching
+#' @export
+prefetch_wb_data_for_countries <- prefetch_wb_data_for_countries
+
+#' @export
+get_wb_context_from_cache <- get_wb_context_from_cache
+
+#' @export
+extract_cached_value <- extract_cached_value

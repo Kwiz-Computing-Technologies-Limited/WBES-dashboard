@@ -4,18 +4,26 @@
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput,
-        downloadButton, downloadHandler],
-  bslib[card, card_header, card_body, navset_card_tab, nav_panel],
+        downloadButton, downloadHandler, reactiveVal],
+  bslib[card, card_header, card_body, navset_card_tab, nav_panel, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
-  dplyr[filter, select, arrange, mutate],
+  dplyr[filter, select, arrange, mutate, left_join, group_by, summarize, ungroup, slice_max],
   leaflet[leafletOutput, renderLeaflet],
-  stats[setNames],
+  stats[setNames, reorder],
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
-  app/logic/chart_utils[create_chart_caption, map_with_caption]
+  app/logic/chart_utils[create_chart_caption, map_with_caption],
+  app/logic/wb_integration[
+    get_wb_country_context,
+    get_wb_context_from_cache,
+    map_wbes_countries_to_iso3,
+    format_wb_indicator,
+    get_wb_indicator_label,
+    get_wb_databank_indicators
+  ]
 )
 
 # Helper function to create chart container with download button and caption
@@ -319,6 +327,79 @@ ui <- function(id) {
                 "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."
               )
             )
+          ),
+
+          # NEW: Economic Context Tab - World Bank Databank Integration
+          nav_panel(
+            title = "Economic Context",
+            icon = icon("globe"),
+            tagList(
+              fluidRow(
+                column(12,
+                  tags$div(
+                    class = "alert alert-info mb-3",
+                    icon("info-circle"),
+                    " Macro-level indicators from the World Bank Databank provide context for interpreting firm-level WBES data."
+                  )
+                )
+              ),
+              # Macro Economic Indicators Row
+              fluidRow(
+                class = "mb-4",
+                column(12,
+                  card(
+                    card_header(icon("chart-bar"), "Macroeconomic Overview"),
+                    card_body(
+                      uiOutput(ns("macro_indicators"))
+                    )
+                  )
+                )
+              ),
+              # Comparative Charts Row
+              fluidRow(
+                class = "mb-4",
+                column(6,
+                  tagList(
+                    chart_with_download(ns, "macro_radar", height = "350px", title = "Macro Environment Radar"),
+                    p(
+                      class = "text-muted small mt-2",
+                      "National-level indicators on governance, infrastructure, and trade complement the firm-level business environment radar."
+                    )
+                  )
+                ),
+                column(6,
+                  tagList(
+                    chart_with_download(ns, "wbes_vs_wb_chart", height = "350px", title = "WBES vs National Indicators"),
+                    p(
+                      class = "text-muted small mt-2",
+                      "Compares firm-reported metrics (WBES) with national statistics (World Bank) to identify perception gaps."
+                    )
+                  )
+                )
+              ),
+              # Governance Indicators Row
+              fluidRow(
+                class = "mb-4",
+                column(6,
+                  tagList(
+                    chart_with_download(ns, "governance_chart", height = "300px", title = "Governance Indicators (WGI)"),
+                    p(
+                      class = "text-muted small mt-2",
+                      "World Bank Worldwide Governance Indicators ranging from -2.5 (weak) to +2.5 (strong)."
+                    )
+                  )
+                ),
+                column(6,
+                  tagList(
+                    chart_with_download(ns, "economic_trends_chart", height = "300px", title = "Economic Trends"),
+                    p(
+                      class = "text-muted small mt-2",
+                      "GDP growth and inflation trends over time provide macroeconomic context."
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       )
@@ -327,7 +408,7 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data, global_filters = NULL) {
+server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Filtered data with global filters applied first
@@ -351,6 +432,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -388,6 +470,45 @@ server <- function(id, wbes_data, global_filters = NULL) {
       filtered_data() |> filter(!is.na(country), country == input$country_select)
     })
 
+    # Reactive to get WB Databank data for selected country - year-matched to survey
+    # Uses prefetched cache if available, falls back to live API
+    wb_country_data <- reactive({
+      req(input$country_select, country_data())
+
+      # Map country name to ISO3 code
+      country_mapping <- map_wbes_countries_to_iso3(input$country_select)
+      iso3_code <- country_mapping$iso3c[1]
+
+      if (is.na(iso3_code)) {
+        return(NULL)
+      }
+
+      # Extract the survey year from the country data
+      # This ensures WB data matches the WBES survey year
+      d <- country_data()
+      survey_year <- if (!is.null(d$year) && length(d$year) > 0 && !is.na(d$year[1])) {
+        as.integer(d$year[1])
+      } else {
+        NULL  # Fall back to latest data if no year
+      }
+
+      # Try to get from prefetched cache first
+      tryCatch({
+        prefetched <- if (!is.null(wb_prefetched_data)) wb_prefetched_data() else NULL
+
+        if (!is.null(prefetched)) {
+          # Use cached data with fallback to API if not found
+          get_wb_context_from_cache(iso3_code, prefetched, target_year = survey_year,
+                                     fallback_to_api = TRUE)
+        } else {
+          # No cache available, fetch directly from API
+          get_wb_country_context(iso3_code, target_year = survey_year)
+        }
+      }, error = function(e) {
+        NULL
+      })
+    })
+
     # Geographic map for country profile
     output$country_profile_map <- renderLeaflet({
       req(filtered_data(), wbes_data(), input$map_indicator)
@@ -415,12 +536,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
       )
     })
 
-    # Country summary card
+    # Country summary card - enhanced with WB Databank info (year-matched)
     output$country_summary <- renderUI({
       req(country_data())
       d <- country_data()
 
-      # Extract values with fallback handling for NA
+      # Extract WBES values with fallback handling for NA
       region_val <- if (!is.null(d$region) && length(d$region) > 0 && !is.na(d$region[1])) {
         as.character(d$region[1])
       } else {
@@ -428,11 +549,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       # For firms surveyed, use sample_size from the aggregated data
-      # Note: sample_size represents the number of firms in this country's latest survey
       firms_val <- if (!is.null(d$sample_size) && length(d$sample_size) > 0 && !is.na(d$sample_size[1])) {
         format(round(d$sample_size[1]), big.mark = ",")
       } else {
         "N/A"
+      }
+
+      # Get income level from WBES data (already enriched with WB income by year)
+      income_val <- if (!is.null(d$income) && length(d$income) > 0 && !is.na(d$income[1])) {
+        as.character(d$income[1])
+      } else {
+        "N/A"
+      }
+
+      # Get survey year for display
+      survey_year <- if (!is.null(d$year) && length(d$year) > 0 && !is.na(d$year[1])) {
+        as.character(d$year[1])
+      } else {
+        "N/A"
+      }
+
+      # Fetch WB data for GDP (year-matched via wb_country_data reactive)
+      wb_data <- wb_country_data()
+      gdp_val <- if (!is.null(wb_data) && !is.null(wb_data[["NY.GDP.PCAP.CD"]]) &&
+                     !is.na(wb_data[["NY.GDP.PCAP.CD"]])) {
+        format_wb_indicator(wb_data[["NY.GDP.PCAP.CD"]], "NY.GDP.PCAP.CD")
+      } else {
+        "N/A"
+      }
+
+      # Get the WB data year for GDP
+      gdp_year <- if (!is.null(wb_data) && !is.null(wb_data$data_years[["NY.GDP.PCAP.CD"]])) {
+        as.character(wb_data$data_years[["NY.GDP.PCAP.CD"]])
+      } else {
+        ""
       }
 
       tags$div(
@@ -440,13 +590,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
         tags$div(
           class = "card-body",
           fluidRow(
-            column(6,
+            column(2,
+              tags$div(class = "kpi-box",
+                tags$div(class = "kpi-value text-primary-teal", survey_year),
+                tags$div(class = "kpi-label", "Survey Year")
+              )
+            ),
+            column(2,
               tags$div(class = "kpi-box",
                 tags$div(class = "kpi-value", region_val),
                 tags$div(class = "kpi-label", "Region")
               )
             ),
-            column(6,
+            column(3,
+              tags$div(class = "kpi-box",
+                tags$div(class = "kpi-value",
+                  style = switch(income_val,
+                    "High" = "color: #2E7D32;",
+                    "Upper-Middle" = "color: #1B6B5F;",
+                    "Lower-Middle" = "color: #F4A460;",
+                    "Low" = "color: #dc3545;",
+                    ""
+                  ),
+                  income_val
+                ),
+                tags$div(class = "kpi-label", paste("Income Level", survey_year))
+              )
+            ),
+            column(3,
+              tags$div(class = "kpi-box",
+                tags$div(class = "kpi-value text-primary-teal", gdp_val),
+                tags$div(class = "kpi-label", paste("GDP per Capita", gdp_year))
+              )
+            ),
+            column(2,
               tags$div(class = "kpi-box kpi-box-success",
                 tags$div(class = "kpi-value", firms_val),
                 tags$div(class = "kpi-label", "Firms Surveyed")
@@ -1418,31 +1595,500 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
     })
 
-    # Time Series
+    # Time Series - enhanced with national GDP growth overlay
     output$time_series <- renderPlotly({
       req(wbes_data(), input$country_select)
 
       panel <- wbes_data()$country_panel
       panel <- filter(panel, country == input$country_select)
 
-      plot_ly(panel, x = ~year) |>
-        add_trace(y = ~power_outages_per_month, name = "Power Outages",
+      # Get WBES year range
+      wbes_years <- if (nrow(panel) > 0) range(panel$year, na.rm = TRUE) else c(2006, 2023)
+
+      # Start with WBES data
+      p <- plot_ly(panel, x = ~year) |>
+        add_trace(y = ~power_outages_per_month, name = "Power Outages (WBES)",
                   type = "scatter", mode = "lines+markers",
                   line = list(color = "#1B6B5F")) |>
-        add_trace(y = ~firms_with_credit_line_pct, name = "Credit Access %",
+        add_trace(y = ~firms_with_credit_line_pct, name = "Credit Access % (WBES)",
                   type = "scatter", mode = "lines+markers",
                   line = list(color = "#F49B7A")) |>
-        add_trace(y = ~bribery_incidence_pct, name = "Bribery %",
+        add_trace(y = ~bribery_incidence_pct, name = "Bribery % (WBES)",
                   type = "scatter", mode = "lines+markers",
-                  line = list(color = "#6C757D")) |>
+                  line = list(color = "#6C757D"))
+
+      # Try to add World Bank GDP growth data as overlay
+      tryCatch({
+        country_mapping <- map_wbes_countries_to_iso3(input$country_select)
+        iso3_code <- country_mapping$iso3c[1]
+
+        if (!is.na(iso3_code)) {
+          box::use(wbstats[wb_data])
+
+          # Fetch GDP growth for the same period
+          gdp_data <- wb_data(
+            indicator = "NY.GDP.PCAP.KD.ZG",
+            country = iso3_code,
+            start_date = wbes_years[1],
+            end_date = wbes_years[2]
+          )
+
+          if (!is.null(gdp_data) && nrow(gdp_data) > 0) {
+            # Add GDP growth on secondary y-axis
+            p <- p |>
+              add_trace(
+                data = gdp_data,
+                x = ~date,
+                y = ~`NY.GDP.PCAP.KD.ZG`,
+                name = "GDP Growth % (WB)",
+                type = "scatter",
+                mode = "lines+markers",
+                line = list(color = "#9C27B0", dash = "dash"),
+                yaxis = "y2"
+              )
+          }
+        }
+      }, error = function(e) {
+        # Silently continue without WB data
+      })
+
+      p |>
         layout(
-          title = list(text = "Indicator Trends Over Time", font = list(size = 16)),
+          title = list(text = "WBES Indicators + National GDP Growth", font = list(size = 16)),
           xaxis = list(title = "Year"),
-          yaxis = list(title = "Value"),
-          legend = list(orientation = "h", y = -0.15),
+          yaxis = list(title = "WBES Value", side = "left"),
+          yaxis2 = list(
+            title = "GDP Growth %",
+            overlaying = "y",
+            side = "right",
+            showgrid = FALSE
+          ),
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
+    })
+
+    # ============================================================
+    # Economic Context Tab - World Bank Databank Integration
+    # ============================================================
+    # Note: wb_country_data reactive is defined earlier in the server function
+
+    # Macro Indicators Display
+    output$macro_indicators <- renderUI({
+      req(country_data())
+      d <- country_data()
+
+      # Get survey year for context display
+      survey_year <- if (!is.null(d$year) && length(d$year) > 0 && !is.na(d$year[1])) {
+        as.integer(d$year[1])
+      } else {
+        NULL
+      }
+
+      # Check if we're still loading WB data
+      prefetched <- if (!is.null(wb_prefetched_data)) wb_prefetched_data() else NULL
+      if (is.null(prefetched)) {
+        # Still loading - show spinner
+        return(tags$div(
+          class = "text-center p-4",
+          tags$div(
+            icon("spinner", class = "fa-spin fa-2x text-primary-teal"),
+            tags$p(class = "mt-2 text-muted", "Loading World Bank macro indicators...")
+          )
+        ))
+      }
+
+      wb_data <- wb_country_data()
+
+      if (is.null(wb_data)) {
+        return(tags$div(
+          class = "text-muted text-center p-4",
+          icon("exclamation-circle"),
+          " World Bank data not available for this country."
+        ))
+      }
+
+      # Create value boxes for key macro indicators
+      # Helper to safely get formatted value
+      get_val <- function(code) {
+        if (!is.null(wb_data[[code]]) && !is.na(wb_data[[code]])) {
+          format_wb_indicator(wb_data[[code]], code)
+        } else {
+          "N/A"
+        }
+      }
+
+      get_year <- function(code) {
+        if (!is.null(wb_data$data_years[[code]])) {
+          as.character(wb_data$data_years[[code]])
+        } else {
+          ""
+        }
+      }
+
+      # Survey year context message
+      year_context <- if (!is.null(survey_year)) {
+        tags$div(
+          class = "alert alert-secondary mb-3 py-2",
+          icon("calendar"),
+          sprintf(" Showing World Bank data matched to WBES survey year: %d", survey_year)
+        )
+      } else {
+        tags$div(
+          class = "alert alert-secondary mb-3 py-2",
+          icon("calendar"),
+          " Showing latest available World Bank data"
+        )
+      }
+
+      tagList(
+        year_context,
+        fluidRow(
+          column(3,
+            tags$div(class = "kpi-box",
+              tags$div(class = "kpi-value text-primary-teal", get_val("NY.GDP.PCAP.CD")),
+              tags$div(class = "kpi-label", paste("GDP per Capita", get_year("NY.GDP.PCAP.CD")))
+            )
+          ),
+          column(3,
+            tags$div(class = "kpi-box",
+              tags$div(class = "kpi-value",
+                style = if (!is.null(wb_data[["NY.GDP.PCAP.KD.ZG"]]) && !is.na(wb_data[["NY.GDP.PCAP.KD.ZG"]]) && wb_data[["NY.GDP.PCAP.KD.ZG"]] >= 0) "color: #2E7D32;" else "color: #dc3545;",
+                get_val("NY.GDP.PCAP.KD.ZG")
+              ),
+              tags$div(class = "kpi-label", paste("GDP Growth", get_year("NY.GDP.PCAP.KD.ZG")))
+            )
+          ),
+          column(3,
+            tags$div(class = "kpi-box",
+              tags$div(class = "kpi-value",
+                style = if (!is.null(wb_data[["FP.CPI.TOTL.ZG"]]) && !is.na(wb_data[["FP.CPI.TOTL.ZG"]]) && wb_data[["FP.CPI.TOTL.ZG"]] <= 5) "color: #2E7D32;" else "color: #F4A460;",
+                get_val("FP.CPI.TOTL.ZG")
+              ),
+              tags$div(class = "kpi-label", paste("Inflation", get_year("FP.CPI.TOTL.ZG")))
+            )
+          ),
+          column(3,
+            tags$div(class = "kpi-box",
+              tags$div(class = "kpi-value text-primary-teal", get_val("NE.EXP.GNFS.ZS")),
+              tags$div(class = "kpi-label", paste("Exports (% GDP)", get_year("NE.EXP.GNFS.ZS")))
+            )
+          )
+        )
+      )
+    })
+
+    # Macro Environment Radar Chart
+    output$macro_radar <- renderPlotly({
+      wb_data <- wb_country_data()
+
+      if (is.null(wb_data)) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "World Bank data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      # Normalize indicators to 0-100 scale for radar
+      # WGI indicators range from -2.5 to +2.5, normalize to 0-100
+      normalize_wgi <- function(val) {
+        if (is.null(val) || is.na(val)) return(NA_real_)
+        ((val + 2.5) / 5) * 100
+      }
+
+      # Infrastructure/access indicators already in %
+      normalize_pct <- function(val) {
+        if (is.null(val) || is.na(val)) return(NA_real_)
+        min(max(val, 0), 100)
+      }
+
+      indicators <- c(
+        "Gov't Effectiveness" = normalize_wgi(wb_data[["GE.EST"]]),
+        "Rule of Law" = normalize_wgi(wb_data[["RL.EST"]]),
+        "Regulatory Quality" = normalize_wgi(wb_data[["RQ.EST"]]),
+        "Electricity Access" = normalize_pct(wb_data[["EG.ELC.ACCS.ZS"]]),
+        "Internet Users" = normalize_pct(wb_data[["IT.NET.USER.ZS"]]),
+        "Political Stability" = normalize_wgi(wb_data[["PV.EST"]])
+      )
+
+      # Filter out NA values
+      available <- indicators[!is.na(indicators)]
+
+      if (length(available) < 3) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "Insufficient macro data for radar chart",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      plot_ly(
+        type = "scatterpolar",
+        r = as.numeric(available),
+        theta = names(available),
+        fill = "toself",
+        fillcolor = "rgba(244, 155, 122, 0.3)",
+        line = list(color = "#F49B7A", width = 2),
+        name = "Macro Environment"
+      ) |>
+        layout(
+          polar = list(
+            radialaxis = list(visible = TRUE, range = c(0, 100))
+          ),
+          showlegend = FALSE,
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |>
+        config(displayModeBar = FALSE)
+    })
+
+    # WBES vs World Bank Comparison Chart
+    output$wbes_vs_wb_chart <- renderPlotly({
+      req(country_data())
+      d <- country_data()
+      wb_data <- wb_country_data()
+
+      if (is.null(wb_data) || nrow(d) == 0) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "Comparison data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      # Compare firm-level vs national metrics
+      comparisons <- data.frame(
+        indicator = character(),
+        wbes_value = numeric(),
+        wb_value = numeric(),
+        stringsAsFactors = FALSE
+      )
+
+      # Electricity: WBES generator usage vs WB electricity access
+      if ("firms_with_generator_pct" %in% names(d) && !is.na(d$firms_with_generator_pct[1]) &&
+          !is.null(wb_data[["EG.ELC.ACCS.ZS"]]) && !is.na(wb_data[["EG.ELC.ACCS.ZS"]])) {
+        # Invert generator % to show "reliable power" (100 - generator use)
+        comparisons <- rbind(comparisons, data.frame(
+          indicator = "Reliable Power",
+          wbes_value = 100 - as.numeric(d$firms_with_generator_pct[1]),
+          wb_value = wb_data[["EG.ELC.ACCS.ZS"]]
+        ))
+      }
+
+      # Internet: WBES vs WB
+      if ("internet_access_pct" %in% names(d) && !is.na(d$internet_access_pct[1]) &&
+          !is.null(wb_data[["IT.NET.USER.ZS"]]) && !is.na(wb_data[["IT.NET.USER.ZS"]])) {
+        comparisons <- rbind(comparisons, data.frame(
+          indicator = "Internet Access",
+          wbes_value = as.numeric(d$internet_access_pct[1]),
+          wb_value = wb_data[["IT.NET.USER.ZS"]]
+        ))
+      }
+
+      # Corruption: WBES bribery vs WB control of corruption (inverted)
+      if ("bribery_incidence_pct" %in% names(d) && !is.na(d$bribery_incidence_pct[1]) &&
+          !is.null(wb_data[["CC.EST"]]) && !is.na(wb_data[["CC.EST"]])) {
+        # Invert bribery to show "low corruption"
+        # Normalize WGI from -2.5 to +2.5 to 0-100
+        comparisons <- rbind(comparisons, data.frame(
+          indicator = "Low Corruption",
+          wbes_value = 100 - as.numeric(d$bribery_incidence_pct[1]),
+          wb_value = ((wb_data[["CC.EST"]] + 2.5) / 5) * 100
+        ))
+      }
+
+      if (nrow(comparisons) == 0) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "No comparable metrics available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      plot_ly(comparisons, x = ~indicator) |>
+        add_trace(y = ~wbes_value, name = "WBES (Firm-Level)",
+                  type = "bar", marker = list(color = "#1B6B5F")) |>
+        add_trace(y = ~wb_value, name = "World Bank (National)",
+                  type = "bar", marker = list(color = "#F49B7A")) |>
+        layout(
+          barmode = "group",
+          xaxis = list(title = ""),
+          yaxis = list(title = "Score (0-100)", range = c(0, 100)),
+          legend = list(orientation = "h", y = -0.2),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |>
+        config(displayModeBar = FALSE)
+    })
+
+    # Governance Indicators Chart (WGI)
+    output$governance_chart <- renderPlotly({
+      wb_data <- wb_country_data()
+
+      if (is.null(wb_data)) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "Governance data not available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      # WGI indicators
+      wgi_codes <- c("GE.EST", "RQ.EST", "RL.EST", "CC.EST", "PV.EST", "VA.EST")
+      wgi_labels <- c("Gov't Effectiveness", "Regulatory Quality", "Rule of Law",
+                      "Control of Corruption", "Political Stability", "Voice & Accountability")
+
+      values <- sapply(wgi_codes, function(code) {
+        if (!is.null(wb_data[[code]]) && !is.na(wb_data[[code]])) {
+          wb_data[[code]]
+        } else {
+          NA_real_
+        }
+      })
+
+      valid_idx <- !is.na(values)
+      if (!any(valid_idx)) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "No WGI data available",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      plot_data <- data.frame(
+        indicator = wgi_labels[valid_idx],
+        value = values[valid_idx],
+        stringsAsFactors = FALSE
+      )
+
+      # Color based on value (negative = red, positive = green)
+      colors <- ifelse(plot_data$value >= 0, "#2E7D32", "#dc3545")
+
+      plot_ly(plot_data,
+              y = ~reorder(indicator, value),
+              x = ~value,
+              type = "bar",
+              orientation = "h",
+              marker = list(color = colors)) |>
+        layout(
+          xaxis = list(title = "WGI Score", range = c(-2.5, 2.5)),
+          yaxis = list(title = ""),
+          paper_bgcolor = "rgba(0,0,0,0)",
+          shapes = list(
+            list(type = "line", x0 = 0, x1 = 0, y0 = -0.5, y1 = length(plot_data$indicator) - 0.5,
+                 line = list(color = "#666666", width = 1, dash = "dot"))
+          )
+        ) |>
+        config(displayModeBar = FALSE)
+    })
+
+    # Economic Trends Chart
+    output$economic_trends_chart <- renderPlotly({
+      req(input$country_select)
+
+      # Map country to ISO3
+      country_mapping <- map_wbes_countries_to_iso3(input$country_select)
+      iso3_code <- country_mapping$iso3c[1]
+
+      if (is.na(iso3_code)) {
+        return(plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = "Country not found in World Bank database",
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE))
+      }
+
+      # Fetch time series data
+      tryCatch({
+        box::use(wbstats[wb_data])
+        current_year <- as.integer(format(Sys.Date(), "%Y"))
+
+        trend_data <- wb_data(
+          indicator = c("NY.GDP.PCAP.KD.ZG", "FP.CPI.TOTL.ZG"),
+          country = iso3_code,
+          start_date = current_year - 10,
+          end_date = current_year
+        )
+
+        if (is.null(trend_data) || nrow(trend_data) == 0) {
+          return(plot_ly() |>
+            layout(
+              annotations = list(list(
+                text = "No trend data available",
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5, showarrow = FALSE
+              )),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE))
+        }
+
+        plot_ly(trend_data, x = ~date) |>
+          add_trace(y = ~`NY.GDP.PCAP.KD.ZG`, name = "GDP Growth %",
+                    type = "scatter", mode = "lines+markers",
+                    line = list(color = "#1B6B5F")) |>
+          add_trace(y = ~`FP.CPI.TOTL.ZG`, name = "Inflation %",
+                    type = "scatter", mode = "lines+markers",
+                    line = list(color = "#F49B7A")) |>
+          layout(
+            xaxis = list(title = "Year"),
+            yaxis = list(title = "Percentage"),
+            legend = list(orientation = "h", y = -0.2),
+            paper_bgcolor = "rgba(0,0,0,0)",
+            shapes = list(
+              list(type = "line", x0 = min(trend_data$date), x1 = max(trend_data$date),
+                   y0 = 0, y1 = 0, line = list(color = "#666666", width = 1, dash = "dot"))
+            )
+          ) |>
+          config(displayModeBar = FALSE)
+
+      }, error = function(e) {
+        plot_ly() |>
+          layout(
+            annotations = list(list(
+              text = paste("Error fetching trends:", e$message),
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5, showarrow = FALSE
+            )),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      })
     })
 
     # ============================================================
@@ -1534,6 +2180,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$dl_crime_chart2 <- simple_chart_download("crime_losses")
     output$dl_performance_chart1 <- simple_chart_download("operational_performance")
     output$dl_performance_chart2 <- simple_chart_download("export_orientation")
+
+    # Economic Context tab downloads
+    output$dl_macro_radar <- simple_chart_download("macro_environment_radar")
+    output$dl_wbes_vs_wb_chart <- simple_chart_download("wbes_vs_wb_comparison")
+    output$dl_governance_chart <- simple_chart_download("governance_indicators")
+    output$dl_economic_trends_chart <- simple_chart_download("economic_trends")
 
   })
 }

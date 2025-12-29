@@ -267,6 +267,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -374,7 +375,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       d <- head(d, 20)
-      d$country <- factor(d$country, levels = rev(d$country))
+      # Re-arrange in opposite order for correct horizontal bar display
+      if (input$sort == "desc") {
+        d <- arrange(d, .data[[indicator]])
+      } else {
+        d <- arrange(d, desc(.data[[indicator]]))
+      }
+      d$country <- factor(d$country, levels = unique(d$country))
 
       plot_ly(d, y = ~country, x = ~get(indicator), type = "bar",
               orientation = "h",
@@ -624,9 +631,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
           competitiveness = (`IC.FRM.CAPU.ZS` * 0.6 + `IC.FRM.EXPRT.ZS` * 0.4)
         ) |>
         arrange(desc(competitiveness)) |>
-        head(15)
+        head(15) |>
+        arrange(competitiveness)  # Re-arrange ascending for horizontal bar display
 
-      d$country <- factor(d$country, levels = rev(d$country))
+      d$country <- factor(d$country, levels = unique(d$country))
 
       plot_ly(d, y = ~country, x = ~competitiveness, type = "bar",
               orientation = "h",

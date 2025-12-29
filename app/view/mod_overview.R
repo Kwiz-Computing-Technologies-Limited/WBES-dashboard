@@ -10,7 +10,7 @@ box::use(
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend, labelFormat],
- dplyr[filter, arrange, desc, mutate, summarise, group_by, n],
+ dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, across, any_of],
  stats[setNames, na.omit],
  scales[rescale],
  htmlwidgets[saveWidget],
@@ -176,31 +176,77 @@ server <- function(id, wbes_data, global_filters = NULL) {
    filtered_data <- reactive({
      req(wbes_data())
 
-     # Use country_panel (has year) if year filter is active, otherwise use latest
      filters <- if (!is.null(global_filters)) global_filters() else NULL
+
+     # Determine data source based on active filters
      use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                   !all(filters$year %in% c("all", NA))
 
-     data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+     # Check if sector filter is active (not "all", not empty, not NA)
+     sector_filter_active <- !is.null(filters$sector) &&
+                             length(filters$sector) > 0 &&
+                             !all(filters$sector %in% c("all", "", NA))
 
-     # If global filters are provided, use them
-     if (!is.null(filters)) {
-       data <- apply_common_filters(
-         data,
-         region_value = filters$region,
-         sector_value = filters$sector,
-         firm_size_value = filters$firm_size,
-         income_value = filters$income,
-         year_value = filters$year,
-         custom_regions = filters$custom_regions,
-         filter_by_region_fn = filter_by_region
-       )
+     # Use processed data when sector filter is active (has sector column for filtering)
+     # Then re-aggregate to country level after filtering
+     if (sector_filter_active && !is.null(wbes_data()$processed)) {
+       data <- wbes_data()$processed
+
+       # Apply all filters to processed data
+       if (!is.null(filters)) {
+         data <- apply_common_filters(
+           data,
+           region_value = filters$region,
+           sector_value = filters$sector,
+           firm_size_value = filters$firm_size,
+           income_value = filters$income,
+           year_value = filters$year,
+           custom_regions = filters$custom_regions,
+           custom_sectors = filters$custom_sectors,
+           filter_by_region_fn = filter_by_region
+         )
+       }
+
+       # Re-aggregate to country level after filtering
+       if (!is.null(data) && nrow(data) > 0) {
+         # Get numeric columns for aggregation
+         metric_cols <- names(data)[sapply(data, is.numeric)]
+         metric_cols <- setdiff(metric_cols, c("year", "sample_size", "lat", "lng"))
+
+         data <- data |>
+           group_by(country) |>
+           summarise(
+             across(any_of(metric_cols), ~mean(.x, na.rm = TRUE)),
+             region = first(region[!is.na(region)]),
+             income = first(income[!is.na(income)]),
+             sample_size = n(),
+             .groups = "drop"
+           )
+       }
+     } else {
+       # Use pre-aggregated data when no sector filter
+       data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+
+       # Apply filters (excluding sector since aggregated data can't filter by sector)
+       if (!is.null(filters)) {
+         data <- apply_common_filters(
+           data,
+           region_value = filters$region,
+           sector_value = "all",  # Skip sector filter on aggregated data
+           firm_size_value = filters$firm_size,
+           income_value = filters$income,
+           year_value = filters$year,
+           custom_regions = filters$custom_regions,
+           custom_sectors = filters$custom_sectors,
+           filter_by_region_fn = filter_by_region
+         )
+       }
      }
 
-     # Add coordinates if using panel data (for maps)
-     if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+     # Add coordinates for maps
+     if (!is.null(data) && nrow(data) > 0 && !is.null(wbes_data()$country_coordinates)) {
        coords <- wbes_data()$country_coordinates
-       if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+       if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
          data <- merge(data, coords, by = "country", all.x = TRUE)
        }
      }

@@ -4,11 +4,12 @@
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
-        observeEvent, actionButton, HTML, downloadButton, downloadHandler],
+        observeEvent, actionButton, HTML, downloadButton, downloadHandler, tagList,
+        withProgress, incProgress],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
-  dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of],
+  dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of, bind_rows, left_join],
   leaflet[leafletOutput, renderLeaflet],
   stats[setNames, reorder],
   htmlwidgets[saveWidget],
@@ -18,7 +19,15 @@ box::use(
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
-  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
+  app/logic/wb_integration[
+    get_wb_country_context,
+    get_wb_context_from_cache,
+    map_wbes_countries_to_iso3,
+    format_wb_indicator,
+    get_wb_indicator_label,
+    get_wb_databank_indicators
+  ]
 )
 
 # Define indicator domains with their indicators
@@ -374,6 +383,106 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "crime_impact_performance", height = "350px", title = "Crime Impact on Performance"))
             ),
             fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights"))))))
+          ),
+
+          # Macro Context Tab - World Bank Databank Integration
+          nav_panel(
+            title = tags$span(icon("globe"), " Macro Context"),
+            value = "macro_context",
+            tagList(
+              fluidRow(class = "mt-3",
+                column(12,
+                  tags$div(
+                    class = "alert alert-info mb-3",
+                    icon("info-circle"),
+                    " World Bank Databank macro indicators provide national-level context for comparing firm-level WBES metrics across countries."
+                  )
+                )
+              ),
+              # Macro KPIs Row
+              fluidRow(class = "mb-3",
+                column(3, uiOutput(ns("macro_kpi_gdp"))),
+                column(3, uiOutput(ns("macro_kpi_growth"))),
+                column(3, uiOutput(ns("macro_kpi_inflation"))),
+                column(3, uiOutput(ns("macro_kpi_exports")))
+              ),
+              # Economic Comparison Chart
+              fluidRow(
+                column(12,
+                  card(
+                    card_header(icon("chart-bar"), "Macroeconomic Comparison"),
+                    card_body(
+                      chart_with_download(ns, "macro_economic_comparison", height = "400px", title = "GDP, Growth, and Inflation by Country")
+                    )
+                  )
+                )
+              ),
+              # Infrastructure and Governance Row
+              fluidRow(class = "mt-4",
+                column(6,
+                  card(
+                    card_header(icon("plug"), "National Infrastructure"),
+                    card_body(
+                      chart_with_download(ns, "macro_infrastructure_chart", height = "350px", title = "Electricity & Internet Access"),
+                      p(class = "text-muted small mt-2", "National-level access rates from World Bank complement firm-level WBES infrastructure data.")
+                    )
+                  )
+                ),
+                column(6,
+                  card(
+                    card_header(icon("landmark"), "Governance Quality (WGI)"),
+                    card_body(
+                      chart_with_download(ns, "macro_governance_chart", height = "350px", title = "Worldwide Governance Indicators"),
+                      p(class = "text-muted small mt-2", "WGI scores range from -2.5 (weak) to +2.5 (strong governance).")
+                    )
+                  )
+                )
+              ),
+              # WBES vs WB Comparison Row
+              fluidRow(class = "mt-4",
+                column(12,
+                  card(
+                    card_header(icon("exchange-alt"), "Firm-Level (WBES) vs National (WB) Comparison"),
+                    card_body(
+                      chart_with_download(ns, "wbes_vs_wb_comparison", height = "400px", title = "WBES Perceptions vs World Bank Data"),
+                      p(class = "text-muted small mt-2",
+                        "Compares firm-reported metrics (WBES) with national statistics (World Bank). ",
+                        "Gaps may indicate differences between firm experience and national averages.")
+                    )
+                  )
+                )
+              ),
+              # Labor and Trade Row
+              fluidRow(class = "mt-4",
+                column(6,
+                  card(
+                    card_header(icon("users"), "Labor Market"),
+                    card_body(
+                      chart_with_download(ns, "macro_labor_chart", height = "300px", title = "Labor Force Participation & Unemployment")
+                    )
+                  )
+                ),
+                column(6,
+                  card(
+                    card_header(icon("ship"), "Trade & Investment"),
+                    card_body(
+                      chart_with_download(ns, "macro_trade_chart", height = "300px", title = "Exports, Imports & FDI")
+                    )
+                  )
+                )
+              ),
+              # Data Table
+              fluidRow(class = "mt-4",
+                column(12,
+                  card(
+                    card_header(icon("table"), "Full Macro Data Comparison"),
+                    card_body(
+                      table_with_download(ns, "macro_data_table")
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       )
@@ -382,7 +491,7 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data, global_filters = NULL) {
+server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NULL) {
   moduleServer(id, function(input, output, session) {
 
     # Filtered data with global filters applied
@@ -406,6 +515,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -1529,6 +1639,844 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$crime_insights <- renderUI({
       HTML("<ul><li>Higher crime obstacles lead to increased security costs</li><li>Crime negatively impacts capacity utilization</li></ul>")
     })
+
+    # ==============================================================================
+    # MACRO CONTEXT TAB OUTPUTS - World Bank Databank Integration
+    # ==============================================================================
+
+    # Reactive to get WB data for all selected countries
+    # Uses prefetched cache if available, with fallback to live API
+    wb_comparison_data <- reactive({
+      req(input$countries_compare)
+      countries <- input$countries_compare
+
+      # Get survey year from filtered data if available
+      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      target_year <- if (!is.null(filters$year) && length(filters$year) > 0 &&
+                         !all(filters$year %in% c("all", NA))) {
+        as.integer(filters$year[1])
+      } else {
+        NULL
+      }
+
+      # Map countries to ISO3 codes
+      country_mapping <- tryCatch({
+        map_wbes_countries_to_iso3(countries)
+      }, error = function(e) {
+        return(NULL)
+      })
+
+      if (is.null(country_mapping) || nrow(country_mapping) == 0) {
+        return(NULL)
+      }
+
+      # Filter out countries without ISO3 codes
+      valid_mapping <- country_mapping[!is.na(country_mapping$iso3c), ]
+      if (nrow(valid_mapping) == 0) {
+        return(NULL)
+      }
+
+      # Get prefetched data if available
+      prefetched <- if (!is.null(wb_prefetched_data)) wb_prefetched_data() else NULL
+
+      # Limit countries to prevent excessive API calls if not using cache
+      max_countries <- if (!is.null(prefetched)) nrow(valid_mapping) else min(nrow(valid_mapping), 5)
+
+      wb_results <- withProgress(
+        message = if (!is.null(prefetched)) "Loading cached WB data..." else "Loading World Bank data...",
+        value = 0,
+        {
+          results <- lapply(seq_len(max_countries), function(i) {
+            incProgress(1 / max_countries, detail = valid_mapping$country[i])
+
+            country_name <- valid_mapping$country[i]
+            iso3_code <- valid_mapping$iso3c[i]
+
+            tryCatch({
+              # Use cached data if available
+              wb_data <- if (!is.null(prefetched)) {
+                get_wb_context_from_cache(iso3_code, prefetched, target_year = target_year,
+                                           fallback_to_api = TRUE)
+              } else {
+                get_wb_country_context(iso3_code, target_year = target_year)
+              }
+
+              if (!is.null(wb_data)) {
+                wb_data$country <- country_name
+              }
+              wb_data
+            }, error = function(e) {
+              NULL
+            })
+          })
+          results
+        }
+      )
+
+      # Filter out NULL results
+      wb_results <- wb_results[!sapply(wb_results, is.null)]
+
+      if (length(wb_results) == 0) {
+        return(NULL)
+      }
+
+      wb_results
+    })
+
+    # Helper to extract values from WB data list
+    extract_wb_values <- function(wb_list, indicator_code) {
+      if (is.null(wb_list)) return(NULL)
+
+      data.frame(
+        country = sapply(wb_list, function(x) x$country),
+        value = sapply(wb_list, function(x) {
+          if (!is.null(x[[indicator_code]]) && !is.na(x[[indicator_code]])) {
+            x[[indicator_code]]
+          } else {
+            NA_real_
+          }
+        }),
+        stringsAsFactors = FALSE
+      )
+    }
+
+    # Macro KPIs - Show loading state while WB data is being fetched
+    output$macro_kpi_gdp <- renderUI({
+      # Check if countries are selected first
+      if (is.null(input$countries_compare) || length(input$countries_compare) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", "-"),
+          p(class = "text-muted small mb-0", "Select countries")
+        )))
+      }
+
+      # Check if we're still in initial WB data prefetch
+      prefetched <- if (!is.null(wb_prefetched_data)) wb_prefetched_data() else NULL
+      loading_msg <- if (is.null(prefetched)) "Initializing WB data..." else "Loading cached data..."
+
+      wb_data <- wb_comparison_data()
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", icon("spinner", class = "fa-spin")),
+          p(class = "text-muted small mb-0", loading_msg)
+        )))
+      }
+
+      vals <- sapply(wb_data, function(x) x[["NY.GDP.PCAP.CD"]])
+      avg_val <- mean(vals, na.rm = TRUE)
+
+      card(card_body(class = "text-center",
+        h4(class = "text-primary-teal mb-0",
+           if (!is.na(avg_val)) paste0("$", format(round(avg_val), big.mark = ",")) else "N/A"),
+        p(class = "text-muted small mb-0", "Avg GDP per Capita")
+      ))
+    })
+
+    output$macro_kpi_growth <- renderUI({
+      if (is.null(input$countries_compare) || length(input$countries_compare) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", "-"),
+          p(class = "text-muted small mb-0", "Select countries")
+        )))
+      }
+
+      wb_data <- wb_comparison_data()
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", icon("spinner", class = "fa-spin")),
+          p(class = "text-muted small mb-0", "Loading...")
+        )))
+      }
+
+      vals <- sapply(wb_data, function(x) x[["NY.GDP.PCAP.KD.ZG"]])
+      avg_val <- mean(vals, na.rm = TRUE)
+
+      card(card_body(class = "text-center",
+        h4(class = if (!is.na(avg_val) && avg_val >= 0) "text-success mb-0" else "text-danger mb-0",
+           if (!is.na(avg_val)) paste0(round(avg_val, 1), "%") else "N/A"),
+        p(class = "text-muted small mb-0", "Avg GDP Growth")
+      ))
+    })
+
+    output$macro_kpi_inflation <- renderUI({
+      if (is.null(input$countries_compare) || length(input$countries_compare) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", "-"),
+          p(class = "text-muted small mb-0", "Select countries")
+        )))
+      }
+
+      wb_data <- wb_comparison_data()
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", icon("spinner", class = "fa-spin")),
+          p(class = "text-muted small mb-0", "Loading...")
+        )))
+      }
+
+      vals <- sapply(wb_data, function(x) x[["FP.CPI.TOTL.ZG"]])
+      avg_val <- mean(vals, na.rm = TRUE)
+
+      card(card_body(class = "text-center",
+        h4(class = if (!is.na(avg_val) && avg_val <= 5) "text-success mb-0" else "text-warning mb-0",
+           if (!is.na(avg_val)) paste0(round(avg_val, 1), "%") else "N/A"),
+        p(class = "text-muted small mb-0", "Avg Inflation")
+      ))
+    })
+
+    output$macro_kpi_exports <- renderUI({
+      if (is.null(input$countries_compare) || length(input$countries_compare) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", "-"),
+          p(class = "text-muted small mb-0", "Select countries")
+        )))
+      }
+
+      wb_data <- wb_comparison_data()
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(card(card_body(class = "text-center",
+          h4(class = "text-muted mb-0", icon("spinner", class = "fa-spin")),
+          p(class = "text-muted small mb-0", "Loading...")
+        )))
+      }
+
+      vals <- sapply(wb_data, function(x) x[["NE.EXP.GNFS.ZS"]])
+      avg_val <- mean(vals, na.rm = TRUE)
+
+      card(card_body(class = "text-center",
+        h4(class = "text-primary-teal mb-0",
+           if (!is.na(avg_val)) paste0(round(avg_val, 1), "%") else "N/A"),
+        p(class = "text-muted small mb-0", "Avg Exports (% GDP)")
+      ))
+    })
+
+    # Helper to prepare WB data for charting (sorting and data frame conversion)
+    prepare_wb_chart_data <- function(wb_data, indicator_codes, indicator_labels = NULL) {
+      if (is.null(wb_data) || length(wb_data) == 0) return(NULL)
+
+      # Build data frame
+      chart_df <- data.frame(
+        country = sapply(wb_data, function(x) x$country),
+        stringsAsFactors = FALSE
+      )
+
+      for (i in seq_along(indicator_codes)) {
+        code <- indicator_codes[i]
+        label <- if (!is.null(indicator_labels)) indicator_labels[i] else code
+        chart_df[[label]] <- sapply(wb_data, function(x) {
+          val <- x[[code]]
+          if (!is.null(val) && !is.na(val)) val else NA_real_
+        })
+      }
+
+      # Apply sort order based on first indicator
+      sort_col <- if (!is.null(indicator_labels)) indicator_labels[1] else indicator_codes[1]
+      sort_dir <- if (!is.null(input$sort_order) && input$sort_order == "asc") FALSE else TRUE
+
+      if (sort_col %in% names(chart_df) && any(!is.na(chart_df[[sort_col]]))) {
+        sort_idx <- order(chart_df[[sort_col]], decreasing = sort_dir, na.last = TRUE)
+        chart_df <- chart_df[sort_idx, ]
+      }
+
+      chart_df
+    }
+
+    # Macro Economic Comparison Chart
+    output$macro_economic_comparison <- renderPlotly({
+      wb_data <- wb_comparison_data()
+      chart_type <- if (!is.null(input$chart_type)) input$chart_type else "bar"
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "World Bank data loading... If this persists, the WB API may be unavailable.",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE,
+            font = list(size = 14)
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      # Prepare data with sorting
+      indicator_codes <- c("NY.GDP.PCAP.CD", "NY.GDP.PCAP.KD.ZG", "FP.CPI.TOTL.ZG")
+      indicator_labels <- c("GDP/Capita ($100s)", "GDP Growth %", "Inflation %")
+      chart_df <- prepare_wb_chart_data(wb_data, indicator_codes, indicator_labels)
+
+      if (is.null(chart_df)) {
+        return(plot_ly() |> layout(annotations = list(list(
+          text = "No data available", showarrow = FALSE
+        ))) |> config(displayModeBar = FALSE))
+      }
+
+      # Scale GDP for display
+      chart_df[["GDP/Capita ($100s)"]] <- chart_df[["GDP/Capita ($100s)"]] / 100
+
+      colors <- c("#1B6B5F", "#2E7D32", "#F49B7A")
+
+      if (chart_type == "radar") {
+        # Radar chart - normalize values to 0-100 for comparability
+        radar_labels <- indicator_labels
+        p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+
+        for (i in seq_len(nrow(chart_df))) {
+          values <- as.numeric(chart_df[i, indicator_labels])
+          # Normalize: GDP/100 max ~200, Growth max ~15, Inflation max ~30
+          norm_vals <- c(
+            min(values[1] / 2, 100),  # GDP/100 scaled to ~100 max
+            min((values[2] + 10) * 4, 100),  # Growth from -10 to +15 -> 0-100
+            min(values[3] * 2, 100)  # Inflation 0-50 -> 0-100
+          )
+          norm_vals <- c(norm_vals, norm_vals[1])
+          theta <- c(radar_labels, radar_labels[1])
+
+          p <- p |> add_trace(
+            r = norm_vals, theta = theta, name = chart_df$country[i],
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+          )
+        }
+        p |> layout(
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+          showlegend = TRUE,
+          legend = list(orientation = "v", x = 1.02, y = 0.5),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |> config(displayModeBar = FALSE)
+
+      } else if (chart_type == "heatmap") {
+        # Heatmap
+        z_matrix <- as.matrix(chart_df[, indicator_labels])
+        plot_ly(
+          x = indicator_labels, y = chart_df$country, z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#f8f9fa"), c(1, "#1B6B5F")),
+          hovertemplate = "%{y}<br>%{x}: %{z:.2f}<extra></extra>"
+        ) |>
+          layout(
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = "", autorange = "reversed"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+
+      } else {
+        # Bar chart (default)
+        plot_ly() |>
+          add_trace(x = chart_df$country, y = chart_df[["GDP/Capita ($100s)"]],
+                    name = "GDP/Capita ($100s)", type = "bar", marker = list(color = colors[1])) |>
+          add_trace(x = chart_df$country, y = chart_df[["GDP Growth %"]],
+                    name = "GDP Growth %", type = "bar", marker = list(color = colors[2])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Inflation %"]],
+                    name = "Inflation %", type = "bar", marker = list(color = colors[3])) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = -45, categoryorder = "array", categoryarray = chart_df$country),
+            yaxis = list(title = "Value"),
+            legend = list(orientation = "h", y = -0.2),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
+    })
+
+    # Macro Infrastructure Chart
+    output$macro_infrastructure_chart <- renderPlotly({
+      wb_data <- wb_comparison_data()
+      chart_type <- if (!is.null(input$chart_type)) input$chart_type else "bar"
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "Infrastructure data not available",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      indicator_codes <- c("EG.ELC.ACCS.ZS", "IT.NET.USER.ZS")
+      indicator_labels <- c("Electricity Access %", "Internet Users %")
+      chart_df <- prepare_wb_chart_data(wb_data, indicator_codes, indicator_labels)
+
+      if (is.null(chart_df)) {
+        return(plot_ly() |> layout(annotations = list(list(
+          text = "No data available", showarrow = FALSE
+        ))) |> config(displayModeBar = FALSE))
+      }
+
+      colors <- c("#F4A460", "#17a2b8")
+
+      if (chart_type == "radar") {
+        p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+        for (i in seq_len(nrow(chart_df))) {
+          values <- as.numeric(chart_df[i, indicator_labels])
+          values <- c(values, values[1])
+          theta <- c(indicator_labels, indicator_labels[1])
+          p <- p |> add_trace(
+            r = values, theta = theta, name = chart_df$country[i],
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+          )
+        }
+        p |> layout(
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+          showlegend = TRUE, legend = list(orientation = "v", x = 1.02, y = 0.5),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |> config(displayModeBar = FALSE)
+
+      } else if (chart_type == "heatmap") {
+        z_matrix <- as.matrix(chart_df[, indicator_labels])
+        plot_ly(
+          x = indicator_labels, y = chart_df$country, z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#f8f9fa"), c(1, "#F4A460")),
+          zmin = 0, zmax = 100,
+          hovertemplate = "%{y}<br>%{x}: %{z:.1f}%<extra></extra>"
+        ) |>
+          layout(
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = "", autorange = "reversed"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+
+      } else {
+        plot_ly() |>
+          add_trace(x = chart_df$country, y = chart_df[["Electricity Access %"]],
+                    name = "Electricity Access %", type = "bar", marker = list(color = colors[1])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Internet Users %"]],
+                    name = "Internet Users %", type = "bar", marker = list(color = colors[2])) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = -45, categoryorder = "array", categoryarray = chart_df$country),
+            yaxis = list(title = "Percentage", range = c(0, 100)),
+            legend = list(orientation = "h", y = -0.3),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
+    })
+
+    # Macro Governance Chart (WGI)
+    output$macro_governance_chart <- renderPlotly({
+      wb_data <- wb_comparison_data()
+      chart_type <- if (!is.null(input$chart_type)) input$chart_type else "bar"
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "Governance data not available",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      # WGI indicators
+      wgi_codes <- c("GE.EST", "RQ.EST", "RL.EST", "CC.EST")
+      wgi_labels <- c("Gov't Effectiveness", "Regulatory Quality", "Rule of Law", "Control of Corruption")
+      chart_df <- prepare_wb_chart_data(wb_data, wgi_codes, wgi_labels)
+
+      if (is.null(chart_df)) {
+        return(plot_ly() |> layout(annotations = list(list(
+          text = "No data available", showarrow = FALSE
+        ))) |> config(displayModeBar = FALSE))
+      }
+
+      colors <- c("#1B6B5F", "#2E7D32", "#17a2b8", "#F49B7A")
+
+      if (chart_type == "radar") {
+        # WGI ranges from -2.5 to 2.5, normalize to 0-100
+        p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+        for (i in seq_len(nrow(chart_df))) {
+          values <- as.numeric(chart_df[i, wgi_labels])
+          norm_vals <- (values + 2.5) / 5 * 100  # Normalize to 0-100
+          norm_vals <- c(norm_vals, norm_vals[1])
+          theta <- c(wgi_labels, wgi_labels[1])
+          p <- p |> add_trace(
+            r = norm_vals, theta = theta, name = chart_df$country[i],
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+          )
+        }
+        p |> layout(
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+          showlegend = TRUE, legend = list(orientation = "v", x = 1.02, y = 0.5),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |> config(displayModeBar = FALSE)
+
+      } else if (chart_type == "bar") {
+        plot_ly() |>
+          add_trace(x = chart_df$country, y = chart_df[["Gov't Effectiveness"]],
+                    name = "Gov't Effectiveness", type = "bar", marker = list(color = colors[1])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Regulatory Quality"]],
+                    name = "Regulatory Quality", type = "bar", marker = list(color = colors[2])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Rule of Law"]],
+                    name = "Rule of Law", type = "bar", marker = list(color = colors[3])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Control of Corruption"]],
+                    name = "Control of Corruption", type = "bar", marker = list(color = colors[4])) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = -45, categoryorder = "array", categoryarray = chart_df$country),
+            yaxis = list(title = "WGI Score", range = c(-2.5, 2.5)),
+            legend = list(orientation = "h", y = -0.3),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+
+      } else {
+        # Heatmap (default for governance - best visualization for this data)
+        z_matrix <- as.matrix(chart_df[, wgi_labels])
+        plot_ly(
+          x = wgi_labels, y = chart_df$country, z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#dc3545"), c(0.5, "#f8f9fa"), c(1, "#2E7D32")),
+          zmin = -2.5, zmax = 2.5,
+          hovertemplate = "%{y}<br>%{x}: %{z:.2f}<extra></extra>"
+        ) |>
+          layout(
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = "", autorange = "reversed"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
+    })
+
+    # WBES vs WB Comparison Chart
+    output$wbes_vs_wb_comparison <- renderPlotly({
+      req(comparison_data())
+      wbes_data_df <- comparison_data()
+      wb_data <- wb_comparison_data()
+
+      if (is.null(wb_data) || length(wb_data) == 0 || nrow(wbes_data_df) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "Comparison data not available",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      countries <- sapply(wb_data, function(x) x$country)
+
+      # Build comparison data
+      comparison_rows <- lapply(countries, function(country) {
+        # Get WBES data for country
+        wbes_country <- wbes_data_df[wbes_data_df$country == country, ]
+        wb_country <- wb_data[sapply(wb_data, function(x) x$country == country)][[1]]
+
+        if (nrow(wbes_country) == 0 || is.null(wb_country)) {
+          return(NULL)
+        }
+
+        # Compare electricity: WBES generator usage vs WB electricity access
+        wbes_power_reliable <- if ("firms_with_generator_pct" %in% names(wbes_country) &&
+                                   !is.na(wbes_country$firms_with_generator_pct[1])) {
+          100 - wbes_country$firms_with_generator_pct[1]  # Invert: no generator = reliable
+        } else NA
+
+        wb_electricity <- if (!is.null(wb_country[["EG.ELC.ACCS.ZS"]]) &&
+                              !is.na(wb_country[["EG.ELC.ACCS.ZS"]])) {
+          wb_country[["EG.ELC.ACCS.ZS"]]
+        } else NA
+
+        # Compare corruption: WBES bribery vs WB control of corruption
+        wbes_low_corruption <- if ("IC.FRM.BRIB.ZS" %in% names(wbes_country) &&
+                                   !is.na(wbes_country$IC.FRM.BRIB.ZS[1])) {
+          100 - wbes_country$IC.FRM.BRIB.ZS[1]  # Invert: low bribery = low corruption
+        } else NA
+
+        wb_corruption <- if (!is.null(wb_country[["CC.EST"]]) &&
+                             !is.na(wb_country[["CC.EST"]])) {
+          ((wb_country[["CC.EST"]] + 2.5) / 5) * 100  # Normalize to 0-100
+        } else NA
+
+        list(
+          country = country,
+          wbes_power = wbes_power_reliable,
+          wb_power = wb_electricity,
+          wbes_corruption = wbes_low_corruption,
+          wb_corruption = wb_corruption
+        )
+      })
+
+      comparison_rows <- comparison_rows[!sapply(comparison_rows, is.null)]
+
+      if (length(comparison_rows) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "No comparable data points",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      # Create grouped bar chart
+      countries <- sapply(comparison_rows, function(x) x$country)
+
+      plot_ly() |>
+        add_trace(
+          x = countries,
+          y = sapply(comparison_rows, function(x) x$wbes_power),
+          name = "Reliable Power (WBES)",
+          type = "bar",
+          marker = list(color = "#1B6B5F")
+        ) |>
+        add_trace(
+          x = countries,
+          y = sapply(comparison_rows, function(x) x$wb_power),
+          name = "Electricity Access (WB)",
+          type = "bar",
+          marker = list(color = "#F4A460")
+        ) |>
+        add_trace(
+          x = countries,
+          y = sapply(comparison_rows, function(x) x$wbes_corruption),
+          name = "Low Corruption (WBES)",
+          type = "bar",
+          marker = list(color = "#2E7D32")
+        ) |>
+        add_trace(
+          x = countries,
+          y = sapply(comparison_rows, function(x) x$wb_corruption),
+          name = "Control of Corruption (WB)",
+          type = "bar",
+          marker = list(color = "#F49B7A")
+        ) |>
+        layout(
+          barmode = "group",
+          xaxis = list(title = "", tickangle = -45),
+          yaxis = list(title = "Score (0-100)", range = c(0, 100)),
+          legend = list(orientation = "h", y = -0.25),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |>
+        config(displayModeBar = FALSE)
+    })
+
+    # Macro Labor Chart
+    output$macro_labor_chart <- renderPlotly({
+      wb_data <- wb_comparison_data()
+      chart_type <- if (!is.null(input$chart_type)) input$chart_type else "bar"
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "Labor data not available",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      indicator_codes <- c("SL.TLF.CACT.ZS", "SL.TLF.CACT.FE.ZS", "SL.UEM.TOTL.ZS")
+      indicator_labels <- c("Labor Force %", "Female Labor %", "Unemployment %")
+      chart_df <- prepare_wb_chart_data(wb_data, indicator_codes, indicator_labels)
+
+      if (is.null(chart_df)) {
+        return(plot_ly() |> layout(annotations = list(list(
+          text = "No data available", showarrow = FALSE
+        ))) |> config(displayModeBar = FALSE))
+      }
+
+      colors <- c("#1B6B5F", "#9C27B0", "#dc3545")
+
+      if (chart_type == "radar") {
+        p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+        for (i in seq_len(nrow(chart_df))) {
+          values <- as.numeric(chart_df[i, indicator_labels])
+          values <- c(values, values[1])
+          theta <- c(indicator_labels, indicator_labels[1])
+          p <- p |> add_trace(
+            r = values, theta = theta, name = chart_df$country[i],
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+          )
+        }
+        p |> layout(
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, 100))),
+          showlegend = TRUE, legend = list(orientation = "v", x = 1.02, y = 0.5),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |> config(displayModeBar = FALSE)
+
+      } else if (chart_type == "heatmap") {
+        z_matrix <- as.matrix(chart_df[, indicator_labels])
+        plot_ly(
+          x = indicator_labels, y = chart_df$country, z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#f8f9fa"), c(1, "#1B6B5F")),
+          zmin = 0, zmax = 100,
+          hovertemplate = "%{y}<br>%{x}: %{z:.1f}%<extra></extra>"
+        ) |>
+          layout(
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = "", autorange = "reversed"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+
+      } else {
+        plot_ly() |>
+          add_trace(x = chart_df$country, y = chart_df[["Labor Force %"]],
+                    name = "Labor Force Participation %", type = "bar", marker = list(color = colors[1])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Female Labor %"]],
+                    name = "Female Labor Force %", type = "bar", marker = list(color = colors[2])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Unemployment %"]],
+                    name = "Unemployment %", type = "bar", marker = list(color = colors[3])) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = -45, categoryorder = "array", categoryarray = chart_df$country),
+            yaxis = list(title = "Percentage"),
+            legend = list(orientation = "h", y = -0.3),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
+    })
+
+    # Macro Trade Chart
+    output$macro_trade_chart <- renderPlotly({
+      wb_data <- wb_comparison_data()
+      chart_type <- if (!is.null(input$chart_type)) input$chart_type else "bar"
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(plot_ly() |>
+          layout(annotations = list(list(
+            text = "Trade data not available",
+            xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
+          )), paper_bgcolor = "rgba(0,0,0,0)") |>
+          config(displayModeBar = FALSE))
+      }
+
+      indicator_codes <- c("NE.EXP.GNFS.ZS", "NE.IMP.GNFS.ZS")
+      indicator_labels <- c("Exports (% GDP)", "Imports (% GDP)")
+      chart_df <- prepare_wb_chart_data(wb_data, indicator_codes, indicator_labels)
+
+      if (is.null(chart_df)) {
+        return(plot_ly() |> layout(annotations = list(list(
+          text = "No data available", showarrow = FALSE
+        ))) |> config(displayModeBar = FALSE))
+      }
+
+      colors <- c("#2E7D32", "#F49B7A")
+
+      if (chart_type == "radar") {
+        p <- plot_ly(type = "scatterpolar", mode = "lines+markers", fill = "toself")
+        max_val <- max(unlist(chart_df[, indicator_labels]), na.rm = TRUE)
+        range_max <- ceiling(max_val * 1.1 / 10) * 10
+        for (i in seq_len(nrow(chart_df))) {
+          values <- as.numeric(chart_df[i, indicator_labels])
+          values <- c(values, values[1])
+          theta <- c(indicator_labels, indicator_labels[1])
+          p <- p |> add_trace(
+            r = values, theta = theta, name = chart_df$country[i],
+            line = list(color = colors[((i - 1) %% length(colors)) + 1]),
+            fillcolor = paste0(colors[((i - 1) %% length(colors)) + 1], "33")
+          )
+        }
+        p |> layout(
+          polar = list(radialaxis = list(visible = TRUE, range = c(0, range_max))),
+          showlegend = TRUE, legend = list(orientation = "v", x = 1.02, y = 0.5),
+          paper_bgcolor = "rgba(0,0,0,0)"
+        ) |> config(displayModeBar = FALSE)
+
+      } else if (chart_type == "heatmap") {
+        z_matrix <- as.matrix(chart_df[, indicator_labels])
+        plot_ly(
+          x = indicator_labels, y = chart_df$country, z = z_matrix,
+          type = "heatmap",
+          colorscale = list(c(0, "#f8f9fa"), c(1, "#2E7D32")),
+          hovertemplate = "%{y}<br>%{x}: %{z:.1f}%<extra></extra>"
+        ) |>
+          layout(
+            xaxis = list(title = "", tickangle = -45),
+            yaxis = list(title = "", autorange = "reversed"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+
+      } else {
+        plot_ly() |>
+          add_trace(x = chart_df$country, y = chart_df[["Exports (% GDP)"]],
+                    name = "Exports (% GDP)", type = "bar", marker = list(color = colors[1])) |>
+          add_trace(x = chart_df$country, y = chart_df[["Imports (% GDP)"]],
+                    name = "Imports (% GDP)", type = "bar", marker = list(color = colors[2])) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = -45, categoryorder = "array", categoryarray = chart_df$country),
+            yaxis = list(title = "% of GDP"),
+            legend = list(orientation = "h", y = -0.3),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
+    })
+
+    # Macro Data Table
+    output$macro_data_table <- renderDT({
+      wb_data <- wb_comparison_data()
+
+      if (is.null(wb_data) || length(wb_data) == 0) {
+        return(datatable(data.frame(Message = "No World Bank data available"),
+                        options = list(dom = 't'), rownames = FALSE))
+      }
+
+      # Build data frame from WB results
+      indicators <- c("NY.GDP.PCAP.CD", "NY.GDP.PCAP.KD.ZG", "FP.CPI.TOTL.ZG",
+                     "NE.EXP.GNFS.ZS", "EG.ELC.ACCS.ZS", "IT.NET.USER.ZS",
+                     "GE.EST", "RQ.EST", "RL.EST", "CC.EST",
+                     "SL.UEM.TOTL.ZS", "SL.TLF.CACT.ZS")
+
+      table_data <- do.call(bind_rows, lapply(wb_data, function(x) {
+        row <- data.frame(Country = x$country, stringsAsFactors = FALSE)
+        for (ind in indicators) {
+          val <- x[[ind]]
+          row[[get_wb_indicator_label(ind)]] <- if (!is.null(val) && !is.na(val)) {
+            round(val, 2)
+          } else {
+            NA
+          }
+        }
+        row
+      }))
+
+      # Apply sort order based on GDP per capita
+      sort_dir <- if (!is.null(input$sort_order) && input$sort_order == "asc") FALSE else TRUE
+      if ("GDP per Capita" %in% names(table_data) && any(!is.na(table_data[["GDP per Capita"]]))) {
+        table_data <- table_data[order(table_data[["GDP per Capita"]], decreasing = sort_dir, na.last = TRUE), ]
+      }
+
+      datatable(
+        table_data,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          dom = 'Bfrtip'
+        ),
+        class = "table-kwiz display compact",
+        rownames = FALSE
+      )
+    })
+
+    # Download handler for macro data table
+    output$dl_macro_data_table <- downloadHandler(
+      filename = function() { paste0("macro_comparison_", Sys.Date(), ".csv") },
+      content = function(file) {
+        wb_data <- wb_comparison_data()
+        if (!is.null(wb_data) && length(wb_data) > 0) {
+          indicators <- c("NY.GDP.PCAP.CD", "NY.GDP.PCAP.KD.ZG", "FP.CPI.TOTL.ZG",
+                         "NE.EXP.GNFS.ZS", "EG.ELC.ACCS.ZS", "IT.NET.USER.ZS",
+                         "GE.EST", "RQ.EST", "RL.EST", "CC.EST")
+
+          table_data <- do.call(bind_rows, lapply(wb_data, function(x) {
+            row <- data.frame(Country = x$country, stringsAsFactors = FALSE)
+            for (ind in indicators) {
+              val <- x[[ind]]
+              row[[get_wb_indicator_label(ind)]] <- if (!is.null(val) && !is.na(val)) round(val, 2) else NA
+            }
+            row
+          }))
+          write.csv(table_data, file, row.names = FALSE)
+        } else {
+          write.csv(data.frame(Message = "No data available"), file, row.names = FALSE)
+        }
+      }
+    )
 
     # ==============================================================================
     # DOWNLOAD HANDLERS (Placeholders)

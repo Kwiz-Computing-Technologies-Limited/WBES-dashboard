@@ -225,6 +225,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -281,6 +282,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -511,9 +513,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
           ) |>
           filter(!is.na(firms_with_credit_line_pct)) |>
           arrange(desc(firms_with_credit_line_pct)) |>
-          head(12)
+          head(12) |>
+          arrange(firms_with_credit_line_pct)  # Re-arrange ascending for horizontal bar display
 
-        data$country <- factor(data$country, levels = rev(data$country))
+        data$country <- factor(data$country, levels = unique(data$country))
 
         # Simulated gap data
         data$need <- data$firms_with_credit_line_pct + runif(nrow(data), 20, 40)
@@ -580,14 +583,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
             ) |>
             filter(!is.na(gap)) |>
             arrange(desc(gap)) |>
-            head(12)
+            head(12) |>
+            arrange(gap)  # Re-arrange ascending for horizontal bar display
         } else {
           # If columns don't exist, return empty data frame
           gender_data <- data.frame()
         }
 
         if (nrow(gender_data) > 0) {
-          gender_data$country <- factor(gender_data$country, levels = rev(gender_data$country))
+          gender_data$country <- factor(gender_data$country, levels = unique(gender_data$country))
 
           # Plot gender gap by country
           plot_ly(gender_data) |>
@@ -649,10 +653,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
             .groups = "drop"
           ) |>
           arrange(desc(collateral_required_pct)) |>
-          head(10)
+          head(10) |>
+          arrange(collateral_required_pct)  # Re-arrange ascending for horizontal bar display
 
         if (nrow(data) > 0) {
-          data$country <- factor(data$country, levels = rev(data$country))
+          data$country <- factor(data$country, levels = unique(data$country))
 
           plot_ly(data,
                   y = ~country,

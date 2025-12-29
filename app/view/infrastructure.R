@@ -149,7 +149,8 @@ server <- function(id, wbes_data) {
       if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
       d <- arrange(d, desc(.data[[indicator]]))[1:15, ]
-      d$country <- factor(d$country, levels = rev(d$country))
+      d <- arrange(d, .data[[indicator]])  # Re-arrange ascending for horizontal bar display
+      d$country <- factor(d$country, levels = unique(d$country))
 
       plot_ly(d, y = ~country, x = ~get(indicator), type = "bar",
               orientation = "h",

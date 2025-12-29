@@ -40,7 +40,8 @@ box::use(
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
                            manage_regions_modal_ui, edit_region_modal_ui, custom_regions_storage],
   app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
-                           manage_sectors_modal_ui, edit_sector_modal_ui, custom_sectors_storage]
+                           manage_sectors_modal_ui, edit_sector_modal_ui, custom_sectors_storage],
+  app/logic/wb_integration[prefetch_wb_data_for_countries]
 )
 
 #' @export
@@ -447,6 +448,9 @@ ui <- function(request) {
     # Load data reactively (shared across modules)
     wbes_data <- shiny::reactiveVal(NULL)
 
+    # Prefetched World Bank data (cached at startup)
+    wb_prefetched_data <- shiny::reactiveVal(NULL)
+
   # Initialize data loading with async/futures for non-blocking operations
   shiny::observe({
     # Wrap data loading in a future for async execution
@@ -488,6 +492,49 @@ ui <- function(request) {
     }) %...>% (function(data) {
       # Success handler: set the reactive value
       wbes_data(data)
+
+      # Now prefetch World Bank data for all countries
+      shiny::showNotification(
+        "Loading World Bank macro indicators...",
+        type = "message",
+        duration = NULL,
+        id = "wb_loading"
+      )
+
+      # Prefetch WB data in the background
+      if (!is.null(data$countries) && length(data$countries) > 0) {
+        tryCatch({
+          wb_data <- prefetch_wb_data_for_countries(
+            wbes_countries = data$countries,
+            timeout_seconds = 300  # 5 minutes timeout
+          )
+          wb_prefetched_data(wb_data)
+
+          if (!is.null(wb_data)) {
+            shiny::removeNotification(id = "wb_loading")
+            shiny::showNotification(
+              sprintf("World Bank data loaded for %d countries", length(wb_data$by_country)),
+              type = "message",
+              duration = 5
+            )
+          } else {
+            shiny::removeNotification(id = "wb_loading")
+            shiny::showNotification(
+              "World Bank data unavailable - using live API fallback",
+              type = "warning",
+              duration = 5
+            )
+          }
+        }, error = function(e) {
+          shiny::removeNotification(id = "wb_loading")
+          shiny::showNotification(
+            paste("WB data prefetch failed:", e$message),
+            type = "warning",
+            duration = 5
+          )
+        })
+      }
+
       waiter_hide()
     }) %...!% (function(error) {
       # Error handler: show error message and hide waiter
@@ -770,14 +817,14 @@ ui <- function(request) {
   # Module servers - pass both raw data and filter state
   mod_overview$server("overview", wbes_data, global_filters)
 
-  # Profile modules
-  mod_country_profile$server("country_profile", wbes_data, global_filters)
+  # Profile modules - pass wb_prefetched_data for cached WB access
+  mod_country_profile$server("country_profile", wbes_data, global_filters, wb_prefetched_data)
   mod_sector_profile$server("sector_profile", wbes_data, global_filters)
   mod_regional_profile$server("regional_profile", wbes_data, global_filters)
   mod_size_profile$server("size_profile", wbes_data, global_filters)
 
-  # Benchmark modules
-  mod_benchmark$server("benchmark", wbes_data, global_filters)
+  # Benchmark modules - pass wb_prefetched_data for cached WB access
+  mod_benchmark$server("benchmark", wbes_data, global_filters, wb_prefetched_data)
   mod_benchmark_sector$server("benchmark_sector", wbes_data, global_filters)
   mod_benchmark_regional$server("benchmark_regional", wbes_data, global_filters)
   mod_benchmark_size$server("benchmark_size", wbes_data, global_filters)

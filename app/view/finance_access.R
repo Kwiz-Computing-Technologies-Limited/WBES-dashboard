@@ -182,7 +182,8 @@ server <- function(id, wbes_data) {
     output$gap_chart <- renderPlotly({
       req(filtered())
       d <- arrange(filtered(), desc(IC.FRM.FINA.ZS))[1:12, ]
-      d$country <- factor(d$country, levels = rev(d$country))
+      d <- arrange(d, IC.FRM.FINA.ZS)  # Re-arrange ascending for horizontal bar display
+      d$country <- factor(d$country, levels = unique(d$country))
 
       # Simulated gap
       d$gap <- runif(nrow(d), 15, 35)

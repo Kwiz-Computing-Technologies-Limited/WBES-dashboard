@@ -221,12 +221,17 @@ server <- function(id, wbes_data, global_filters = NULL) {
       use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                    !all(filters$year %in% c("all", NA))
 
+      # Check if sector filter is active
+      sector_filter_active <- !is.null(sector_val) && sector_val != "all" && sector_val != ""
+
       # Choose appropriate data source
-      # Priority: year filter > sector filter > default latest
-      data <- if (use_panel) {
-        wbes_data()$country_panel  # Has year dimension
-      } else if (sector_val == "all") {
+      # Use processed data when sector filter is active (has sector column)
+      data <- if (sector_filter_active && !is.null(wbes_data()$processed)) {
+        wbes_data()$processed  # Firm-level data with sector
+      } else if (sector_val == "all" && !use_panel) {
         wbes_data()$latest  # Global country aggregates
+      } else if (use_panel) {
+        wbes_data()$country_panel  # Has year dimension
       } else {
         wbes_data()$country_sector  # Country-sector combinations
       }
@@ -241,14 +246,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
 
-      # Add coordinates if using panel data (for maps)
-      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+      # Add coordinates for maps
+      if (!is.null(wbes_data()$country_coordinates)) {
         coords <- wbes_data()$country_coordinates
-        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
           data <- merge(data, coords, by = "country", all.x = TRUE)
         }
       }
@@ -275,10 +281,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
       sector_val <- selected_sector()
 
       # If a specific sector is selected from sidebar, filter to that sector
-      if (!is.null(sector_val) && sector_val != "all") {
+      # Only filter if the data has a sector column
+      if (!is.null(sector_val) && sector_val != "all" && "sector" %in% names(data)) {
         data |> filter(!is.na(sector), sector == sector_val)
       } else {
-        # If "all" is selected, return all data (globally aggregated)
+        # If "all" is selected or data doesn't have sector column, return as-is
         data
       }
     })

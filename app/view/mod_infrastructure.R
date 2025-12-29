@@ -218,6 +218,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
           income_value = filters$income,
           year_value = filters$year,
           custom_regions = filters$custom_regions,
+          custom_sectors = filters$custom_sectors,
           filter_by_region_fn = filter_by_region
         )
       }
@@ -353,8 +354,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Get top 15, then arrange ascending so factor levels display correctly in horizontal bar
       data <- arrange(data, desc(.data[[indicator]]))[1:15, ]
-      data$country <- factor(data$country, levels = rev(data$country))
+      data <- arrange(data, .data[[indicator]])
+      data$country <- factor(data$country, levels = unique(data$country))
 
       plot_ly(data,
               y = ~country,

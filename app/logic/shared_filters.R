@@ -74,7 +74,9 @@ get_filter_choices <- function(data, column, add_all = TRUE, all_label = "All") 
 #' @param income_value Income filter value
 #' @param year_value Year filter value (can be a vector)
 #' @param custom_regions List of custom regions
+#' @param custom_sectors List of custom sectors
 #' @param filter_by_region_fn Function to apply region filtering (from custom_regions module)
+#' @param filter_by_sector_fn Function to apply sector filtering (from custom_sectors module)
 #' @return Filtered data frame
 #' @export
 apply_common_filters <- function(data,
@@ -84,14 +86,16 @@ apply_common_filters <- function(data,
                                   income_value = "all",
                                   year_value = "all",
                                   custom_regions = NULL,
-                                  filter_by_region_fn = NULL) {
+                                  custom_sectors = NULL,
+                                  filter_by_region_fn = NULL,
+                                  filter_by_sector_fn = NULL) {
   if (is.null(data)) return(NULL)
 
  # Helper to check if filter should be applied (handles NULL, NA, vectors)
   should_filter <- function(value) {
     if (is.null(value)) return(FALSE)
     if (length(value) == 0) return(FALSE)
-    if (length(value) == 1 && (is.na(value) || value == "all")) return(FALSE)
+    if (length(value) == 1 && (is.na(value) || value == "all" || value == "")) return(FALSE)
     # For vectors, check if it's not just "all"
     if (length(value) > 1) return(!all(value == "all"))
     return(TRUE)
@@ -106,9 +110,22 @@ apply_common_filters <- function(data,
     }
   }
 
-  # Apply sector filter
+  # Apply sector filter (using custom_sectors if available)
   if (should_filter(sector_value) && "sector" %in% names(data)) {
-    data <- data |> filter(!is.na(sector) & sector %in% sector_value)
+    if (!is.null(filter_by_sector_fn)) {
+      # Use custom sector filtering function (handles "custom:" prefix)
+      data <- filter_by_sector_fn(data, sector_value, custom_sectors)
+    } else if (grepl("^custom:", sector_value)) {
+      # Handle custom sector inline if no function provided
+      sector_name <- sub("^custom:", "", sector_value)
+      if (!is.null(custom_sectors) && !is.null(custom_sectors[[sector_name]])) {
+        custom_sector <- custom_sectors[[sector_name]]
+        data <- data |> filter(!is.na(sector) & sector %in% custom_sector$sectors)
+      }
+    } else {
+      # Standard sector filter
+      data <- data |> filter(!is.na(sector) & sector %in% sector_value)
+    }
   }
 
   # Apply firm size filter
