@@ -407,13 +407,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
         config(displayModeBar = FALSE)
     })
 
-    # Regional chart
+    # Regional chart - aggregate from filtered data to respect global filters
     output$regional_chart <- renderPlotly({
-      req(wbes_data())
-      regional <- wbes_data()$regional
+      req(filtered())
+      d <- filtered()
 
       # Check if data exists
-      if (is.null(regional) || nrow(regional) == 0) {
+      if (is.null(d) || nrow(d) == 0 || !"region" %in% names(d)) {
         return(
           plot_ly() |>
             layout(
@@ -433,10 +433,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       # Check if required columns exist - use friendly names first, then IC.FRM.* as fallback
-      capacity_col <- if ("capacity_utilization_pct" %in% names(regional)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
-      export_col <- if ("export_firms_pct" %in% names(regional)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
+      capacity_col <- if ("capacity_utilization_pct" %in% names(d)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
+      export_col <- if ("export_firms_pct" %in% names(d)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
 
-      if (!capacity_col %in% names(regional) || !export_col %in% names(regional)) {
+      has_capacity <- capacity_col %in% names(d)
+      has_export <- export_col %in% names(d)
+
+      if (!has_capacity && !has_export) {
         return(
           plot_ly() |>
             layout(
@@ -455,10 +458,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Aggregate by region from filtered data
+      regional <- d |>
+        filter(!is.na(region)) |>
+        group_by(region) |>
+        summarise(
+          capacity = if (has_capacity) mean(get(capacity_col), na.rm = TRUE) else NA_real_,
+          export = if (has_export) mean(get(export_col), na.rm = TRUE) else NA_real_,
+          .groups = "drop"
+        )
+
+      # Calculate performance index from available columns
+      if (has_capacity && has_export) {
+        regional$perf_index <- (regional$capacity + regional$export) / 2
+      } else if (has_capacity) {
+        regional$perf_index <- regional$capacity
+      } else {
+        regional$perf_index <- regional$export
+      }
+
       regional <- regional |>
-        mutate(
-          perf_index = (.data[[capacity_col]] + .data[[export_col]]) / 2
-        ) |>
         filter(!is.na(perf_index)) |>
         arrange(desc(perf_index))
 
