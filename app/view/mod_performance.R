@@ -9,7 +9,7 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
-  stats[setNames, reorder],
+  stats[setNames, reorder, complete.cases, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
