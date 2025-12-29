@@ -382,6 +382,14 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
+      # Get indicator label for chart title
+      ind_label <- switch(indicator,
+        "IC.FRM.WKFC.ZS" = "Workforce as Obstacle (%)",
+        "IC.FRM.FEMW.ZS" = "Female Workers (%)",
+        "IC.FRM.FEMO.ZS" = "Female Ownership (%)",
+        indicator
+      )
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -404,9 +412,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
               text = ~paste0(country, ": ", round(get(indicator), 1), "%"),
               hoverinfo = "text") |>
         layout(
-          xaxis = list(title = "Percentage (%)"),
+          title = list(text = ind_label, font = list(size = 14), x = 0.5, y = 0.98),
+          xaxis = list(title = ind_label, titlefont = list(size = 12)),
           yaxis = list(title = ""),
-          margin = list(l = 120),
+          margin = list(l = 120, r = 20, t = 40, b = 40),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>

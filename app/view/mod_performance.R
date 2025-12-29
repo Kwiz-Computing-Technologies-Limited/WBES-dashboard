@@ -368,6 +368,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
+      # Get indicator label for chart title
+      ind_label <- switch(indicator,
+        "IC.FRM.CAPU.ZS" = "Capacity Utilization (%)",
+        "IC.FRM.EXPRT.ZS" = "Export Participation (%)",
+        indicator
+      )
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -390,9 +397,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
               text = ~paste0(country, ": ", round(get(indicator), 1), "%"),
               hoverinfo = "text") |>
         layout(
-          xaxis = list(title = "Percentage (%)"),
+          title = list(text = ind_label, font = list(size = 14), x = 0.5, y = 0.98),
+          xaxis = list(title = ind_label, titlefont = list(size = 12)),
           yaxis = list(title = ""),
-          margin = list(l = 120),
+          margin = list(l = 120, r = 20, t = 40, b = 40),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
@@ -493,7 +501,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
+      # Filter out NA values for the scatter plot
       d <- d |>
+        filter(!is.na(IC.FRM.CAPU.ZS) & !is.na(IC.FRM.EXPRT.ZS)) |>
         mutate(
           export_category = case_when(
             IC.FRM.EXPRT.ZS < 10 ~ "Low",
@@ -502,18 +512,67 @@ server <- function(id, wbes_data, global_filters = NULL) {
           )
         )
 
-      plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
+      if (nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid data for scatter plot",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        lm(IC.FRM.EXPRT.ZS ~ IC.FRM.CAPU.ZS, data = d)
+      }, error = function(e) NULL)
+
+      # Calculate R² if model fit successfully
+      r_squared <- if (!is.null(fit)) {
+        round(summary(fit)$r.squared, 3)
+      } else NA
+
+      p <- plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
                            color = ~firm_size,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)))
+
+      # Add trend line if fit was successful
+      if (!is.null(fit) && nrow(d) >= 3) {
+        x_range <- seq(min(d$IC.FRM.CAPU.ZS, na.rm = TRUE), max(d$IC.FRM.CAPU.ZS, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(IC.FRM.CAPU.ZS = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Capacity Utilization (%)"),
           yaxis = list(title = "Export Participation (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
+          margin = list(b = 80)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -603,20 +662,48 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        lm(capacity_val ~ total_obstacles, data = d)
+      }, error = function(e) NULL)
+
+      # Calculate R² if model fit successfully
+      r_squared <- if (!is.null(fit)) {
+        round(summary(fit)$r.squared, 3)
+      } else NA
+
+      p <- plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
               type = "scatter", mode = "markers",
               color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
               text = ~paste0(country, "<br>Region: ", region, "<br>Capacity: ", round(capacity_val, 1),
                            "%<br>Obstacles: ", round(total_obstacles, 1), "%"),
               hoverinfo = "text",
-              marker = list(size = 10, opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line if fit was successful
+      if (!is.null(fit) && nrow(d) >= 3) {
+        x_range <- seq(min(d$total_obstacles, na.rm = TRUE), max(d$total_obstacles, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(total_obstacles = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Business Obstacles Index (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
+          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
+          margin = list(b = 80)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -773,18 +860,46 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "Infrastructure Obstacle (%)"
       )
 
-      plot_ly(d, x = infra_vals, y = export_vals,
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        lm(export_vals ~ infra_vals)
+      }, error = function(e) NULL)
+
+      # Calculate R² if model fit successfully
+      r_squared <- if (!is.null(fit)) {
+        round(summary(fit)$r.squared, 3)
+      } else NA
+
+      p <- plot_ly(d, x = infra_vals, y = export_vals,
               type = "scatter", mode = "markers",
               text = ~country,
               color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
-              marker = list(size = 10, opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line if fit was successful
+      if (!is.null(fit) && length(infra_vals) >= 3) {
+        x_range <- seq(min(infra_vals, na.rm = TRUE), max(infra_vals, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(infra_vals = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = x_label),
           yaxis = list(title = "Export Participation (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
+          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
+          margin = list(b = 80)
         ) |>
         config(displayModeBar = FALSE)
     })
