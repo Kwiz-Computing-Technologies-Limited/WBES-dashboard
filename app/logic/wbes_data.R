@@ -321,6 +321,14 @@ load_microdata <- function(dta_files) {
     "workforce_obstacle_pct", "annual_sales_growth_pct",
     # Infrastructure obstacle columns for Country Profile detailed charts
     "electricity_obstacle", "water_obstacle", "transport_obstacle", "generator_share_pct",
+    # Water-related columns
+    "water_insufficiency_pct", "water_shortages_per_month", "water_shortage_duration_hrs", "days_to_water_connection",
+    # Transport-related columns
+    "transport_perception_index", "transport_biggest_obstacle",
+    # Digital connectivity columns
+    "internet_disruptions_pct", "days_to_internet_connection", "website_pct",
+    # Crime losses column
+    "crime_losses_pct",
     # Financial access columns for Country Profile detailed charts
     "loan_application_pct", "overdraft_facility_pct",
     # Bribery columns for Country Profile governance charts
@@ -383,6 +391,7 @@ load_microdata <- function(dta_files) {
       region = first_non_na(region),
       income = first_non_na(income),
       firm_size = first_non_na(firm_size),
+      year = first_non_na(year),  # Preserve survey year for display
       sample_size = n(),
       .groups = "drop"
     )
@@ -560,11 +569,19 @@ process_microdata <- function(data) {
       avg_outage_duration_hrs = coalesce_num(get0("in3", ifnotfound = NULL)),
       firms_with_generator_pct = coalesce_num(get0("in9", ifnotfound = NULL)),
       # Infrastructure obstacles (for detailed breakdown)
-      electricity_obstacle = coalesce_num(get0("elec", ifnotfound = NULL)),
-      water_obstacle = coalesce_num(get0("c16", ifnotfound = NULL)),
-      transport_obstacle = coalesce_num(get0("d4", ifnotfound = NULL)),
+      electricity_obstacle = coalesce_num(get0("in12", ifnotfound = NULL)),  # Electricity as major constraint
+      # Water-related columns (in5=days to water connection, in6=water shortages/month, in7=water shortage duration hrs, in17/in18=% firms with water issues)
+      water_obstacle = coalesce_num(get0("in17", ifnotfound = NULL), get0("in18", ifnotfound = NULL)),  # % firms experiencing water insufficiencies
+      water_insufficiency_pct = coalesce_num(get0("in17", ifnotfound = NULL), get0("in18", ifnotfound = NULL)),  # Same as water_obstacle
+      water_shortages_per_month = coalesce_num(get0("in6", ifnotfound = NULL), get0("in19", ifnotfound = NULL)),  # Number of water insufficiencies per month
+      water_shortage_duration_hrs = coalesce_num(get0("in7", ifnotfound = NULL), get0("in20", ifnotfound = NULL)),  # Duration of water shortage in hours
+      days_to_water_connection = coalesce_num(get0("in5", ifnotfound = NULL)),  # Days to obtain water connection
+      # Transport-related columns (in11=transport as major constraint, in23=transport perceptions index, obst15=biggest obstacle)
+      transport_obstacle = coalesce_num(get0("in11", ifnotfound = NULL)),  # % firms identifying transportation as major/very severe constraint
+      transport_perception_index = coalesce_num(get0("in23", ifnotfound = NULL)),  # Transport perceptions index (B-READY)
+      transport_biggest_obstacle = coalesce_num(get0("obst15", ifnotfound = NULL)),  # % choosing transport as biggest obstacle
       # Power sources (for power source mix chart)
-      generator_share_pct = coalesce_num(get0("in7", ifnotfound = NULL)),  # % electricity from generator
+      generator_share_pct = coalesce_num(get0("in10", ifnotfound = NULL)),  # % electricity from generator (in10, not in7 which is water)
 
       # Access to finance
       firms_with_credit_line_pct = coalesce_num(get0("fin14", ifnotfound = NULL)),
@@ -592,8 +609,13 @@ process_microdata <- function(data) {
       bribe_for_utilities = coalesce_num(get0("j7c", ifnotfound = NULL)),  # Utility connection
       bribe_for_tax = coalesce_num(get0("j7d", ifnotfound = NULL)),  # Tax assessment
       bribe_for_contract = coalesce_num(get0("j7e", ifnotfound = NULL)),  # Government contract
-      # Management time spent
-      mgmt_time_regulations_pct = coalesce_num(get0("j2", ifnotfound = NULL)),  # Time on regulations
+      # Management time spent (reg1 = Senior management time spent dealing with government regulations)
+      mgmt_time_regulations_pct = coalesce_num(get0("reg1", ifnotfound = NULL)),  # Time on regulations (correct column is reg1)
+
+      # Digital connectivity indicators (for Digital Connectivity charts)
+      internet_disruptions_pct = coalesce_num(get0("in21", ifnotfound = NULL)),  # % firms experiencing internet disruptions
+      days_to_internet_connection = coalesce_num(get0("in22", ifnotfound = NULL)),  # Days to obtain internet connection
+      website_pct = coalesce_num(get0("t5", ifnotfound = NULL)),  # % firms having their own website
 
       # Workforce and gender
       female_ownership_pct = coalesce_num(get0("gend1", ifnotfound = NULL)),
@@ -607,8 +629,9 @@ process_microdata <- function(data) {
       annual_sales_growth_pct = coalesce_num(get0("perf1", ifnotfound = NULL), get0("d2", ifnotfound = NULL)),
 
       # Crime and security (ensure these always exist even if source columns are missing)
-      crime_obstacle_pct = coalesce_num(get0("crime8", ifnotfound = NULL)),
-      security_costs_pct = coalesce_num(get0("crime2", ifnotfound = NULL))
+      crime_obstacle_pct = coalesce_num(get0("crime8", ifnotfound = NULL)),  # % firms identifying crime as major/very severe constraint
+      security_costs_pct = coalesce_num(get0("crime2", ifnotfound = NULL)),  # Security costs as % of sales
+      crime_losses_pct = coalesce_num(get0("crime3", ifnotfound = NULL))  # Losses due to theft and vandalism as % of annual sales
     ) |>
     mutate(
       # Add IC.FRM.* aliases for compatibility with downstream modules

@@ -561,6 +561,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
     })
 
     # Helper function to aggregate data by grouping dimension
+    # When a 3rd dimension is selected, groups by BOTH country AND dimension (for faceting)
     aggregate_by_group <- function(data, indicators) {
       req(data)
       dim <- group_dim()
@@ -571,6 +572,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
           group_by(country) |>
           summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
         result$group_label <- result$country
+        result$group_value <- NA_character_
         return(result)
       }
 
@@ -581,15 +583,88 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
           group_by(country) |>
           summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
         result$group_label <- result$country
+        result$group_value <- NA_character_
         return(result)
       }
 
-      # Group by the selected dimension
+      # Group by BOTH country AND the selected dimension (for faceting)
       result <- data |>
-        group_by(!!rlang::sym(dim)) |>
+        group_by(country, !!rlang::sym(dim)) |>
         summarise(across(any_of(indicators), ~mean(.x, na.rm = TRUE)), .groups = "drop")
-      result$group_label <- as.character(result[[dim]])
+      result$group_label <- result$country
+      result$group_value <- as.character(result[[dim]])
       result
+    }
+
+    # Helper function to create faceted comparison bar chart
+    create_faceted_comparison <- function(agg_data, indicators, labels, title_prefix) {
+      countries <- unique(agg_data$group_label)
+      has_grouping <- "group_value" %in% names(agg_data) && !all(is.na(agg_data$group_value))
+      colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+      if (has_grouping) {
+        # Faceted by 3rd dimension - countries as bars, facets by group_value
+        group_values <- unique(agg_data$group_value[!is.na(agg_data$group_value)])
+        dim_name <- tools::toTitleCase(gsub("_", " ", group_dim()))
+
+        plots <- lapply(seq_along(group_values), function(g_idx) {
+          gv <- group_values[g_idx]
+          gv_data <- agg_data[agg_data$group_value == gv, ]
+
+          p <- plot_ly()
+          for (i in seq_along(countries)) {
+            country <- countries[i]
+            country_data <- gv_data[gv_data$group_label == country, ]
+            if (nrow(country_data) > 0) {
+              values <- sapply(indicators, function(ind) {
+                val <- country_data[[ind]]
+                if (length(val) > 0) mean(val, na.rm = TRUE) else NA
+              })
+              p <- add_trace(p, x = labels, y = values, type = "bar", name = country,
+                            legendgroup = country, showlegend = (g_idx == 1),
+                            marker = list(color = colors[((i - 1) %% length(colors)) + 1]))
+            }
+          }
+          p |> layout(
+            xaxis = list(title = as.character(gv), tickangle = -45),
+            yaxis = list(title = if(g_idx == 1) "Value" else "")
+          )
+        })
+
+        subplot(plots, nrows = 1, shareY = TRUE, titleX = TRUE, margin = 0.05) |>
+          layout(
+            title = list(text = paste(title_prefix, "by", dim_name), font = list(size = 14)),
+            barmode = "group",
+            showlegend = TRUE,
+            legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+            margin = list(l = 60, r = 120, t = 50, b = 100),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        # No faceting - simple grouped bar chart by country
+        p <- plot_ly()
+        for (i in seq_along(countries)) {
+          country <- countries[i]
+          country_data <- agg_data[agg_data$group_label == country, ]
+          values <- sapply(indicators, function(ind) {
+            val <- country_data[[ind]]
+            if (length(val) > 0) mean(val, na.rm = TRUE) else NA
+          })
+          p <- add_trace(p, x = labels, y = values, type = "bar", name = country,
+                        marker = list(color = colors[((i - 1) %% length(colors)) + 1]))
+        }
+        p |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = ""),
+            yaxis = list(title = "Value"),
+            showlegend = TRUE,
+            legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+            paper_bgcolor = "rgba(0,0,0,0)"
+          ) |>
+          config(displayModeBar = FALSE)
+      }
     }
 
     # ==============================================================================
@@ -756,40 +831,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
                       "firms_with_generator_pct", "water_insufficiency_pct")
       labels <- c("Power Outages", "Outage Duration", "Generator %", "Water Insufficiency %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-
-        traces[[i]] <- list(
-          x = labels,
-          y = values,
-          name = group,
-          type = "bar"
-        )
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(
-          barmode = "group",
-          xaxis = list(title = ""),
-          yaxis = list(title = "Value"),
-          paper_bgcolor = "rgba(0,0,0,0)"
-        ) |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Infrastructure")
     })
 
     output$infra_radar <- renderPlotly({
@@ -963,30 +1006,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
                       "loan_rejection_rate_pct", "collateral_required_pct")
       labels <- c("Credit Access %", "Bank Account %", "Loan Rejection %", "Collateral %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-
-        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(barmode = "group", xaxis = list(title = ""), yaxis = list(title = "Value"), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Finance Access")
     })
 
     output$finance_radar <- renderPlotly({
@@ -1109,28 +1130,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       indicators <- c("IC.FRM.BRIB.ZS", "IC.FRM.CORR.ZS", "mgmt_time_regulations_pct")
       labels <- c("Bribery %", "Corruption %", "Regulations %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(barmode = "group", xaxis = list(title = ""), yaxis = list(title = "Value"), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Governance")
     })
 
     output$governance_radar <- renderPlotly({
@@ -1251,28 +1252,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       indicators <- c("female_ownership_pct", "female_workers_pct", "workforce_obstacle_pct")
       labels <- c("Female Own %", "Female Workers %", "Obstacle %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(barmode = "group", xaxis = list(title = ""), yaxis = list(title = "Value"), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Workforce")
     })
 
     output$workforce_radar <- renderPlotly({
@@ -1398,28 +1379,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       indicators <- c("capacity_utilization_pct", "export_firms_pct", "export_share_pct", "annual_sales_growth_pct")
       labels <- c("Capacity %", "Export Firms %", "Export Share %", "Growth %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(barmode = "group", xaxis = list(title = ""), yaxis = list(title = "Value"), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Performance")
     })
 
     output$performance_radar <- renderPlotly({
@@ -1532,28 +1493,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       indicators <- c("crime_obstacle_pct", "security_costs_pct")
       labels <- c("Crime Obstacle %", "Security Costs %")
 
-      # Use grouping dimension
       agg_data <- aggregate_by_group(data, indicators)
-      groups <- unique(agg_data$group_label)
-
-      traces <- list()
-      for (i in seq_along(groups)) {
-        group <- groups[i]
-        group_data <- agg_data[agg_data$group_label == group, ]
-        values <- sapply(indicators, function(ind) {
-          val <- group_data[[ind]]
-          if (length(val) > 0) mean(val, na.rm = TRUE) else NA
-        })
-        traces[[i]] <- list(x = labels, y = values, name = group, type = "bar")
-      }
-
-      p <- plot_ly()
-      for (i in seq_along(groups)) {
-        p <- add_trace(p, data = traces[[i]], x = ~x, y = ~y, name = traces[[i]]$name, type = "bar")
-      }
-      p |>
-        layout(barmode = "group", xaxis = list(title = ""), yaxis = list(title = "Value"), paper_bgcolor = "rgba(0,0,0,0)") |>
-        config(displayModeBar = FALSE)
+      create_faceted_comparison(agg_data, indicators, labels, "Crime & Security")
     })
 
     output$crime_radar <- renderPlotly({

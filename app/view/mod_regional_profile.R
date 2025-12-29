@@ -321,17 +321,29 @@ server <- function(id, wbes_data, global_filters = NULL) {
     filtered_data <- reactive({
       req(wbes_data())
 
-      # Get filters
-      filters <- if (!is.null(global_filters)) global_filters() else list(region = "all")
+      # Get filters - always access global_filters() to establish reactive dependency
+      filters <- if (!is.null(global_filters)) {
+        global_filters()  # This establishes reactive dependency on all filter changes
+      } else {
+        list(region = "all", sector = "all", firm_size = "all", income = "all", year = "all")
+      }
       region_val <- if (!is.null(filters$region)) filters$region else "all"
 
       # Check if year filter is active
       use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                    !all(filters$year %in% c("all", NA))
 
+      # Check if sector filter is active (not "all" or empty)
+      sector_filter_active <- !is.null(filters$sector) &&
+                              filters$sector != "all" &&
+                              filters$sector != ""
+
       # Choose appropriate data source
-      # Priority: year filter > region filter > default latest
-      data <- if (use_panel) {
+      # Priority: sector filter > year filter > region filter > default latest
+      # Use country_sector when sector filter is active (has both country and sector columns)
+      data <- if (sector_filter_active && !is.null(wbes_data()$country_sector)) {
+        wbes_data()$country_sector  # Country-sector combinations (has sector column)
+      } else if (use_panel) {
         wbes_data()$country_panel  # Has year dimension
       } else if (region_val == "all") {
         wbes_data()$latest  # Global country aggregates
@@ -354,10 +366,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Add coordinates if using panel data (for maps)
-      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+      # Add coordinates for maps (always, not just for panel data)
+      if (!is.null(wbes_data()$country_coordinates)) {
         coords <- wbes_data()$country_coordinates
-        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
           data <- merge(data, coords, by = "country", all.x = TRUE)
         }
       }

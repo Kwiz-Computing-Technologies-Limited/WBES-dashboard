@@ -3,7 +3,7 @@
 
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
-        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, renderText, textOutput,
+        fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, observe, renderText, textOutput,
         downloadButton, downloadHandler, reactiveVal],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
@@ -415,12 +415,31 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
     filtered_data <- reactive({
       req(wbes_data())
 
-      # Use country_panel (has year) if year filter is active, otherwise use latest
-      filters <- if (!is.null(global_filters)) global_filters() else NULL
+      # Get filters - always access global_filters() to establish reactive dependency
+      filters <- if (!is.null(global_filters)) {
+        global_filters()  # This establishes reactive dependency on all filter changes
+      } else {
+        list(region = "all", sector = "all", firm_size = "all", income = "all", year = "all")
+      }
+
+      # Check if year filter is active
       use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                    !all(filters$year %in% c("all", NA))
 
-      data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+      # Check if sector filter is active (not "all" or empty)
+      sector_filter_active <- !is.null(filters$sector) &&
+                              filters$sector != "all" &&
+                              filters$sector != ""
+
+      # Choose data source based on active filters
+      # Use country_sector when sector filter is active (has both country and sector columns)
+      data <- if (sector_filter_active && !is.null(wbes_data()$country_sector)) {
+        wbes_data()$country_sector  # Country-sector combinations
+      } else if (use_panel) {
+        wbes_data()$country_panel  # Has year dimension
+      } else {
+        wbes_data()$latest  # Global country aggregates
+      }
 
       # If global filters are provided, use them
       if (!is.null(filters)) {
@@ -437,10 +456,10 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
         )
       }
 
-      # Add coordinates if using panel data (for maps)
-      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+      # Add coordinates for maps
+      if (!is.null(wbes_data()$country_coordinates)) {
         coords <- wbes_data()$country_coordinates
-        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
           data <- merge(data, coords, by = "country", all.x = TRUE)
         }
       }
@@ -449,18 +468,32 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
     })
 
     # Update country choices from filtered data
-    observeEvent(filtered_data(), {
+    # Use observe instead of observeEvent to ensure reactivity to all filter changes
+    observe({
       req(filtered_data())
-      countries <- filtered_data()$country |>
+      data <- filtered_data()
+
+      # Get unique countries from filtered data
+      countries <- data$country |>
         unique() |>
         stats::na.omit() |>
         as.character() |>
         sort()
 
+      # Get current selection to preserve if still valid
+      current_selection <- input$country_select
+      new_selection <- if (!is.null(current_selection) && current_selection %in% countries) {
+        current_selection
+      } else if (length(countries) > 0) {
+        countries[1]
+      } else {
+        NULL
+      }
+
       shiny::updateSelectInput(
         session, "country_select",
         choices = setNames(countries, countries),
-        selected = if(length(countries) > 0) countries[1] else NULL
+        selected = new_selection
       )
     })
 

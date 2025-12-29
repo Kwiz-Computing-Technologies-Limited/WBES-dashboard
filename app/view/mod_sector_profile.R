@@ -337,10 +337,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
         0
       }
 
-      firms_count <- if (!is.null(d$sample_size) && length(d$sample_size) > 0) {
+      # Count firms: use sample_size if available (aggregated data), otherwise count rows (firm-level data)
+      firms_count <- if ("sample_size" %in% names(d) && any(!is.na(d$sample_size))) {
         sum(d$sample_size, na.rm = TRUE)
       } else {
-        0
+        # Firm-level data - each row is a firm
+        nrow(d)
       }
 
       tags$div(
@@ -1327,12 +1329,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(sector_data())
       d <- sector_data()
 
-      if ("country" %in% names(d) && "sample_size" %in% names(d)) {
-        country_counts <- d |>
-          group_by(country) |>
-          summarise(firms = sum(sample_size, na.rm = TRUE), .groups = "drop") |>
-          arrange(desc(firms)) |>
-          filter(!is.na(country), firms > 0)
+      if ("country" %in% names(d)) {
+        # Support both aggregated data (with sample_size) and firm-level data (count rows)
+        country_counts <- if ("sample_size" %in% names(d)) {
+          d |>
+            group_by(country) |>
+            summarise(firms = sum(sample_size, na.rm = TRUE), .groups = "drop") |>
+            arrange(desc(firms)) |>
+            filter(!is.na(country), firms > 0)
+        } else {
+          # Firm-level data - count rows per country
+          d |>
+            filter(!is.na(country)) |>
+            group_by(country) |>
+            summarise(firms = n(), .groups = "drop") |>
+            arrange(desc(firms)) |>
+            filter(firms > 0)
+        }
 
         if (nrow(country_counts) > 0) {
           # Show top 15 countries

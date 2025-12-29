@@ -762,25 +762,37 @@ server <- function(id, wbes_data, global_filters = NULL) {
             ) |>
             config(displayModeBar = FALSE)
         } else {
-          # No grouping - simple bar chart
+          # No grouping - simple bar chart with different colors per region, indicator name as x-axis title
+          regions <- unique(data$region)
+          colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
           plots <- lapply(seq_along(available), function(i) {
             ind <- available[i]
             ind_name <- indicator_names[i]
             y_vals <- data[[ind]]
 
+            # Create bar chart with different color per region
             plot_ly(data, x = ~region, y = y_vals,
                     type = "bar",
-                    marker = list(color = "#1B6B5F"),
-                    name = ind_name,
-                    hovertemplate = paste0(ind_name, ": %{y:.1f}<extra></extra>"))
+                    color = ~region,
+                    colors = setNames(colors[seq_along(regions)], regions),
+                    showlegend = (i == 1),  # Only show legend on first chart
+                    legendgroup = ~region,
+                    hovertemplate = paste0("%{x}<br>", ind_name, ": %{y:.1f}<extra></extra>")) |>
+              layout(xaxis = list(title = ind_name, tickangle = -45, automargin = TRUE))
           })
 
-          subplot(plots, nrows = 1, shareY = FALSE, titleX = TRUE) |>
+          subplot(plots, nrows = 1, shareY = FALSE, titleX = TRUE, margin = 0.05) |>
             layout(
               title = list(text = paste(domain$name, "Indicators"), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+              legend = list(
+                orientation = "v",
+                x = 1.02, y = 0.5, yanchor = "middle",
+                bgcolor = "rgba(255,255,255,0.8)",
+                title = list(text = "Region")
+              ),
               margin = list(l = 60, r = 120, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
