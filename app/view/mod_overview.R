@@ -11,7 +11,7 @@ box::use(
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend, labelFormat],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, across, any_of],
- stats[setNames, na.omit],
+ stats[setNames, na.omit, density, median],
  scales[rescale],
  htmlwidgets[saveWidget],
  utils[write.csv],
@@ -160,6 +160,77 @@ ui <- function(id) {
             class = "text-muted small mt-2",
             "This dial tracks how easily firms secure formal credit; scores below the threshold highlight markets where access remains constrained."
           )
+        )
+      )
+    )
+  ),
+
+  # Density Plots Section
+  fluidRow(
+    class = "mb-4 mt-4",
+    column(12,
+      h3(icon("chart-area"), "Distribution of Key Indicators", class = "text-primary-teal mb-3"),
+      p(class = "text-muted", "Density plots showing the distribution of key business environment metrics across countries")
+    )
+  ),
+
+  fluidRow(
+    class = "mb-4",
+    column(4,
+      card(
+        card_header(icon("users"), "Female Workforce Participation"),
+        card_body(
+          chart_with_download(ns, "density_female_workers", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of female workers as percentage of total workforce across countries")
+        )
+      )
+    ),
+    column(4,
+      card(
+        card_header(icon("venus"), "Female Ownership"),
+        card_body(
+          chart_with_download(ns, "density_female_ownership", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of firms with female ownership participation")
+        )
+      )
+    ),
+    column(4,
+      card(
+        card_header(icon("industry"), "Capacity Utilization"),
+        card_body(
+          chart_with_download(ns, "density_capacity", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of firm capacity utilization rates")
+        )
+      )
+    )
+  ),
+
+  fluidRow(
+    class = "mb-4",
+    column(4,
+      card(
+        card_header(icon("bolt"), "Power Outages"),
+        card_body(
+          chart_with_download(ns, "density_power_outages", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of monthly power outage frequency")
+        )
+      )
+    ),
+    column(4,
+      card(
+        card_header(icon("hand-holding-usd"), "Bribery Incidence"),
+        card_body(
+          chart_with_download(ns, "density_bribery", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of bribery incidence rates across countries")
+        )
+      )
+    ),
+    column(4,
+      card(
+        card_header(icon("ship"), "Export Participation"),
+        card_body(
+          chart_with_download(ns, "density_exports", height = "280px"),
+          p(class = "text-muted small mt-2", "Distribution of firms engaged in export activities")
         )
       )
     )
@@ -649,6 +720,128 @@ server <- function(id, wbes_data, global_filters = NULL) {
    })
 
    # ============================================================
+   # Density Plots
+   # ============================================================
+
+   # Helper function to create density plot
+   create_density_plot <- function(data, col_name, title, color = "#1B6B5F", x_label = "Value") {
+     if (!col_name %in% names(data)) {
+       return(
+         plot_ly() |>
+           layout(
+             annotations = list(list(
+               text = paste("Data not available"),
+               showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+             )),
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       )
+     }
+
+     values <- data[[col_name]]
+     values <- values[!is.na(values)]
+
+     if (length(values) < 3) {
+       return(
+         plot_ly() |>
+           layout(
+             annotations = list(list(
+               text = "Insufficient data for density plot",
+               showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+             )),
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       )
+     }
+
+     # Calculate density
+     dens <- density(values, na.rm = TRUE)
+
+     # Calculate mean and median for annotations
+     mean_val <- mean(values, na.rm = TRUE)
+     median_val <- median(values, na.rm = TRUE)
+
+     plot_ly() |>
+       add_trace(
+         x = dens$x, y = dens$y,
+         type = "scatter", mode = "lines",
+         fill = "tozeroy",
+         fillcolor = paste0(color, "40"),
+         line = list(color = color, width = 2),
+         name = "Density",
+         hovertemplate = paste0(x_label, ": %{x:.1f}<br>Density: %{y:.4f}<extra></extra>")
+       ) |>
+       add_trace(
+         x = c(mean_val, mean_val), y = c(0, max(dens$y)),
+         type = "scatter", mode = "lines",
+         line = list(color = "#dc3545", width = 2, dash = "dash"),
+         name = paste0("Mean: ", round(mean_val, 1)),
+         hoverinfo = "name"
+       ) |>
+       add_trace(
+         x = c(median_val, median_val), y = c(0, max(dens$y)),
+         type = "scatter", mode = "lines",
+         line = list(color = "#17a2b8", width = 2, dash = "dot"),
+         name = paste0("Median: ", round(median_val, 1)),
+         hoverinfo = "name"
+       ) |>
+       layout(
+         title = list(text = title, font = list(size = 13)),
+         xaxis = list(title = x_label, titlefont = list(size = 11)),
+         yaxis = list(title = "Density", titlefont = list(size = 11)),
+         showlegend = TRUE,
+         legend = list(orientation = "h", y = -0.25, x = 0.5, xanchor = "center", font = list(size = 9)),
+         margin = list(l = 50, r = 20, t = 40, b = 80),
+         paper_bgcolor = "rgba(0,0,0,0)",
+         plot_bgcolor = "rgba(0,0,0,0)"
+       ) |>
+       config(displayModeBar = FALSE)
+   }
+
+   # Density plot: Female Workers
+   output$density_female_workers <- renderPlotly({
+     req(filtered_data())
+     col <- if ("female_workers_pct" %in% names(filtered_data())) "female_workers_pct" else "IC.FRM.FEMW.ZS"
+     create_density_plot(filtered_data(), col, "Female Workers Distribution", "#9c27b0", "Female Workers (%)")
+   })
+
+   # Density plot: Female Ownership
+   output$density_female_ownership <- renderPlotly({
+     req(filtered_data())
+     col <- if ("female_ownership_pct" %in% names(filtered_data())) "female_ownership_pct" else "IC.FRM.FEMO.ZS"
+     create_density_plot(filtered_data(), col, "Female Ownership Distribution", "#e91e63", "Female Ownership (%)")
+   })
+
+   # Density plot: Capacity Utilization
+   output$density_capacity <- renderPlotly({
+     req(filtered_data())
+     col <- if ("capacity_utilization_pct" %in% names(filtered_data())) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
+     create_density_plot(filtered_data(), col, "Capacity Utilization Distribution", "#2E7D32", "Capacity Utilization (%)")
+   })
+
+   # Density plot: Power Outages
+   output$density_power_outages <- renderPlotly({
+     req(filtered_data())
+     create_density_plot(filtered_data(), "power_outages_per_month", "Power Outages Distribution", "#ff5722", "Outages per Month")
+   })
+
+   # Density plot: Bribery Incidence
+   output$density_bribery <- renderPlotly({
+     req(filtered_data())
+     col <- if ("bribery_incidence_pct" %in% names(filtered_data())) "bribery_incidence_pct" else "IC.FRM.BRIB.ZS"
+     create_density_plot(filtered_data(), col, "Bribery Incidence Distribution", "#795548", "Bribery Incidence (%)")
+   })
+
+   # Density plot: Export Participation
+   output$density_exports <- renderPlotly({
+     req(filtered_data())
+     col <- if ("export_firms_pct" %in% names(filtered_data())) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
+     create_density_plot(filtered_data(), col, "Export Participation Distribution", "#1B6B5F", "Export Firms (%)")
+   })
+
+   # ============================================================
    # Download Handlers
    # ============================================================
 
@@ -668,6 +861,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
    output$dl_regional_comparison <- simple_chart_download("regional_comparison")
    output$dl_infrastructure_gauge <- simple_chart_download("infrastructure_index")
    output$dl_finance_gauge <- simple_chart_download("finance_index")
+   output$dl_density_female_workers <- simple_chart_download("density_female_workers")
+   output$dl_density_female_ownership <- simple_chart_download("density_female_ownership")
+   output$dl_density_capacity <- simple_chart_download("density_capacity")
+   output$dl_density_power_outages <- simple_chart_download("density_power_outages")
+   output$dl_density_bribery <- simple_chart_download("density_bribery")
+   output$dl_density_exports <- simple_chart_download("density_exports")
 
  })
 }
