@@ -550,15 +550,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Create data frame for regression
+      trend_data <- data.frame(x = d$IC.FRM.CAPU.ZS, y = d$IC.FRM.EXPRT.ZS)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
       # Fit linear model for trend line
       fit <- tryCatch({
-        lm(IC.FRM.EXPRT.ZS ~ IC.FRM.CAPU.ZS, data = d)
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
       }, error = function(e) NULL)
 
-      # Calculate R² if model fit successfully
-      r_squared <- if (!is.null(fit)) {
-        round(summary(fit)$r.squared, 3)
-      } else NA
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
 
       p <- plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",
@@ -566,18 +573,19 @@ server <- function(id, wbes_data, global_filters = NULL) {
               marker = list(size = 12,
                            color = ~firm_size,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1)))
+                           line = list(color = "white", width = 1)),
+              name = "Countries")
 
       # Add trend line if fit was successful
-      if (!is.null(fit) && nrow(d) >= 3) {
-        x_range <- seq(min(d$IC.FRM.CAPU.ZS, na.rm = TRUE), max(d$IC.FRM.CAPU.ZS, na.rm = TRUE), length.out = 100)
-        y_pred <- predict(fit, newdata = data.frame(IC.FRM.CAPU.ZS = x_range))
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
 
         p <- p |> add_trace(
           x = x_range, y = y_pred,
           type = "scatter", mode = "lines",
           line = list(color = "#333333", width = 2, dash = "dash"),
-          name = paste0("Trend (R²=", r_squared, ")"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
           showlegend = TRUE,
           inherit = FALSE
         )
@@ -590,8 +598,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
-          margin = list(b = 80)
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -681,15 +689,22 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Create data frame for regression
+      trend_data <- data.frame(x = d$total_obstacles, y = d$capacity_val)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
       # Fit linear model for trend line
       fit <- tryCatch({
-        lm(capacity_val ~ total_obstacles, data = d)
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
       }, error = function(e) NULL)
 
-      # Calculate R² if model fit successfully
-      r_squared <- if (!is.null(fit)) {
-        round(summary(fit)$r.squared, 3)
-      } else NA
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
 
       p <- plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
               type = "scatter", mode = "markers",
@@ -700,15 +715,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
               marker = list(size = 10, opacity = 0.7))
 
       # Add trend line if fit was successful
-      if (!is.null(fit) && nrow(d) >= 3) {
-        x_range <- seq(min(d$total_obstacles, na.rm = TRUE), max(d$total_obstacles, na.rm = TRUE), length.out = 100)
-        y_pred <- predict(fit, newdata = data.frame(total_obstacles = x_range))
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
 
         p <- p |> add_trace(
           x = x_range, y = y_pred,
           type = "scatter", mode = "lines",
           line = list(color = "#333333", width = 2, dash = "dash"),
-          name = paste0("Trend (R²=", r_squared, ")"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
           showlegend = TRUE,
           inherit = FALSE
         )
@@ -721,8 +736,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
-          margin = list(b = 80)
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -879,32 +894,40 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "Infrastructure Obstacle (%)"
       )
 
+      # Create data frame for regression
+      trend_data <- data.frame(x = infra_vals, y = export_vals)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
       # Fit linear model for trend line
       fit <- tryCatch({
-        lm(export_vals ~ infra_vals)
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
       }, error = function(e) NULL)
 
-      # Calculate R² if model fit successfully
-      r_squared <- if (!is.null(fit)) {
-        round(summary(fit)$r.squared, 3)
-      } else NA
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
 
       p <- plot_ly(d, x = infra_vals, y = export_vals,
               type = "scatter", mode = "markers",
               text = ~country,
               color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
-              marker = list(size = 10, opacity = 0.7))
+              marker = list(size = 10, opacity = 0.7),
+              name = "Countries")
 
       # Add trend line if fit was successful
-      if (!is.null(fit) && length(infra_vals) >= 3) {
-        x_range <- seq(min(infra_vals, na.rm = TRUE), max(infra_vals, na.rm = TRUE), length.out = 100)
-        y_pred <- predict(fit, newdata = data.frame(infra_vals = x_range))
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
 
         p <- p |> add_trace(
           x = x_range, y = y_pred,
           type = "scatter", mode = "lines",
           line = list(color = "#333333", width = 2, dash = "dash"),
-          name = paste0("Trend (R²=", r_squared, ")"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
           showlegend = TRUE,
           inherit = FALSE
         )
@@ -917,8 +940,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.15, x = 0.5, xanchor = "center"),
-          margin = list(b = 80)
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })
