@@ -251,12 +251,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     filtered <- reactive({
       req(wbes_data())
 
-      # Use country_panel (has year) if year filter is active, otherwise use latest
+      # Get filters - always access global_filters() to establish reactive dependency
       filters <- if (!is.null(global_filters)) global_filters() else NULL
+
+      # Check if year filter is active
       use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                    !all(filters$year %in% c("all", NA))
 
-      d <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+      # Check if sector filter is active
+      sector_filter_active <- !is.null(filters$sector) &&
+                              filters$sector != "all" &&
+                              filters$sector != ""
+
+      # Choose appropriate data source based on active filters
+      d <- if (sector_filter_active && !is.null(wbes_data()$country_sector)) {
+        wbes_data()$country_sector  # Country-sector combinations
+      } else if (use_panel) {
+        wbes_data()$country_panel  # Has year dimension
+      } else {
+        wbes_data()$latest  # Global country aggregates
+      }
 
       # Apply global filters if provided
       if (!is.null(filters)) {
@@ -273,10 +287,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Add coordinates if using panel data (for maps)
-      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+      # Add coordinates for maps
+      if (!is.null(wbes_data()$country_coordinates)) {
         coords <- wbes_data()$country_coordinates
-        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(d)) {
           d <- merge(d, coords, by = "country", all.x = TRUE)
         }
       }

@@ -776,9 +776,11 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
           ) |>
             layout(
               polar = list(
-                radialaxis = list(visible = TRUE, range = c(0, 100))
+                radialaxis = list(visible = TRUE, range = c(0, 100)),
+                domain = list(x = c(0.05, 0.95), y = c(0.1, 0.85))
               ),
               showlegend = FALSE,
+              margin = list(t = 60, b = 60, l = 40, r = 40),
               paper_bgcolor = "rgba(0,0,0,0)",
               annotations = list(
                 list(
@@ -788,7 +790,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
                   xref = "paper",
                   yref = "paper",
                   x = 0.5,
-                  y = -0.15,
+                  y = -0.05,
                   xanchor = "center",
                   yanchor = "top"
                 )
@@ -807,9 +809,11 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
           ) |>
             layout(
               polar = list(
-                radialaxis = list(visible = TRUE, range = c(0, 100))
+                radialaxis = list(visible = TRUE, range = c(0, 100)),
+                domain = list(x = c(0.05, 0.95), y = c(0.05, 0.85))
               ),
               showlegend = FALSE,
+              margin = list(t = 60, b = 40, l = 40, r = 40),
               paper_bgcolor = "rgba(0,0,0,0)"
             ) |>
             config(displayModeBar = FALSE)
