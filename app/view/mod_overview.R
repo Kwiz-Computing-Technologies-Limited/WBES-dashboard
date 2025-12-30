@@ -5,16 +5,18 @@ box::use(
  shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
         fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput,
         showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput,
-        downloadButton, downloadHandler],
+        downloadButton, downloadHandler, renderTable, tableOutput],
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend, labelFormat],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, across, any_of],
- stats[setNames, na.omit, density, median, sd],
+ stats[setNames, na.omit, density, median, sd, dnorm, dlnorm, dgamma, dexp, dbeta,
+       pnorm, plnorm, pgamma, pexp, pbeta, ks.test, shapiro.test, var],
  scales[rescale],
  htmlwidgets[saveWidget],
  utils[write.csv],
+ MASS[fitdistr],
  app/logic/shared_filters[apply_common_filters],
  app/logic/custom_regions[filter_by_region],
  app/logic/chart_utils[create_chart_caption, map_with_caption]
@@ -187,7 +189,12 @@ ui <- function(id) {
             width = "100%"
           ),
           chart_with_download(ns, "density_plot_1", height = "320px"),
-          uiOutput(ns("density_stats_1"))
+          uiOutput(ns("density_stats_1")),
+          tags$div(
+            class = "mt-3",
+            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
+            uiOutput(ns("dist_fit_table_1"))
+          )
         )
       )
     ),
@@ -202,7 +209,12 @@ ui <- function(id) {
             width = "100%"
           ),
           chart_with_download(ns, "density_plot_2", height = "320px"),
-          uiOutput(ns("density_stats_2"))
+          uiOutput(ns("density_stats_2")),
+          tags$div(
+            class = "mt-3",
+            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
+            uiOutput(ns("dist_fit_table_2"))
+          )
         )
       )
     )
@@ -221,7 +233,12 @@ ui <- function(id) {
             width = "100%"
           ),
           chart_with_download(ns, "density_plot_3", height = "320px"),
-          uiOutput(ns("density_stats_3"))
+          uiOutput(ns("density_stats_3")),
+          tags$div(
+            class = "mt-3",
+            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
+            uiOutput(ns("dist_fit_table_3"))
+          )
         )
       )
     ),
@@ -236,7 +253,12 @@ ui <- function(id) {
             width = "100%"
           ),
           chart_with_download(ns, "density_plot_4", height = "320px"),
-          uiOutput(ns("density_stats_4"))
+          uiOutput(ns("density_stats_4")),
+          tags$div(
+            class = "mt-3",
+            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
+            uiOutput(ns("dist_fit_table_4"))
+          )
         )
       )
     )
@@ -992,6 +1014,210 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
    output$density_stats_4 <- renderUI({
      req(filtered_data(), input$density_var_4)
      create_stats_summary(filtered_data(), input$density_var_4)
+   })
+
+   # ============================================================
+   # Distribution Fitting
+   # ============================================================
+
+   # Helper function to fit distributions and return ranked table
+   fit_distributions <- function(data, col_name) {
+     if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+       return(NULL)
+     }
+
+     values <- data[[col_name]]
+     values <- values[!is.na(values) & is.finite(values)]
+
+     if (length(values) < 10) {
+       return(tags$p(class = "text-muted small", "Insufficient data for distribution fitting (need at least 10 observations)"))
+     }
+
+     # Initialize results list
+     results <- list()
+
+     # 1. Normal distribution
+     tryCatch({
+       fit_norm <- fitdistr(values, "normal")
+       # Kolmogorov-Smirnov test for goodness of fit
+       ks_norm <- ks.test(values, "pnorm", mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"])
+       results$Normal <- list(
+         distribution = "Normal",
+         params = paste0("\u03BC=", round(fit_norm$estimate["mean"], 2), ", \u03C3=", round(fit_norm$estimate["sd"], 2)),
+         aic = 2 * 2 - 2 * fit_norm$loglik,
+         ks_stat = round(ks_norm$statistic, 4),
+         p_value = round(ks_norm$p.value, 4)
+       )
+     }, error = function(e) NULL)
+
+     # 2. Log-normal distribution (only for positive values)
+     if (all(values > 0)) {
+       tryCatch({
+         fit_lnorm <- fitdistr(values, "lognormal")
+         ks_lnorm <- ks.test(values, "plnorm", meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"])
+         results$Lognormal <- list(
+           distribution = "Log-normal",
+           params = paste0("\u03BC\u2097=", round(fit_lnorm$estimate["meanlog"], 2), ", \u03C3\u2097=", round(fit_lnorm$estimate["sdlog"], 2)),
+           aic = 2 * 2 - 2 * fit_lnorm$loglik,
+           ks_stat = round(ks_lnorm$statistic, 4),
+           p_value = round(ks_lnorm$p.value, 4)
+         )
+       }, error = function(e) NULL)
+
+       # 3. Gamma distribution (only for positive values)
+       tryCatch({
+         fit_gamma <- fitdistr(values, "gamma")
+         ks_gamma <- ks.test(values, "pgamma", shape = fit_gamma$estimate["shape"], rate = fit_gamma$estimate["rate"])
+         results$Gamma <- list(
+           distribution = "Gamma",
+           params = paste0("k=", round(fit_gamma$estimate["shape"], 2), ", \u03B8=", round(1/fit_gamma$estimate["rate"], 2)),
+           aic = 2 * 2 - 2 * fit_gamma$loglik,
+           ks_stat = round(ks_gamma$statistic, 4),
+           p_value = round(ks_gamma$p.value, 4)
+         )
+       }, error = function(e) NULL)
+
+       # 4. Exponential distribution (only for positive values)
+       tryCatch({
+         fit_exp <- fitdistr(values, "exponential")
+         ks_exp <- ks.test(values, "pexp", rate = fit_exp$estimate["rate"])
+         results$Exponential <- list(
+           distribution = "Exponential",
+           params = paste0("\u03BB=", round(fit_exp$estimate["rate"], 4)),
+           aic = 2 * 1 - 2 * fit_exp$loglik,
+           ks_stat = round(ks_exp$statistic, 4),
+           p_value = round(ks_exp$p.value, 4)
+         )
+       }, error = function(e) NULL)
+
+       # 5. Weibull distribution (only for positive values)
+       tryCatch({
+         fit_weibull <- fitdistr(values, "weibull")
+         ks_weibull <- ks.test(values, "pweibull", shape = fit_weibull$estimate["shape"], scale = fit_weibull$estimate["scale"])
+         results$Weibull <- list(
+           distribution = "Weibull",
+           params = paste0("k=", round(fit_weibull$estimate["shape"], 2), ", \u03BB=", round(fit_weibull$estimate["scale"], 2)),
+           aic = 2 * 2 - 2 * fit_weibull$loglik,
+           ks_stat = round(ks_weibull$statistic, 4),
+           p_value = round(ks_weibull$p.value, 4)
+         )
+       }, error = function(e) NULL)
+     }
+
+     # 6. Beta distribution (only for values in 0-1 or 0-100 range for percentages)
+     if (all(values >= 0) && all(values <= 100)) {
+       # Scale to 0-1 for beta fitting
+       scaled_values <- values / 100
+       # Avoid exact 0 and 1
+       scaled_values <- pmax(0.001, pmin(0.999, scaled_values))
+       tryCatch({
+         # Method of moments for starting values
+         m <- mean(scaled_values)
+         v <- var(scaled_values)
+         alpha_start <- m * ((m * (1 - m) / v) - 1)
+         beta_start <- (1 - m) * ((m * (1 - m) / v) - 1)
+         if (alpha_start > 0 && beta_start > 0) {
+           fit_beta <- fitdistr(scaled_values, "beta", start = list(shape1 = alpha_start, shape2 = beta_start))
+           ks_beta <- ks.test(scaled_values, "pbeta", shape1 = fit_beta$estimate["shape1"], shape2 = fit_beta$estimate["shape2"])
+           results$Beta <- list(
+             distribution = "Beta",
+             params = paste0("\u03B1=", round(fit_beta$estimate["shape1"], 2), ", \u03B2=", round(fit_beta$estimate["shape2"], 2)),
+             aic = 2 * 2 - 2 * fit_beta$loglik,
+             ks_stat = round(ks_beta$statistic, 4),
+             p_value = round(ks_beta$p.value, 4)
+           )
+         }
+       }, error = function(e) NULL)
+     }
+
+     if (length(results) == 0) {
+       return(tags$p(class = "text-muted small", "Could not fit any distributions to this data"))
+     }
+
+     # Convert to data frame and sort by AIC (lower is better)
+     df <- do.call(rbind, lapply(results, function(r) {
+       data.frame(
+         Distribution = r$distribution,
+         Parameters = r$params,
+         AIC = round(r$aic, 1),
+         `KS Stat` = r$ks_stat,
+         `p-value` = r$p_value,
+         stringsAsFactors = FALSE,
+         check.names = FALSE
+       )
+     }))
+
+     df <- df[order(df$AIC), ]
+     rownames(df) <- NULL
+
+     # Add rank column
+     df <- cbind(Rank = 1:nrow(df), df)
+
+     # Create styled HTML table
+     tags$div(
+       class = "table-responsive",
+       tags$table(
+         class = "table table-sm table-striped",
+         style = "font-size: 0.8rem;",
+         tags$thead(
+           tags$tr(
+             tags$th("#", style = "width: 30px;"),
+             tags$th("Distribution"),
+             tags$th("Parameters"),
+             tags$th("AIC", title = "Akaike Information Criterion - lower is better"),
+             tags$th("KS", title = "Kolmogorov-Smirnov statistic"),
+             tags$th("p-value", title = "KS test p-value - higher suggests better fit")
+           )
+         ),
+         tags$tbody(
+           lapply(1:nrow(df), function(i) {
+             row <- df[i, ]
+             # Highlight best fit (rank 1)
+             row_class <- if (i == 1) "table-success" else ""
+             tags$tr(
+               class = row_class,
+               tags$td(row$Rank),
+               tags$td(tags$strong(row$Distribution)),
+               tags$td(row$Parameters),
+               tags$td(row$AIC),
+               tags$td(row$`KS Stat`),
+               tags$td(
+                 if (row$`p-value` < 0.05) {
+                   tags$span(class = "text-danger", row$`p-value`)
+                 } else {
+                   tags$span(class = "text-success", row$`p-value`)
+                 }
+               )
+             )
+           })
+         )
+       ),
+       tags$p(
+         class = "text-muted small mt-1 mb-0",
+         tags$em("Best fit highlighted. Lower AIC = better fit. p-value > 0.05 suggests data follows the distribution.")
+       )
+     )
+   }
+
+   # Distribution fit table outputs
+   output$dist_fit_table_1 <- renderUI({
+     req(filtered_data(), input$density_var_1)
+     fit_distributions(filtered_data(), input$density_var_1)
+   })
+
+   output$dist_fit_table_2 <- renderUI({
+     req(filtered_data(), input$density_var_2)
+     fit_distributions(filtered_data(), input$density_var_2)
+   })
+
+   output$dist_fit_table_3 <- renderUI({
+     req(filtered_data(), input$density_var_3)
+     fit_distributions(filtered_data(), input$density_var_3)
+   })
+
+   output$dist_fit_table_4 <- renderUI({
+     req(filtered_data(), input$density_var_4)
+     fit_distributions(filtered_data(), input$density_var_4)
    })
 
    # ============================================================
