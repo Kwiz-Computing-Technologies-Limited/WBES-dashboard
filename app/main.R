@@ -3,7 +3,7 @@
 # Main Application Entry Point
 
 box::use(
-  shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML, selectInput,
+  shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML, selectInput, tagList,
         updateSelectInput, updateSelectizeInput, observeEvent, reactive, req, div, fluidRow, column,
         actionButton, selectizeInput, sliderInput, uiOutput, renderUI, reactiveVal,
         getQueryString, parseQueryString, httpResponse],
@@ -448,8 +448,9 @@ desktop_ui <- function(kwiz_theme) {
 
 # Mobile UI wrapper with switch button
 mobile_ui_wrapper <- function() {
-  tags$div(
-    # Add viewport meta for mobile
+  # shinyMobile's f7Page must be the root - use tagList instead of div wrapper
+  tagList(
+    # Add viewport meta and styles in head
     tags$head(
       tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"),
       tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
@@ -472,14 +473,19 @@ mobile_ui_wrapper <- function() {
           display: flex;
           align-items: center;
           justify-content: center;
+          text-decoration: none;
+        }
+        .desktop-switch-fab:hover {
+          background: #145449;
         }
         .desktop-switch-fab:active {
           transform: scale(0.95);
         }
       "))
     ),
+    # f7Page must be the root element for shinyMobile to work
     mod_mobile_ui$ui("mobile_ui"),
-    # Switch to desktop button (FAB style)
+    # Switch to desktop button (FAB style) - injected after f7Page
     tags$a(
       href = "?ui=desktop",
       class = "desktop-switch-fab",
@@ -557,6 +563,14 @@ ui <- function(request) {
 
   # Initialize data loading with async/futures for non-blocking operations
   shiny::observe({
+    # Show loading notification
+    shiny::showNotification(
+      "Loading WBES Enterprise Survey data...",
+      type = "message",
+      duration = NULL,
+      id = "wbes_loading"
+    )
+
     # Wrap data loading in a future for async execution
     future({
       tryCatch({
@@ -596,6 +610,16 @@ ui <- function(request) {
     }) %...>% (function(data) {
       # Success handler: set the reactive value
       wbes_data(data)
+
+      # Remove WBES loading notification and show success
+      shiny::removeNotification(id = "wbes_loading")
+      shiny::showNotification(
+        sprintf("WBES data loaded: %d countries, %s firms",
+                length(unique(data$latest$country)),
+                format(nrow(data$processed), big.mark = ",")),
+        type = "message",
+        duration = 4
+      )
 
       # Now prefetch World Bank data for all countries
       shiny::showNotification(

@@ -13,7 +13,7 @@ box::use(
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, any_of],
   rlang[`%||%`],
-  stats[na.omit, setNames, density, median, sd],
+  stats[na.omit, setNames, density, median, sd, reorder],
   scales[rescale],
   utils[head],
   app/logic/shared_filters[apply_common_filters],
@@ -210,8 +210,8 @@ ui <- function(id) {
                 "Access to Credit" = "firms_with_credit_line_pct",
                 "Bribery Incidence" = "bribery_incidence_pct",
                 "Capacity Utilization" = "capacity_utilization_pct",
-                "Female Participation" = "pct_female_top_manager",
-                "Export Intensity" = "pct_direct_exports"
+                "Female Workers" = "female_workers_pct",
+                "Female Ownership" = "female_ownership_pct"
               )
             )
           ),
@@ -750,19 +750,37 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       setNames(numeric_cols, labels)
     })
 
-    # Update dropdown choices when data changes
-    observeEvent(filtered_data(), {
-      choices <- available_density_vars_mobile()
-      if (length(choices) > 0) {
+    # Update dropdown choices when base data loads (only once)
+    observeEvent(wbes_data(), {
+      req(wbes_data()$latest)
+      data <- wbes_data()$latest
+
+      # Get numeric columns
+      numeric_cols <- names(data)[sapply(data, is.numeric)]
+      exclude_cols <- c("lat", "lng", "lon", "year", "sample_size", "firms_count", "marker_size")
+      numeric_cols <- setdiff(numeric_cols, exclude_cols)
+
+      if (length(numeric_cols) > 0) {
+        # Create named vector with friendly labels
+        labels <- sapply(numeric_cols, function(col) {
+          label <- gsub("_pct$", " (%)", col)
+          label <- gsub("_per_month$", " (per month)", label)
+          label <- gsub("_", " ", label)
+          label <- gsub("IC\\.FRM\\.", "", label)
+          label <- tools::toTitleCase(label)
+          label
+        })
+        choices <- setNames(numeric_cols, labels)
+
         defaults <- c(
-          if ("female_workers_pct" %in% choices) "female_workers_pct" else if ("IC.FRM.FEMW.ZS" %in% choices) "IC.FRM.FEMW.ZS" else choices[1],
-          if ("capacity_utilization_pct" %in% choices) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% choices) "IC.FRM.CAPU.ZS" else choices[min(2, length(choices))]
+          if ("female_workers_pct" %in% numeric_cols) "female_workers_pct" else if ("IC.FRM.FEMW.ZS" %in% numeric_cols) "IC.FRM.FEMW.ZS" else numeric_cols[1],
+          if ("capacity_utilization_pct" %in% numeric_cols) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% numeric_cols) "IC.FRM.CAPU.ZS" else numeric_cols[min(2, length(numeric_cols))]
         )
 
         shiny::updateSelectInput(session, "density_var_1_mobile", choices = choices, selected = defaults[1])
         shiny::updateSelectInput(session, "density_var_2_mobile", choices = choices, selected = defaults[2])
       }
-    }, priority = -1)
+    }, ignoreInit = FALSE, once = TRUE)
 
     # Helper function to create density plot (mobile optimized)
     create_density_plot_mobile <- function(data, col_name, color = "#1B6B5F") {
@@ -978,7 +996,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
         "Infrastructure" = 100 - min(mean(data$power_outages_per_month, na.rm = TRUE) * 5, 100),
         "Finance" = mean(data$firms_with_credit_line_pct, na.rm = TRUE),
         "Governance" = 100 - mean(data$bribery_incidence_pct, na.rm = TRUE),
-        "Workforce" = mean(data$pct_female_top_manager, na.rm = TRUE) * 2,
+        "Workforce" = mean(data$female_workers_pct, na.rm = TRUE),
         "Performance" = mean(data$capacity_utilization_pct, na.rm = TRUE)
       )
 
@@ -1011,8 +1029,8 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       if (nrow(data) == 0) return(tags$p("No data available", class = "text-color-gray"))
 
       avg_outages <- round(mean(data$power_outages_per_month, na.rm = TRUE), 1)
-      avg_generator <- if ("pct_firms_with_generator" %in% names(data)) {
-        round(mean(data$pct_firms_with_generator, na.rm = TRUE), 1)
+      avg_generator <- if ("firms_with_generator_pct" %in% names(data)) {
+        round(mean(data$firms_with_generator_pct, na.rm = TRUE), 1)
       } else { NA }
       avg_water <- if ("water_insufficiency_pct" %in% names(data)) {
         round(mean(data$water_insufficiency_pct, na.rm = TRUE), 1)
@@ -1116,7 +1134,9 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       data <- filtered_data()
 
       avg_outages <- round(mean(data$power_outages_per_month, na.rm = TRUE), 1)
-      avg_generator <- round(mean(data$pct_firms_with_generator, na.rm = TRUE), 1)
+      avg_generator <- if ("firms_with_generator_pct" %in% names(data)) {
+        round(mean(data$firms_with_generator_pct, na.rm = TRUE), 1)
+      } else { NA }
 
       tags$div(
         f7Card(
@@ -1126,7 +1146,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
               tags$strong("Avg. Outages/Month"),
               tags$h3(avg_outages, style = "color: #dc3545;")
             ),
-            tags$div(
+            if (!is.na(avg_generator)) tags$div(
               tags$strong("Firms with Generator"),
               tags$h3(paste0(avg_generator, "%"), style = "color: #1B6B5F;")
             )
@@ -1193,13 +1213,19 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       req(filtered_data())
       data <- filtered_data()
 
-      avg_female <- round(mean(data$pct_female_top_manager, na.rm = TRUE), 1)
+      avg_female <- if ("female_workers_pct" %in% names(data)) {
+        round(mean(data$female_workers_pct, na.rm = TRUE), 1)
+      } else { NA }
+
+      if (is.na(avg_female)) {
+        return(tags$p("Female workforce data not available", class = "text-color-gray"))
+      }
 
       tags$div(
         f7Card(
           tags$div(
             style = "text-align: center;",
-            tags$strong("Female Top Managers"),
+            tags$strong("Female Workers"),
             tags$h2(paste0(avg_female, "%"), style = "color: #F49B7A;")
           )
         )
@@ -1210,21 +1236,17 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       req(filtered_data())
       data <- filtered_data()
 
-      avg_capacity <- round(mean(data$capacity_utilization_pct, na.rm = TRUE), 1)
-      avg_exports <- round(mean(data$pct_direct_exports, na.rm = TRUE), 1)
+      avg_capacity <- if ("capacity_utilization_pct" %in% names(data)) {
+        round(mean(data$capacity_utilization_pct, na.rm = TRUE), 1)
+      } else { NA }
 
       tags$div(
         f7Card(
           tags$div(
-            style = "display: flex; justify-content: space-between;",
-            tags$div(
-              tags$strong("Capacity Utilization"),
-              tags$h3(paste0(avg_capacity, "%"), style = "color: #1B6B5F;")
-            ),
-            tags$div(
-              tags$strong("Export Intensity"),
-              tags$h3(paste0(avg_exports, "%"), style = "color: #F49B7A;")
-            )
+            style = "text-align: center;",
+            tags$strong("Capacity Utilization"),
+            tags$h2(if (!is.na(avg_capacity)) paste0(avg_capacity, "%") else "N/A",
+                    style = "color: #1B6B5F;")
           )
         )
       )
