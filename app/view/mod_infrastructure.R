@@ -201,12 +201,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
     filtered_data <- reactive({
       req(wbes_data())
 
-      # Use country_panel (has year) if year filter is active, otherwise use latest
+      # Get filters - always access global_filters() to establish reactive dependency
       filters <- if (!is.null(global_filters)) global_filters() else NULL
+
+      # Check if year filter is active
       use_panel <- !is.null(filters$year) && length(filters$year) > 0 &&
                    !all(filters$year %in% c("all", NA))
 
-      data <- if (use_panel) wbes_data()$country_panel else wbes_data()$latest
+      # Check if sector filter is active
+      sector_filter_active <- !is.null(filters$sector) &&
+                              filters$sector != "all" &&
+                              filters$sector != ""
+
+      # Choose appropriate data source based on active filters
+      data <- if (sector_filter_active && !is.null(wbes_data()$country_sector)) {
+        wbes_data()$country_sector  # Country-sector combinations
+      } else if (use_panel) {
+        wbes_data()$country_panel  # Has year dimension
+      } else {
+        wbes_data()$latest  # Global country aggregates
+      }
 
       # If global filters are provided, use them
       if (!is.null(filters)) {
@@ -223,10 +237,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      # Add coordinates if using panel data (for maps)
-      if (use_panel && !is.null(wbes_data()$country_coordinates)) {
+      # Add coordinates for maps
+      if (!is.null(wbes_data()$country_coordinates)) {
         coords <- wbes_data()$country_coordinates
-        if ("lat" %in% names(coords) && "lng" %in% names(coords)) {
+        if ("lat" %in% names(coords) && "lng" %in% names(coords) && !"lat" %in% names(data)) {
           data <- merge(data, coords, by = "country", all.x = TRUE)
         }
       }
@@ -354,6 +368,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Get indicator label for chart title
+      ind_label <- switch(indicator,
+        "power_outages_per_month" = "Power Outages per Month",
+        "avg_outage_duration_hrs" = "Average Outage Duration (hours)",
+        "firms_with_generator_pct" = "Firms with Generator (%)",
+        "water_insufficiency_pct" = "Water Insufficiency (%)",
+        gsub("_", " ", tools::toTitleCase(indicator))
+      )
+
       # Get top 15, then arrange ascending so factor levels display correctly in horizontal bar
       data <- arrange(data, desc(.data[[indicator]]))[1:15, ]
       data <- arrange(data, .data[[indicator]])
@@ -369,9 +392,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
                 colorscale = list(c(0, "#2E7D32"), c(0.5, "#F4A460"), c(1, "#dc3545"))
               )) |>
         layout(
-          xaxis = list(title = gsub("_", " ", tools::toTitleCase(indicator))),
+          title = list(text = ind_label, font = list(size = 14), x = 0.5, y = 0.98),
+          xaxis = list(title = ind_label, titlefont = list(size = 12)),
           yaxis = list(title = ""),
-          margin = list(l = 120),
+          margin = list(l = 120, r = 20, t = 40, b = 40),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)

@@ -602,6 +602,9 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       has_grouping <- "group_value" %in% names(agg_data) && !all(is.na(agg_data$group_value))
       colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
+      # Create stable color mapping for countries
+      color_map <- setNames(colors[((seq_along(countries) - 1) %% length(colors)) + 1], countries)
+
       if (has_grouping) {
         # Faceted by 3rd dimension - countries as bars, facets by group_value
         group_values <- unique(agg_data$group_value[!is.na(agg_data$group_value)])
@@ -622,7 +625,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
               })
               p <- add_trace(p, x = labels, y = values, type = "bar", name = country,
                             legendgroup = country, showlegend = (g_idx == 1),
-                            marker = list(color = colors[((i - 1) %% length(colors)) + 1]))
+                            marker = list(color = color_map[country]))
             }
           }
           p |> layout(
@@ -636,8 +639,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
             title = list(text = paste(title_prefix, "by", dim_name), font = list(size = 14)),
             barmode = "group",
             showlegend = TRUE,
-            legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
-            margin = list(l = 60, r = 120, t = 50, b = 100),
+            legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center", bgcolor = "rgba(255,255,255,0.8)"),
+            margin = list(l = 60, r = 40, t = 50, b = 120),
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)
@@ -652,7 +655,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
             if (length(val) > 0) mean(val, na.rm = TRUE) else NA
           })
           p <- add_trace(p, x = labels, y = values, type = "bar", name = country,
-                        marker = list(color = colors[((i - 1) %% length(colors)) + 1]))
+                        marker = list(color = color_map[country]))
         }
         p |>
           layout(
@@ -660,7 +663,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
             xaxis = list(title = ""),
             yaxis = list(title = "Value"),
             showlegend = TRUE,
-            legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)"),
+            legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center", bgcolor = "rgba(255,255,255,0.8)"),
+            margin = list(l = 60, r = 40, t = 40, b = 100),
             paper_bgcolor = "rgba(0,0,0,0)"
           ) |>
           config(displayModeBar = FALSE)

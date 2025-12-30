@@ -9,7 +9,7 @@ box::use(
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, group_by, summarise, across, select, case_when, n],
-  stats[setNames, reorder],
+  stats[setNames, reorder, complete.cases, lm, predict, coef],
   utils[head],
   htmlwidgets[saveWidget],
   app/logic/shared_filters[apply_common_filters],
@@ -368,6 +368,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
       if (is.null(d) || !indicator %in% names(d)) return(NULL)
 
+      # Get indicator label for chart title
+      ind_label <- switch(indicator,
+        "IC.FRM.CAPU.ZS" = "Capacity Utilization (%)",
+        "IC.FRM.EXPRT.ZS" = "Export Participation (%)",
+        indicator
+      )
+
       if (input$sort == "desc") {
         d <- arrange(d, desc(.data[[indicator]]))
       } else {
@@ -390,22 +397,23 @@ server <- function(id, wbes_data, global_filters = NULL) {
               text = ~paste0(country, ": ", round(get(indicator), 1), "%"),
               hoverinfo = "text") |>
         layout(
-          xaxis = list(title = "Percentage (%)"),
+          title = list(text = ind_label, font = list(size = 14), x = 0.5, y = 0.98),
+          xaxis = list(title = ind_label, titlefont = list(size = 12)),
           yaxis = list(title = ""),
-          margin = list(l = 120),
+          margin = list(l = 120, r = 20, t = 40, b = 40),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
     })
 
-    # Regional chart
+    # Regional chart - aggregate from filtered data to respect global filters
     output$regional_chart <- renderPlotly({
-      req(wbes_data())
-      regional <- wbes_data()$regional
+      req(filtered())
+      d <- filtered()
 
       # Check if data exists
-      if (is.null(regional) || nrow(regional) == 0) {
+      if (is.null(d) || nrow(d) == 0 || !"region" %in% names(d)) {
         return(
           plot_ly() |>
             layout(
@@ -425,10 +433,13 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       # Check if required columns exist - use friendly names first, then IC.FRM.* as fallback
-      capacity_col <- if ("capacity_utilization_pct" %in% names(regional)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
-      export_col <- if ("export_firms_pct" %in% names(regional)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
+      capacity_col <- if ("capacity_utilization_pct" %in% names(d)) "capacity_utilization_pct" else "IC.FRM.CAPU.ZS"
+      export_col <- if ("export_firms_pct" %in% names(d)) "export_firms_pct" else "IC.FRM.EXPRT.ZS"
 
-      if (!capacity_col %in% names(regional) || !export_col %in% names(regional)) {
+      has_capacity <- capacity_col %in% names(d)
+      has_export <- export_col %in% names(d)
+
+      if (!has_capacity && !has_export) {
         return(
           plot_ly() |>
             layout(
@@ -447,10 +458,26 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
+      # Aggregate by region from filtered data
+      regional <- d |>
+        filter(!is.na(region)) |>
+        group_by(region) |>
+        summarise(
+          capacity = if (has_capacity) mean(get(capacity_col), na.rm = TRUE) else NA_real_,
+          export = if (has_export) mean(get(export_col), na.rm = TRUE) else NA_real_,
+          .groups = "drop"
+        )
+
+      # Calculate performance index from available columns
+      if (has_capacity && has_export) {
+        regional$perf_index <- (regional$capacity + regional$export) / 2
+      } else if (has_capacity) {
+        regional$perf_index <- regional$capacity
+      } else {
+        regional$perf_index <- regional$export
+      }
+
       regional <- regional |>
-        mutate(
-          perf_index = (.data[[capacity_col]] + .data[[export_col]]) / 2
-        ) |>
         filter(!is.na(perf_index)) |>
         arrange(desc(perf_index))
 
@@ -493,7 +520,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(filtered())
       d <- filtered()
 
+      # Filter out NA values for the scatter plot
       d <- d |>
+        filter(!is.na(IC.FRM.CAPU.ZS) & !is.na(IC.FRM.EXPRT.ZS)) |>
         mutate(
           export_category = case_when(
             IC.FRM.EXPRT.ZS < 10 ~ "Low",
@@ -502,18 +531,75 @@ server <- function(id, wbes_data, global_filters = NULL) {
           )
         )
 
-      plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
+      if (nrow(d) == 0) {
+        return(
+          plot_ly() |>
+            layout(
+              xaxis = list(visible = FALSE),
+              yaxis = list(visible = FALSE),
+              annotations = list(
+                list(
+                  text = "No valid data for scatter plot",
+                  showarrow = FALSE,
+                  font = list(size = 14, color = "#666666")
+                )
+              ),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Create data frame for regression
+      trend_data <- data.frame(x = d$IC.FRM.CAPU.ZS, y = d$IC.FRM.EXPRT.ZS)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
+      }, error = function(e) NULL)
+
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
+
+      p <- plot_ly(d, x = ~IC.FRM.CAPU.ZS, y = ~IC.FRM.EXPRT.ZS,
               type = "scatter", mode = "markers",
               text = ~country,
               marker = list(size = 12,
                            color = ~firm_size,
                            opacity = 0.7,
-                           line = list(color = "white", width = 1))) |>
+                           line = list(color = "white", width = 1)),
+              name = "Countries")
+
+      # Add trend line if fit was successful
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Capacity Utilization (%)"),
           yaxis = list(title = "Export Participation (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
-          plot_bgcolor = "rgba(0,0,0,0)"
+          plot_bgcolor = "rgba(0,0,0,0)",
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -603,20 +689,55 @@ server <- function(id, wbes_data, global_filters = NULL) {
         )
       }
 
-      plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
+      # Create data frame for regression
+      trend_data <- data.frame(x = d$total_obstacles, y = d$capacity_val)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
+      }, error = function(e) NULL)
+
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
+
+      p <- plot_ly(d, x = ~total_obstacles, y = ~capacity_val,
               type = "scatter", mode = "markers",
               color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
               text = ~paste0(country, "<br>Region: ", region, "<br>Capacity: ", round(capacity_val, 1),
                            "%<br>Obstacles: ", round(total_obstacles, 1), "%"),
               hoverinfo = "text",
-              marker = list(size = 10, opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7))
+
+      # Add trend line if fit was successful
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = "Business Obstacles Index (%)"),
           yaxis = list(title = "Capacity Utilization (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })
@@ -773,18 +894,54 @@ server <- function(id, wbes_data, global_filters = NULL) {
         "Infrastructure Obstacle (%)"
       )
 
-      plot_ly(d, x = infra_vals, y = export_vals,
+      # Create data frame for regression
+      trend_data <- data.frame(x = infra_vals, y = export_vals)
+      trend_data <- trend_data[complete.cases(trend_data), ]
+
+      # Fit linear model for trend line
+      fit <- tryCatch({
+        if (nrow(trend_data) >= 3) lm(y ~ x, data = trend_data) else NULL
+      }, error = function(e) NULL)
+
+      # Calculate R² and slope if model fit successfully
+      r_squared <- NA
+      slope <- NA
+      if (!is.null(fit)) {
+        r_squared <- round(summary(fit)$r.squared, 3)
+        slope <- round(coef(fit)[2], 3)
+      }
+
+      p <- plot_ly(d, x = infra_vals, y = export_vals,
               type = "scatter", mode = "markers",
               text = ~country,
               color = ~region, colors = c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460"),
-              marker = list(size = 10, opacity = 0.7)) |>
+              marker = list(size = 10, opacity = 0.7),
+              name = "Countries")
+
+      # Add trend line if fit was successful
+      if (!is.null(fit)) {
+        x_range <- seq(min(trend_data$x, na.rm = TRUE), max(trend_data$x, na.rm = TRUE), length.out = 100)
+        y_pred <- predict(fit, newdata = data.frame(x = x_range))
+
+        p <- p |> add_trace(
+          x = x_range, y = y_pred,
+          type = "scatter", mode = "lines",
+          line = list(color = "#333333", width = 2, dash = "dash"),
+          name = paste0("Trend (R²=", r_squared, ", slope=", slope, ")"),
+          showlegend = TRUE,
+          inherit = FALSE
+        )
+      }
+
+      p |>
         layout(
           xaxis = list(title = x_label),
           yaxis = list(title = "Export Participation (%)"),
           paper_bgcolor = "rgba(0,0,0,0)",
           plot_bgcolor = "rgba(0,0,0,0)",
           showlegend = TRUE,
-          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center")
+          legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center"),
+          margin = list(l = 60, r = 40, t = 40, b = 100)
         ) |>
         config(displayModeBar = FALSE)
     })

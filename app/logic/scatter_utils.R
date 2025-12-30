@@ -227,17 +227,17 @@ if (is.null(data) || nrow(data) == 0) {
   p <- p |>
     layout(
       title = list(text = title, font = list(size = 14)),
-      xaxis = list(title = x_label),
-      yaxis = list(title = y_label),
+      xaxis = list(title = x_label, titlefont = list(size = 11)),
+      yaxis = list(title = y_label, titlefont = list(size = 11)),
       showlegend = TRUE,
       legend = list(
         orientation = "h",
-        y = -0.25,
+        y = -0.2,
         x = 0.5,
         xanchor = "center",
         font = list(size = 10)
       ),
-      margin = list(b = 80),  # Add bottom margin for legend
+      margin = list(l = 60, r = 40, t = 40, b = 100),  # Add more bottom margin for legend
       paper_bgcolor = "rgba(0,0,0,0)",
       plot_bgcolor = "rgba(0,0,0,0)"
     ) |>

@@ -11,7 +11,7 @@ box::use(
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
          setView, colorNumeric, addLegend, labelFormat],
  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, across, any_of],
- stats[setNames, na.omit],
+ stats[setNames, na.omit, density, median, sd],
  scales[rescale],
  htmlwidgets[saveWidget],
  utils[write.csv],
@@ -160,6 +160,83 @@ ui <- function(id) {
             class = "text-muted small mt-2",
             "This dial tracks how easily firms secure formal credit; scores below the threshold highlight markets where access remains constrained."
           )
+        )
+      )
+    )
+  ),
+
+  # Density Plots Section
+  fluidRow(
+    class = "mb-4 mt-4",
+    column(12,
+      h3(icon("chart-area"), "Distribution of Key Indicators", class = "text-primary-teal mb-3"),
+      p(class = "text-muted", "Density plots showing the distribution of business environment metrics across countries. Select any available indicator to view its distribution.")
+    )
+  ),
+
+  fluidRow(
+    class = "mb-4",
+    column(6,
+      card(
+        card_header(icon("chart-area"), "Distribution Plot 1"),
+        card_body(
+          selectInput(
+            ns("density_var_1"),
+            "Select Indicator:",
+            choices = NULL,
+            width = "100%"
+          ),
+          chart_with_download(ns, "density_plot_1", height = "320px"),
+          uiOutput(ns("density_stats_1"))
+        )
+      )
+    ),
+    column(6,
+      card(
+        card_header(icon("chart-area"), "Distribution Plot 2"),
+        card_body(
+          selectInput(
+            ns("density_var_2"),
+            "Select Indicator:",
+            choices = NULL,
+            width = "100%"
+          ),
+          chart_with_download(ns, "density_plot_2", height = "320px"),
+          uiOutput(ns("density_stats_2"))
+        )
+      )
+    )
+  ),
+
+  fluidRow(
+    class = "mb-4",
+    column(6,
+      card(
+        card_header(icon("chart-area"), "Distribution Plot 3"),
+        card_body(
+          selectInput(
+            ns("density_var_3"),
+            "Select Indicator:",
+            choices = NULL,
+            width = "100%"
+          ),
+          chart_with_download(ns, "density_plot_3", height = "320px"),
+          uiOutput(ns("density_stats_3"))
+        )
+      )
+    ),
+    column(6,
+      card(
+        card_header(icon("chart-area"), "Distribution Plot 4"),
+        card_body(
+          selectInput(
+            ns("density_var_4"),
+            "Select Indicator:",
+            choices = NULL,
+            width = "100%"
+          ),
+          chart_with_download(ns, "density_plot_4", height = "320px"),
+          uiOutput(ns("density_stats_4"))
         )
       )
     )
@@ -649,6 +726,207 @@ server <- function(id, wbes_data, global_filters = NULL) {
    })
 
    # ============================================================
+   # Density Plots with Dynamic Variable Selection
+   # ============================================================
+
+   # Get available numeric columns for density plots
+   available_density_vars <- reactive({
+     req(filtered_data())
+     data <- filtered_data()
+
+     # Get numeric columns
+     numeric_cols <- names(data)[sapply(data, is.numeric)]
+
+     # Exclude non-indicator columns
+     exclude_cols <- c("lat", "lng", "lon", "year", "sample_size", "firms_count", "marker_size")
+     numeric_cols <- setdiff(numeric_cols, exclude_cols)
+
+     # Create named vector with friendly labels
+     labels <- sapply(numeric_cols, function(col) {
+       # Try to create friendly label
+       label <- gsub("_pct$", " (%)", col)
+       label <- gsub("_per_month$", " (per month)", label)
+       label <- gsub("_", " ", label)
+       label <- gsub("IC\\.FRM\\.", "", label)
+       label <- tools::toTitleCase(label)
+       label
+     })
+
+     setNames(numeric_cols, labels)
+   })
+
+   # Update dropdown choices when data changes
+   observeEvent(filtered_data(), {
+     choices <- available_density_vars()
+     if (length(choices) > 0) {
+       # Set default selections for each plot
+       defaults <- c(
+         if ("female_workers_pct" %in% choices) "female_workers_pct" else if ("IC.FRM.FEMW.ZS" %in% choices) "IC.FRM.FEMW.ZS" else choices[1],
+         if ("capacity_utilization_pct" %in% choices) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% choices) "IC.FRM.CAPU.ZS" else choices[min(2, length(choices))],
+         if ("power_outages_per_month" %in% choices) "power_outages_per_month" else choices[min(3, length(choices))],
+         if ("bribery_incidence_pct" %in% choices) "bribery_incidence_pct" else if ("IC.FRM.BRIB.ZS" %in% choices) "IC.FRM.BRIB.ZS" else choices[min(4, length(choices))]
+       )
+
+       updateSelectInput(session, "density_var_1", choices = choices, selected = defaults[1])
+       updateSelectInput(session, "density_var_2", choices = choices, selected = defaults[2])
+       updateSelectInput(session, "density_var_3", choices = choices, selected = defaults[3])
+       updateSelectInput(session, "density_var_4", choices = choices, selected = defaults[4])
+     }
+   })
+
+   # Helper function to create density plot
+   create_density_plot <- function(data, col_name, color = "#1B6B5F") {
+     if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+       return(
+         plot_ly() |>
+           layout(
+             annotations = list(list(
+               text = "Select an indicator",
+               showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+             )),
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       )
+     }
+
+     values <- data[[col_name]]
+     values <- values[!is.na(values)]
+
+     if (length(values) < 3) {
+       return(
+         plot_ly() |>
+           layout(
+             annotations = list(list(
+               text = "Insufficient data for density plot",
+               showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+             )),
+             paper_bgcolor = "rgba(0,0,0,0)"
+           ) |>
+           config(displayModeBar = FALSE)
+       )
+     }
+
+     # Create friendly label
+     x_label <- gsub("_pct$", " (%)", col_name)
+     x_label <- gsub("_per_month$", " (per month)", x_label)
+     x_label <- gsub("_", " ", x_label)
+     x_label <- gsub("IC\\.FRM\\.", "", x_label)
+     x_label <- tools::toTitleCase(x_label)
+
+     # Calculate density
+     dens <- density(values, na.rm = TRUE)
+
+     # Calculate statistics
+     mean_val <- mean(values, na.rm = TRUE)
+     median_val <- median(values, na.rm = TRUE)
+     sd_val <- sd(values, na.rm = TRUE)
+     min_val <- min(values, na.rm = TRUE)
+     max_val <- max(values, na.rm = TRUE)
+
+     plot_ly() |>
+       add_trace(
+         x = dens$x, y = dens$y,
+         type = "scatter", mode = "lines",
+         fill = "tozeroy",
+         fillcolor = paste0(color, "40"),
+         line = list(color = color, width = 2),
+         name = "Density",
+         hovertemplate = paste0(x_label, ": %{x:.1f}<br>Density: %{y:.4f}<extra></extra>")
+       ) |>
+       add_trace(
+         x = c(mean_val, mean_val), y = c(0, max(dens$y)),
+         type = "scatter", mode = "lines",
+         line = list(color = "#dc3545", width = 2, dash = "dash"),
+         name = paste0("Mean: ", round(mean_val, 1)),
+         hoverinfo = "name"
+       ) |>
+       add_trace(
+         x = c(median_val, median_val), y = c(0, max(dens$y)),
+         type = "scatter", mode = "lines",
+         line = list(color = "#17a2b8", width = 2, dash = "dot"),
+         name = paste0("Median: ", round(median_val, 1)),
+         hoverinfo = "name"
+       ) |>
+       layout(
+         title = list(text = paste(x_label, "Distribution"), font = list(size = 13)),
+         xaxis = list(title = x_label, titlefont = list(size = 11)),
+         yaxis = list(title = "Density", titlefont = list(size = 11)),
+         showlegend = TRUE,
+         legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center", font = list(size = 9)),
+         margin = list(l = 50, r = 20, t = 40, b = 70),
+         paper_bgcolor = "rgba(0,0,0,0)",
+         plot_bgcolor = "rgba(0,0,0,0)"
+       ) |>
+       config(displayModeBar = FALSE)
+   }
+
+   # Helper to create stats summary
+   create_stats_summary <- function(data, col_name) {
+     if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+       return(NULL)
+     }
+
+     values <- data[[col_name]]
+     values <- values[!is.na(values)]
+
+     if (length(values) < 3) return(NULL)
+
+     tags$div(
+       class = "small text-muted mt-2",
+       tags$span(class = "me-3", tags$strong("N: "), length(values)),
+       tags$span(class = "me-3", tags$strong("Min: "), round(min(values), 1)),
+       tags$span(class = "me-3", tags$strong("Max: "), round(max(values), 1)),
+       tags$span(class = "me-3", tags$strong("SD: "), round(sd(values, na.rm = TRUE), 1))
+     )
+   }
+
+   # Color palette for the 4 plots
+   density_colors <- c("#1B6B5F", "#9c27b0", "#ff5722", "#2196f3")
+
+   # Density plots
+   output$density_plot_1 <- renderPlotly({
+     req(filtered_data(), input$density_var_1)
+     create_density_plot(filtered_data(), input$density_var_1, density_colors[1])
+   })
+
+   output$density_plot_2 <- renderPlotly({
+     req(filtered_data(), input$density_var_2)
+     create_density_plot(filtered_data(), input$density_var_2, density_colors[2])
+   })
+
+   output$density_plot_3 <- renderPlotly({
+     req(filtered_data(), input$density_var_3)
+     create_density_plot(filtered_data(), input$density_var_3, density_colors[3])
+   })
+
+   output$density_plot_4 <- renderPlotly({
+     req(filtered_data(), input$density_var_4)
+     create_density_plot(filtered_data(), input$density_var_4, density_colors[4])
+   })
+
+   # Stats summaries
+   output$density_stats_1 <- renderUI({
+     req(filtered_data(), input$density_var_1)
+     create_stats_summary(filtered_data(), input$density_var_1)
+   })
+
+   output$density_stats_2 <- renderUI({
+     req(filtered_data(), input$density_var_2)
+     create_stats_summary(filtered_data(), input$density_var_2)
+   })
+
+   output$density_stats_3 <- renderUI({
+     req(filtered_data(), input$density_var_3)
+     create_stats_summary(filtered_data(), input$density_var_3)
+   })
+
+   output$density_stats_4 <- renderUI({
+     req(filtered_data(), input$density_var_4)
+     create_stats_summary(filtered_data(), input$density_var_4)
+   })
+
+   # ============================================================
    # Download Handlers
    # ============================================================
 
@@ -668,6 +946,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
    output$dl_regional_comparison <- simple_chart_download("regional_comparison")
    output$dl_infrastructure_gauge <- simple_chart_download("infrastructure_index")
    output$dl_finance_gauge <- simple_chart_download("finance_index")
+   output$dl_density_plot_1 <- simple_chart_download("density_plot_1")
+   output$dl_density_plot_2 <- simple_chart_download("density_plot_2")
+   output$dl_density_plot_3 <- simple_chart_download("density_plot_3")
+   output$dl_density_plot_4 <- simple_chart_download("density_plot_4")
 
  })
 }

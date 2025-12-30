@@ -722,6 +722,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
           group_values <- unique(data$group_value[!is.na(data$group_value)])
           colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
 
+          # Create stable color mapping for group values
+          color_map <- setNames(colors[((seq_along(group_values) - 1) %% length(colors)) + 1], group_values)
+
           # Create grouped bar chart for each indicator
           plots <- lapply(seq_along(available), function(i) {
             ind <- available[i]
@@ -740,7 +743,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
                 name = as.character(gv),
                 legendgroup = as.character(gv),
                 showlegend = (i == 1),  # Only show legend on first chart
-                marker = list(color = colors[((j - 1) %% length(colors)) + 1]),
+                marker = list(color = color_map[gv]),
                 hovertemplate = paste0(ind_name, " (", gv, "): %{y:.1f}<extra></extra>")
               )
             }
@@ -755,8 +758,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
               title = list(text = paste(domain$name, "Indicators by", tools::toTitleCase(gsub("_", " ", group_dim))), font = list(size = 14)),
               barmode = "group",
               showlegend = TRUE,
-              legend = list(orientation = "v", x = 1.02, y = 0.5, yanchor = "middle", bgcolor = "rgba(255,255,255,0.8)", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
-              margin = list(l = 60, r = 120, t = 40, b = 120),
+              legend = list(orientation = "h", y = -0.2, x = 0.5, xanchor = "center", bgcolor = "rgba(255,255,255,0.8)", title = list(text = tools::toTitleCase(gsub("_", " ", group_dim)))),
+              margin = list(l = 60, r = 40, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
@@ -765,6 +768,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
           # No grouping - simple bar chart with different colors per region, indicator name as x-axis title
           regions <- unique(data$region)
           colors <- c("#1B6B5F", "#F49B7A", "#2E7D32", "#17a2b8", "#6C757D", "#F4A460")
+
+          # Create stable color mapping for regions
+          color_map <- setNames(colors[((seq_along(regions) - 1) %% length(colors)) + 1], regions)
 
           plots <- lapply(seq_along(available), function(i) {
             ind <- available[i]
@@ -775,7 +781,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
             plot_ly(data, x = ~region, y = y_vals,
                     type = "bar",
                     color = ~region,
-                    colors = setNames(colors[seq_along(regions)], regions),
+                    colors = color_map,
                     showlegend = (i == 1),  # Only show legend on first chart
                     legendgroup = ~region,
                     hovertemplate = paste0("%{x}<br>", ind_name, ": %{y:.1f}<extra></extra>")) |>
@@ -788,12 +794,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
               barmode = "group",
               showlegend = TRUE,
               legend = list(
-                orientation = "v",
-                x = 1.02, y = 0.5, yanchor = "middle",
+                orientation = "h",
+                y = -0.2, x = 0.5, xanchor = "center",
                 bgcolor = "rgba(255,255,255,0.8)",
                 title = list(text = "Region")
               ),
-              margin = list(l = 60, r = 120, t = 40, b = 120),
+              margin = list(l = 60, r = 40, t = 40, b = 120),
               paper_bgcolor = "rgba(0,0,0,0)",
               plot_bgcolor = "rgba(0,0,0,0)"
             ) |>
