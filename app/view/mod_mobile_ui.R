@@ -7,9 +7,8 @@ box::use(
         fluidRow, column, selectInput, actionButton, observeEvent, renderUI, uiOutput,
         updateSelectInput, downloadButton, renderText, textOutput],
   shinyMobile[f7Page, f7TabLayout, f7Navbar, f7Tabs, f7Tab, f7Card, f7Block,
-              f7List, f7ListItem, f7Select, f7Button, f7Sheet, f7Accordion,
-              f7AccordionItem, f7Popup, f7Icon, f7Fab, f7Fabs, f7Chip,
-              f7Badge, f7Gauge, f7Swiper, f7Slide, updateF7Select],
+              f7List, f7ListItem, f7Select, f7Button, f7Accordion,
+              f7AccordionItem, f7Icon, f7Chip, updateF7Select],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_trace],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first],
@@ -49,7 +48,7 @@ ui <- function(id) {
       f7Tabs(
         id = ns("mobile_tabs"),
         animated = TRUE,
-        swipeable = TRUE,
+        swipeable = FALSE,
 
         # Overview Tab
         f7Tab(
@@ -57,19 +56,16 @@ ui <- function(id) {
           icon = f7Icon("globe"),
           active = TRUE,
 
-          # KPI Cards in swipeable layout
+          # KPI Cards in grid layout (no swiper to avoid conflicts)
           f7Block(
             strong = TRUE,
             inset = TRUE,
-            f7Swiper(
-              id = ns("kpi_swiper"),
-              spaceBetween = 10,
-              slidesPerView = 1.2,
-              centeredSlides = FALSE,
-              f7Slide(uiOutput(ns("kpi_countries_mobile"))),
-              f7Slide(uiOutput(ns("kpi_firms_mobile"))),
-              f7Slide(uiOutput(ns("kpi_years_mobile"))),
-              f7Slide(uiOutput(ns("kpi_indicators_mobile")))
+            tags$div(
+              style = "display: grid; grid-template-columns: 1fr 1fr; gap: 10px;",
+              uiOutput(ns("kpi_countries_mobile")),
+              uiOutput(ns("kpi_firms_mobile")),
+              uiOutput(ns("kpi_years_mobile")),
+              uiOutput(ns("kpi_indicators_mobile"))
             )
           ),
 
@@ -120,6 +116,7 @@ ui <- function(id) {
 
           # Country KPIs
           f7Block(
+            strong = TRUE,
             inset = TRUE,
             uiOutput(ns("country_kpis_mobile"))
           ),
@@ -296,6 +293,7 @@ ui <- function(id) {
 
           # Active filters display
           f7Block(
+            strong = TRUE,
             inset = TRUE,
             uiOutput(ns("active_filters_display"))
           )
