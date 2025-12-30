@@ -16,7 +16,8 @@ data/.extracted/*.dta
 # Methodology files
 ES-Indicators-Database-Global-Methodology_November_24_2025.dta
 *.dta
-
+data/new_updates_required.Rmd
+data/wbes_raw.parquet
 
 # Cache files
 data/wbes_processed.rds
@@ -40,3 +41,8 @@ Thumbs.db
 # Environment variables
 .env
 .Renviron
+
+.Rprofile
+.posit/
+Notes on Standardized Dataset.pdf
+
