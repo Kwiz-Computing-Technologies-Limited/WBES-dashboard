@@ -11,8 +11,10 @@ box::use(
               f7AccordionItem, f7Icon, f7Chip],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_trace],
   leaflet[leafletOutput, renderLeaflet],
-  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first],
+  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, any_of],
   rlang[`%||%`],
+  stats[na.omit, setNames],
+  utils[head],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region]
 )
@@ -39,7 +41,6 @@ ui <- function(id) {
       navbar = f7Navbar(
         title = "Business Environment",
         hairline = TRUE,
-        shadow = TRUE,
         left_panel = TRUE,
         right_panel = FALSE
       ),
@@ -199,7 +200,6 @@ ui <- function(id) {
           # Domain selection accordion
           f7Accordion(
             id = ns("domain_accordion"),
-            multiCollapse = FALSE,
 
             f7AccordionItem(
               title = "Infrastructure",
@@ -442,26 +442,36 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       data <- filtered_data()
       indicator <- input$map_indicator_mobile %||% "power_outages_per_month"
 
-      # Create simple mobile-friendly map
-      map_data <- data |>
-        group_by(country, latitude, longitude) |>
-        summarise(
-          value = mean(.data[[indicator]], na.rm = TRUE),
-          .groups = "drop"
-        ) |>
-        filter(!is.na(value), !is.na(latitude), !is.na(longitude))
+      # Check if latitude/longitude columns exist
+      has_coords <- all(c("latitude", "longitude") %in% names(data))
 
-      leaflet::leaflet(map_data) |>
-        leaflet::addTiles() |>
-        leaflet::setView(lng = 0, lat = 20, zoom = 1) |>
-        leaflet::addCircleMarkers(
-          lng = ~longitude,
-          lat = ~latitude,
-          radius = 5,
-          color = "#1B6B5F",
-          fillOpacity = 0.7,
-          popup = ~paste0("<b>", country, "</b><br>", round(value, 1))
-        )
+      if (has_coords) {
+        # Create map with coordinates
+        map_data <- data |>
+          group_by(country, latitude, longitude) |>
+          summarise(
+            value = mean(.data[[indicator]], na.rm = TRUE),
+            .groups = "drop"
+          ) |>
+          filter(!is.na(value), !is.na(latitude), !is.na(longitude))
+
+        leaflet::leaflet(map_data) |>
+          leaflet::addTiles() |>
+          leaflet::setView(lng = 0, lat = 20, zoom = 1) |>
+          leaflet::addCircleMarkers(
+            lng = ~longitude,
+            lat = ~latitude,
+            radius = 5,
+            color = "#1B6B5F",
+            fillOpacity = 0.7,
+            popup = ~paste0("<b>", country, "</b><br>", round(value, 1))
+          )
+      } else {
+        # Show simple map without markers if no coordinates
+        leaflet::leaflet() |>
+          leaflet::addTiles() |>
+          leaflet::setView(lng = 0, lat = 20, zoom = 1)
+      }
     })
 
     # Obstacles Chart (mobile optimized - horizontal bars)
