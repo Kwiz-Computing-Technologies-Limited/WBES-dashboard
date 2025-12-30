@@ -8,11 +8,14 @@ box::use(
         updateSelectInput, downloadButton, renderText, textOutput],
   shinyMobile[f7Page, f7TabLayout, f7Navbar, f7Tabs, f7Tab, f7Card, f7Block,
               f7List, f7ListItem, f7Select, f7Button, f7Accordion,
-              f7AccordionItem, f7Icon, f7Chip, updateF7Select],
+              f7AccordionItem, f7Icon, f7Chip],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_trace],
   leaflet[leafletOutput, renderLeaflet],
-  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first],
+  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, any_of],
   rlang[`%||%`],
+  stats[na.omit, setNames, density, median, sd, reorder],
+  scales[rescale],
+  utils[head],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region]
 )
@@ -39,7 +42,6 @@ ui <- function(id) {
       navbar = f7Navbar(
         title = "Business Environment",
         hairline = TRUE,
-        shadow = TRUE,
         left_panel = TRUE,
         right_panel = FALSE
       ),
@@ -95,6 +97,48 @@ ui <- function(id) {
           f7Card(
             title = "Regional Comparison",
             plotlyOutput(ns("regional_comparison_mobile"), height = "280px")
+          ),
+
+          # Gauges in a row
+          f7Block(
+            strong = TRUE,
+            inset = TRUE,
+            tags$h4("Quality Indices", style = "color: #1B6B5F; margin-bottom: 10px;"),
+            tags$div(
+              style = "display: grid; grid-template-columns: 1fr 1fr; gap: 10px;",
+              tags$div(
+                plotlyOutput(ns("infrastructure_gauge_mobile"), height = "180px")
+              ),
+              tags$div(
+                plotlyOutput(ns("finance_gauge_mobile"), height = "180px")
+              )
+            )
+          ),
+
+          # Density Plots Section
+          f7Card(
+            title = "Distribution Analysis",
+            tags$p("Distribution of key business metrics", class = "text-color-gray", style = "font-size: 12px;"),
+            selectInput(
+              ns("density_var_1_mobile"),
+              label = "Indicator 1",
+              choices = c("Loading..." = ""),
+              width = "100%"
+            ),
+            plotlyOutput(ns("density_plot_1_mobile"), height = "200px"),
+            uiOutput(ns("density_stats_1_mobile"))
+          ),
+
+          f7Card(
+            title = NULL,
+            selectInput(
+              ns("density_var_2_mobile"),
+              label = "Indicator 2",
+              choices = c("Loading..." = ""),
+              width = "100%"
+            ),
+            plotlyOutput(ns("density_plot_2_mobile"), height = "200px"),
+            uiOutput(ns("density_stats_2_mobile"))
           )
         ),
 
@@ -107,10 +151,11 @@ ui <- function(id) {
             strong = TRUE,
             inset = TRUE,
             tags$h3("Country Profile", class = "text-color-primary"),
-            f7Select(
-              inputId = ns("country_select_mobile"),
+            selectInput(
+              ns("country_select_mobile"),
               label = "Select Country",
-              choices = c("Loading..." = "")
+              choices = c("Loading..." = ""),
+              width = "100%"
             )
           ),
 
@@ -165,8 +210,8 @@ ui <- function(id) {
                 "Access to Credit" = "firms_with_credit_line_pct",
                 "Bribery Incidence" = "bribery_incidence_pct",
                 "Capacity Utilization" = "capacity_utilization_pct",
-                "Female Participation" = "pct_female_top_manager",
-                "Export Intensity" = "pct_direct_exports"
+                "Female Workers" = "female_workers_pct",
+                "Female Ownership" = "female_ownership_pct"
               )
             )
           ),
@@ -198,7 +243,6 @@ ui <- function(id) {
           # Domain selection accordion
           f7Accordion(
             id = ns("domain_accordion"),
-            multiCollapse = FALSE,
 
             f7AccordionItem(
               title = "Infrastructure",
@@ -253,34 +297,39 @@ ui <- function(id) {
           f7Card(
             title = "Global Filters",
 
-            f7Select(
-              inputId = ns("mobile_region_filter"),
+            selectInput(
+              ns("mobile_region_filter"),
               label = "Region",
-              choices = c("All Regions" = "all")
+              choices = c("All Regions" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_sector_filter"),
+            selectInput(
+              ns("mobile_sector_filter"),
               label = "Sector",
-              choices = c("All Sectors" = "all")
+              choices = c("All Sectors" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_size_filter"),
+            selectInput(
+              ns("mobile_size_filter"),
               label = "Firm Size",
-              choices = c("All Sizes" = "all")
+              choices = c("All Sizes" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_income_filter"),
+            selectInput(
+              ns("mobile_income_filter"),
               label = "Income Group",
-              choices = c("All Income Levels" = "all")
+              choices = c("All Income Levels" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_year_filter"),
+            selectInput(
+              ns("mobile_year_filter"),
               label = "Survey Year",
-              choices = c("Latest Year" = "latest", "All Years" = "all")
+              choices = c("Latest Year" = "latest", "All Years" = "all"),
+              width = "100%"
             ),
 
             f7Button(
@@ -310,6 +359,8 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
     ns <- session$ns
 
     # Update filter choices when data loads
+    # Note: shinyMobile 2.0 updateF7Select doesn't support choices update,
+    # so we use standard Shiny updateSelectInput instead
     observeEvent(wbes_data(), {
       req(wbes_data())
       data <- wbes_data()
@@ -317,7 +368,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       if (!is.null(data$latest)) {
         # Update country selector
         countries <- sort(unique(data$latest$country))
-        updateF7Select(
+        shiny::updateSelectInput(
           session, "country_select_mobile",
           choices = stats::setNames(countries, countries)
         )
@@ -327,28 +378,28 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
           unique(data$latest$region),
           unique(data$latest$region)
         ))
-        updateF7Select(session, "mobile_region_filter", choices = regions)
+        shiny::updateSelectInput(session, "mobile_region_filter", choices = regions)
 
         # Update sector filter
         sectors <- c("All Sectors" = "all", stats::setNames(
           unique(na.omit(data$latest$sector)),
           unique(na.omit(data$latest$sector))
         ))
-        updateF7Select(session, "mobile_sector_filter", choices = sectors)
+        shiny::updateSelectInput(session, "mobile_sector_filter", choices = sectors)
 
         # Update size filter
         sizes <- c("All Sizes" = "all", stats::setNames(
           unique(na.omit(data$latest$firm_size)),
           unique(na.omit(data$latest$firm_size))
         ))
-        updateF7Select(session, "mobile_size_filter", choices = sizes)
+        shiny::updateSelectInput(session, "mobile_size_filter", choices = sizes)
 
         # Update income filter
         incomes <- c("All Income Levels" = "all", stats::setNames(
           unique(na.omit(data$latest$income)),
           unique(na.omit(data$latest$income))
         ))
-        updateF7Select(session, "mobile_income_filter", choices = incomes)
+        shiny::updateSelectInput(session, "mobile_income_filter", choices = incomes)
       }
     })
 
@@ -428,106 +479,207 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       )
     })
 
-    # World Map (simplified for mobile)
-    output$world_map_mobile <- renderLeaflet({
+    # World Map - now rendered by mod_overview$server with root_session
+    # This output is populated by the dual-rendering pattern in mod_overview.R
+    # The map will respond to the global filters and the mobile map_indicator input
+
+    # Obstacles Chart - now rendered by mod_overview$server with root_session
+    # This output is populated by the dual-rendering pattern in mod_overview.R
+
+    # Regional Comparison - now rendered by mod_overview$server with root_session
+    # This output is populated by the dual-rendering pattern in mod_overview.R
+
+    # Infrastructure Gauge - now rendered by mod_overview$server with root_session
+    # This output is populated by the dual-rendering pattern in mod_overview.R
+
+    # Finance Gauge - now rendered by mod_overview$server with root_session
+    # This output is populated by the dual-rendering pattern in mod_overview.R
+
+    # ============================================================
+    # Density Plots with Dynamic Variable Selection
+    # ============================================================
+
+    # Get available numeric columns for density plots
+    available_density_vars_mobile <- reactive({
       req(filtered_data())
       data <- filtered_data()
-      indicator <- input$map_indicator_mobile %||% "power_outages_per_month"
 
-      # Create simple mobile-friendly map
-      map_data <- data |>
-        group_by(country, latitude, longitude) |>
-        summarise(
-          value = mean(.data[[indicator]], na.rm = TRUE),
-          .groups = "drop"
-        ) |>
-        filter(!is.na(value), !is.na(latitude), !is.na(longitude))
+      # Get numeric columns
+      numeric_cols <- names(data)[sapply(data, is.numeric)]
 
-      leaflet::leaflet(map_data) |>
-        leaflet::addTiles() |>
-        leaflet::setView(lng = 0, lat = 20, zoom = 1) |>
-        leaflet::addCircleMarkers(
-          lng = ~longitude,
-          lat = ~latitude,
-          radius = 5,
-          color = "#1B6B5F",
-          fillOpacity = 0.7,
-          popup = ~paste0("<b>", country, "</b><br>", round(value, 1))
+      # Exclude non-indicator columns
+      exclude_cols <- c("lat", "lng", "lon", "year", "sample_size", "firms_count", "marker_size")
+      numeric_cols <- setdiff(numeric_cols, exclude_cols)
+
+      # Create named vector with friendly labels
+      labels <- sapply(numeric_cols, function(col) {
+        label <- gsub("_pct$", " (%)", col)
+        label <- gsub("_per_month$", " (per month)", label)
+        label <- gsub("_", " ", label)
+        label <- gsub("IC\\.FRM\\.", "", label)
+        label <- tools::toTitleCase(label)
+        label
+      })
+
+      setNames(numeric_cols, labels)
+    })
+
+    # Update dropdown choices when base data loads (only once)
+    observeEvent(wbes_data(), {
+      req(wbes_data()$latest)
+      data <- wbes_data()$latest
+
+      # Get numeric columns
+      numeric_cols <- names(data)[sapply(data, is.numeric)]
+      exclude_cols <- c("lat", "lng", "lon", "year", "sample_size", "firms_count", "marker_size")
+      numeric_cols <- setdiff(numeric_cols, exclude_cols)
+
+      if (length(numeric_cols) > 0) {
+        # Create named vector with friendly labels
+        labels <- sapply(numeric_cols, function(col) {
+          label <- gsub("_pct$", " (%)", col)
+          label <- gsub("_per_month$", " (per month)", label)
+          label <- gsub("_", " ", label)
+          label <- gsub("IC\\.FRM\\.", "", label)
+          label <- tools::toTitleCase(label)
+          label
+        })
+        choices <- setNames(numeric_cols, labels)
+
+        defaults <- c(
+          if ("female_workers_pct" %in% numeric_cols) "female_workers_pct" else if ("IC.FRM.FEMW.ZS" %in% numeric_cols) "IC.FRM.FEMW.ZS" else numeric_cols[1],
+          if ("capacity_utilization_pct" %in% numeric_cols) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% numeric_cols) "IC.FRM.CAPU.ZS" else numeric_cols[min(2, length(numeric_cols))]
         )
-    })
 
-    # Obstacles Chart (mobile optimized - horizontal bars)
-    output$obstacles_chart_mobile <- renderPlotly({
-      req(filtered_data())
-      data <- filtered_data()
-
-      # Get obstacle indicators
-      obstacle_cols <- grep("^biggest_obstacle_", names(data), value = TRUE)
-
-      if (length(obstacle_cols) > 0 && "biggest_obstacle" %in% names(data)) {
-        obstacle_data <- data |>
-          group_by(biggest_obstacle) |>
-          summarise(count = n(), .groups = "drop") |>
-          filter(!is.na(biggest_obstacle)) |>
-          arrange(desc(count)) |>
-          head(8)
-
-        plot_ly(
-          obstacle_data,
-          y = ~reorder(biggest_obstacle, count),
-          x = ~count,
-          type = "bar",
-          orientation = "h",
-          marker = list(color = "#1B6B5F")
-        ) |>
-          layout(
-            xaxis = list(title = "Number of Firms"),
-            yaxis = list(title = "", tickfont = list(size = 10)),
-            margin = list(l = 120, r = 20, t = 10, b = 40)
-          ) |>
-          config(displayModeBar = FALSE)
-      } else {
-        plot_ly() |>
-          layout(
-            annotations = list(
-              text = "No obstacle data available",
-              showarrow = FALSE,
-              x = 0.5, y = 0.5, xref = "paper", yref = "paper"
-            )
-          )
+        shiny::updateSelectInput(session, "density_var_1_mobile", choices = choices, selected = defaults[1])
+        shiny::updateSelectInput(session, "density_var_2_mobile", choices = choices, selected = defaults[2])
       }
-    })
+    }, ignoreInit = FALSE, once = TRUE)
 
-    # Regional Comparison (mobile optimized)
-    output$regional_comparison_mobile <- renderPlotly({
-      req(filtered_data())
-      data <- filtered_data()
+    # Helper function to create density plot (mobile optimized)
+    create_density_plot_mobile <- function(data, col_name, color = "#1B6B5F") {
+      if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+        return(
+          plot_ly() |>
+            layout(
+              annotations = list(list(
+                text = "Select an indicator",
+                showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+              )),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
 
-      regional_data <- data |>
-        group_by(region) |>
-        summarise(
-          `Power Outages` = mean(power_outages_per_month, na.rm = TRUE),
-          `Credit Access` = mean(firms_with_credit_line_pct, na.rm = TRUE),
-          `Bribery` = mean(bribery_incidence_pct, na.rm = TRUE),
-          .groups = "drop"
+      values <- data[[col_name]]
+      values <- values[!is.na(values)]
+
+      if (length(values) < 3) {
+        return(
+          plot_ly() |>
+            layout(
+              annotations = list(list(
+                text = "Insufficient data",
+                showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5
+              )),
+              paper_bgcolor = "rgba(0,0,0,0)"
+            ) |>
+            config(displayModeBar = FALSE)
+        )
+      }
+
+      # Create friendly label
+      x_label <- gsub("_pct$", " (%)", col_name)
+      x_label <- gsub("_per_month$", " (per month)", x_label)
+      x_label <- gsub("_", " ", x_label)
+      x_label <- gsub("IC\\.FRM\\.", "", x_label)
+      x_label <- tools::toTitleCase(x_label)
+
+      # Calculate density
+      dens <- density(values, na.rm = TRUE)
+
+      # Calculate statistics
+      mean_val <- mean(values, na.rm = TRUE)
+      median_val <- median(values, na.rm = TRUE)
+
+      plot_ly() |>
+        add_trace(
+          x = dens$x, y = dens$y,
+          type = "scatter", mode = "lines",
+          fill = "tozeroy",
+          fillcolor = paste0(color, "40"),
+          line = list(color = color, width = 2),
+          name = "Density",
+          hovertemplate = paste0(x_label, ": %{x:.1f}<extra></extra>")
         ) |>
-        filter(!is.na(region))
-
-      plot_ly(regional_data, x = ~region, y = ~`Power Outages`,
-              type = "bar", name = "Power Outages",
-              marker = list(color = "#1B6B5F")) |>
-        add_trace(y = ~`Credit Access`, name = "Credit Access",
-                  marker = list(color = "#F49B7A")) |>
-        add_trace(y = ~`Bribery`, name = "Bribery",
-                  marker = list(color = "#dc3545")) |>
+        add_trace(
+          x = c(mean_val, mean_val), y = c(0, max(dens$y)),
+          type = "scatter", mode = "lines",
+          line = list(color = "#dc3545", width = 2, dash = "dash"),
+          name = paste0("Mean: ", round(mean_val, 1)),
+          hoverinfo = "name"
+        ) |>
+        add_trace(
+          x = c(median_val, median_val), y = c(0, max(dens$y)),
+          type = "scatter", mode = "lines",
+          line = list(color = "#17a2b8", width = 2, dash = "dot"),
+          name = paste0("Median: ", round(median_val, 1)),
+          hoverinfo = "name"
+        ) |>
         layout(
-          barmode = "group",
-          xaxis = list(title = "", tickangle = 45, tickfont = list(size = 9)),
-          yaxis = list(title = "Value"),
-          legend = list(orientation = "h", y = -0.3),
-          margin = list(b = 100, t = 10)
+          xaxis = list(title = x_label, titlefont = list(size = 10)),
+          yaxis = list(title = "Density", titlefont = list(size = 10)),
+          showlegend = TRUE,
+          legend = list(orientation = "h", y = -0.25, x = 0.5, xanchor = "center", font = list(size = 8)),
+          margin = list(l = 40, r = 10, t = 10, b = 60),
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
+    }
+
+    # Helper to create stats summary (mobile optimized)
+    create_stats_summary_mobile <- function(data, col_name) {
+      if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+        return(NULL)
+      }
+
+      values <- data[[col_name]]
+      values <- values[!is.na(values)]
+
+      if (length(values) < 3) return(NULL)
+
+      tags$div(
+        class = "small text-color-gray",
+        style = "font-size: 11px; display: flex; flex-wrap: wrap; gap: 8px;",
+        tags$span(tags$strong("N: "), length(values)),
+        tags$span(tags$strong("Min: "), round(min(values), 1)),
+        tags$span(tags$strong("Max: "), round(max(values), 1)),
+        tags$span(tags$strong("SD: "), round(sd(values, na.rm = TRUE), 1))
+      )
+    }
+
+    # Density plots
+    output$density_plot_1_mobile <- renderPlotly({
+      req(filtered_data(), input$density_var_1_mobile)
+      create_density_plot_mobile(filtered_data(), input$density_var_1_mobile, "#1B6B5F")
+    })
+
+    output$density_plot_2_mobile <- renderPlotly({
+      req(filtered_data(), input$density_var_2_mobile)
+      create_density_plot_mobile(filtered_data(), input$density_var_2_mobile, "#9c27b0")
+    })
+
+    # Stats summaries
+    output$density_stats_1_mobile <- renderUI({
+      req(filtered_data(), input$density_var_1_mobile)
+      create_stats_summary_mobile(filtered_data(), input$density_var_1_mobile)
+    })
+
+    output$density_stats_2_mobile <- renderUI({
+      req(filtered_data(), input$density_var_2_mobile)
+      create_stats_summary_mobile(filtered_data(), input$density_var_2_mobile)
     })
 
     # Benchmark Chart
@@ -618,7 +770,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
         "Infrastructure" = 100 - min(mean(data$power_outages_per_month, na.rm = TRUE) * 5, 100),
         "Finance" = mean(data$firms_with_credit_line_pct, na.rm = TRUE),
         "Governance" = 100 - mean(data$bribery_incidence_pct, na.rm = TRUE),
-        "Workforce" = mean(data$pct_female_top_manager, na.rm = TRUE) * 2,
+        "Workforce" = mean(data$female_workers_pct, na.rm = TRUE),
         "Performance" = mean(data$capacity_utilization_pct, na.rm = TRUE)
       )
 
@@ -642,13 +794,123 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
         config(displayModeBar = FALSE)
     })
 
+    # Country Profile - Infrastructure accordion content
+    output$country_infrastructure_mobile <- renderUI({
+      req(wbes_data(), input$country_select_mobile)
+      data <- wbes_data()$latest |>
+        filter(country == input$country_select_mobile)
+
+      if (nrow(data) == 0) return(tags$p("No data available", class = "text-color-gray"))
+
+      avg_outages <- round(mean(data$power_outages_per_month, na.rm = TRUE), 1)
+      avg_generator <- if ("firms_with_generator_pct" %in% names(data)) {
+        round(mean(data$firms_with_generator_pct, na.rm = TRUE), 1)
+      } else { NA }
+      avg_water <- if ("water_insufficiency_pct" %in% names(data)) {
+        round(mean(data$water_insufficiency_pct, na.rm = TRUE), 1)
+      } else { NA }
+
+      tags$div(
+        style = "padding: 10px 0;",
+        tags$div(
+          style = "display: grid; grid-template-columns: 1fr 1fr; gap: 15px;",
+          tags$div(
+            tags$span("Power Outages", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(avg_outages, "/month"), style = "color: #dc3545; margin: 5px 0;")
+          ),
+          if (!is.na(avg_generator)) tags$div(
+            tags$span("Generator Use", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(avg_generator, "%"), style = "color: #1B6B5F; margin: 5px 0;")
+          ),
+          if (!is.na(avg_water)) tags$div(
+            tags$span("Water Issues", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(avg_water, "%"), style = "color: #F49B7A; margin: 5px 0;")
+          )
+        )
+      )
+    })
+
+    # Country Profile - Finance accordion content
+    output$country_finance_mobile <- renderUI({
+      req(wbes_data(), input$country_select_mobile)
+      data <- wbes_data()$latest |>
+        filter(country == input$country_select_mobile)
+
+      if (nrow(data) == 0) return(tags$p("No data available", class = "text-color-gray"))
+
+      credit_access <- round(mean(data$firms_with_credit_line_pct, na.rm = TRUE), 1)
+      bank_account <- if ("firms_with_bank_account_pct" %in% names(data)) {
+        round(mean(data$firms_with_bank_account_pct, na.rm = TRUE), 1)
+      } else { NA }
+      collateral <- if ("pct_collateral_required" %in% names(data)) {
+        round(mean(data$pct_collateral_required, na.rm = TRUE), 1)
+      } else { NA }
+
+      tags$div(
+        style = "padding: 10px 0;",
+        tags$div(
+          style = "display: grid; grid-template-columns: 1fr 1fr; gap: 15px;",
+          tags$div(
+            tags$span("Credit Access", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(credit_access, "%"), style = "color: #1B6B5F; margin: 5px 0;")
+          ),
+          if (!is.na(bank_account)) tags$div(
+            tags$span("Bank Account", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(bank_account, "%"), style = "color: #17a2b8; margin: 5px 0;")
+          ),
+          if (!is.na(collateral)) tags$div(
+            tags$span("Collateral Required", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(collateral, "%"), style = "color: #F49B7A; margin: 5px 0;")
+          )
+        )
+      )
+    })
+
+    # Country Profile - Governance accordion content
+    output$country_governance_mobile <- renderUI({
+      req(wbes_data(), input$country_select_mobile)
+      data <- wbes_data()$latest |>
+        filter(country == input$country_select_mobile)
+
+      if (nrow(data) == 0) return(tags$p("No data available", class = "text-color-gray"))
+
+      bribery <- round(mean(data$bribery_incidence_pct, na.rm = TRUE), 1)
+      mgmt_time_regs <- if ("mgmt_time_on_regulations_pct" %in% names(data)) {
+        round(mean(data$mgmt_time_on_regulations_pct, na.rm = TRUE), 1)
+      } else { NA }
+      informal_competition <- if ("informal_competition_pct" %in% names(data)) {
+        round(mean(data$informal_competition_pct, na.rm = TRUE), 1)
+      } else { NA }
+
+      tags$div(
+        style = "padding: 10px 0;",
+        tags$div(
+          style = "display: grid; grid-template-columns: 1fr 1fr; gap: 15px;",
+          tags$div(
+            tags$span("Bribery Incidence", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(bribery, "%"), style = "color: #dc3545; margin: 5px 0;")
+          ),
+          if (!is.na(mgmt_time_regs)) tags$div(
+            tags$span("Mgmt Time on Regs", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(mgmt_time_regs, "%"), style = "color: #F49B7A; margin: 5px 0;")
+          ),
+          if (!is.na(informal_competition)) tags$div(
+            tags$span("Informal Competition", style = "font-size: 12px; color: #666;"),
+            tags$h4(paste0(informal_competition, "%"), style = "color: #6C757D; margin: 5px 0;")
+          )
+        )
+      )
+    })
+
     # Domain summaries
     output$domain_infrastructure_mobile <- renderUI({
       req(filtered_data())
       data <- filtered_data()
 
       avg_outages <- round(mean(data$power_outages_per_month, na.rm = TRUE), 1)
-      avg_generator <- round(mean(data$pct_firms_with_generator, na.rm = TRUE), 1)
+      avg_generator <- if ("firms_with_generator_pct" %in% names(data)) {
+        round(mean(data$firms_with_generator_pct, na.rm = TRUE), 1)
+      } else { NA }
 
       tags$div(
         f7Card(
@@ -658,7 +920,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
               tags$strong("Avg. Outages/Month"),
               tags$h3(avg_outages, style = "color: #dc3545;")
             ),
-            tags$div(
+            if (!is.na(avg_generator)) tags$div(
               tags$strong("Firms with Generator"),
               tags$h3(paste0(avg_generator, "%"), style = "color: #1B6B5F;")
             )
@@ -725,13 +987,19 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       req(filtered_data())
       data <- filtered_data()
 
-      avg_female <- round(mean(data$pct_female_top_manager, na.rm = TRUE), 1)
+      avg_female <- if ("female_workers_pct" %in% names(data)) {
+        round(mean(data$female_workers_pct, na.rm = TRUE), 1)
+      } else { NA }
+
+      if (is.na(avg_female)) {
+        return(tags$p("Female workforce data not available", class = "text-color-gray"))
+      }
 
       tags$div(
         f7Card(
           tags$div(
             style = "text-align: center;",
-            tags$strong("Female Top Managers"),
+            tags$strong("Female Workers"),
             tags$h2(paste0(avg_female, "%"), style = "color: #F49B7A;")
           )
         )
@@ -742,21 +1010,17 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       req(filtered_data())
       data <- filtered_data()
 
-      avg_capacity <- round(mean(data$capacity_utilization_pct, na.rm = TRUE), 1)
-      avg_exports <- round(mean(data$pct_direct_exports, na.rm = TRUE), 1)
+      avg_capacity <- if ("capacity_utilization_pct" %in% names(data)) {
+        round(mean(data$capacity_utilization_pct, na.rm = TRUE), 1)
+      } else { NA }
 
       tags$div(
         f7Card(
           tags$div(
-            style = "display: flex; justify-content: space-between;",
-            tags$div(
-              tags$strong("Capacity Utilization"),
-              tags$h3(paste0(avg_capacity, "%"), style = "color: #1B6B5F;")
-            ),
-            tags$div(
-              tags$strong("Export Intensity"),
-              tags$h3(paste0(avg_exports, "%"), style = "color: #F49B7A;")
-            )
+            style = "text-align: center;",
+            tags$strong("Capacity Utilization"),
+            tags$h2(if (!is.na(avg_capacity)) paste0(avg_capacity, "%") else "N/A",
+                    style = "color: #1B6B5F;")
           )
         )
       )
@@ -817,11 +1081,11 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
 
     # Reset filters
     observeEvent(input$reset_filters_mobile, {
-      updateF7Select(session, "mobile_region_filter", selected = "all")
-      updateF7Select(session, "mobile_sector_filter", selected = "all")
-      updateF7Select(session, "mobile_size_filter", selected = "all")
-      updateF7Select(session, "mobile_income_filter", selected = "all")
-      updateF7Select(session, "mobile_year_filter", selected = "latest")
+      shiny::updateSelectInput(session, "mobile_region_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_sector_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_size_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_income_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_year_filter", selected = "latest")
     })
 
     # Return mobile filter state for potential sync with desktop
