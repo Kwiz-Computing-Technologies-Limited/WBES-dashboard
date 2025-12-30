@@ -5,7 +5,9 @@
 box::use(
   shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML, selectInput,
         updateSelectInput, updateSelectizeInput, observeEvent, reactive, req, div, fluidRow, column,
-        actionButton, selectizeInput, sliderInput],
+        actionButton, selectizeInput, sliderInput, uiOutput, renderUI, reactiveVal,
+        getQueryString, parseQueryString, httpResponse],
+  rlang[`%||%`],
   bslib[
     bs_theme, bs_add_rules, nav_panel, nav_spacer, nav_menu,
     nav_item, page_navbar, card, card_header, card_body, sidebar, layout_sidebar
@@ -35,6 +37,7 @@ box::use(
   app/view/mod_custom_analysis,
   app/view/mod_data_quality,
   app/view/mod_about,
+  app/view/mod_mobile_ui,
   app/logic/wbes_data[load_wbes_data],
   app/logic/shared_filters[get_filter_choices, remove_na_columns],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
@@ -44,26 +47,19 @@ box::use(
   app/logic/wb_integration[prefetch_wb_data_for_countries]
 )
 
-#' @export
-ui <- function(request) {
+# Helper function to detect mobile from User-Agent
+detect_mobile_from_ua <- function(request) {
+  if (is.null(request) || is.null(request$HTTP_USER_AGENT)) {
+    return(FALSE)
+  }
+  ua <- tolower(request$HTTP_USER_AGENT)
+  mobile_patterns <- c("android", "webos", "iphone", "ipad", "ipod",
+                       "blackberry", "iemobile", "opera mini", "mobile")
+  any(sapply(mobile_patterns, function(p) grepl(p, ua)))
+}
 
-  # Kwiz Research Theme
-  kwiz_theme <- bs_theme(
-    version = 5,
-    bootswatch = "flatly",
-    primary = "#1B6B5F",
-    secondary = "#F49B7A",
-    success = "#2E7D32",
-    info = "#17a2b8",
-    warning = "#F4A460",
-    danger = "#dc3545",
-    bg = "#FFFFFF",
-    fg = "#333333",
-    base_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif",
-    heading_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
-  ) |>
-    bs_add_rules(sass::sass_file("app/styles/main.scss"))
-
+# Desktop UI function (original page_navbar UI)
+desktop_ui <- function(kwiz_theme) {
   page_navbar(
     id = "main_navbar",
     title = tags$span(
@@ -84,7 +80,10 @@ ui <- function(request) {
       tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
       tags$meta(name = "description", content = "World Bank Enterprise Surveys Dashboard"),
       tags$meta(name = "author", content = "Kwiz Computing Technologies"),
+      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
       useWaiter(),
+      # Mark body with UI mode for JS detection
+      tags$script(HTML("document.body.setAttribute('data-ui-mode', 'desktop');")),
       tags$style(HTML("
         .bslib-sidebar-layout { --bslib-sidebar-width: 280px; }
         .sidebar { background-color: #f8f9fa; border-right: 1px solid #dee2e6; overflow-y: auto; }
@@ -118,6 +117,19 @@ ui <- function(request) {
         .sidebar .mb-3 {
           position: relative;
           clear: both;
+        }
+
+        /* UI Switch button */
+        .ui-switch-btn {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          z-index: 9999;
+          opacity: 0.7;
+          transition: opacity 0.3s;
+        }
+        .ui-switch-btn:hover {
+          opacity: 1;
         }
       "))
     ),
@@ -390,32 +402,41 @@ ui <- function(request) {
     ),
 
     # Footer
-    footer = tags$footer(
-      class = "dashboard-footer",
-      tags$div(
-        class = "container-fluid",
+    footer = tags$div(
+      # Switch to mobile button (shown on desktop)
+      tags$a(
+        href = "?ui=mobile",
+        class = "btn btn-sm btn-outline-secondary ui-switch-btn d-none d-md-block",
+        icon("mobile-alt"),
+        " Mobile View"
+      ),
+      tags$footer(
+        class = "dashboard-footer",
         tags$div(
-          class = "row",
+          class = "container-fluid",
           tags$div(
-            class = "col-md-6",
-            tags$span(
-              icon("copyright"),
-              " 2025 ",
-              tags$a(
-                href = "https://kwizresearch.com",
-                target = "_blank",
-                "Kwiz Computing Technologies"
+            class = "row",
+            tags$div(
+              class = "col-md-6",
+              tags$span(
+                icon("copyright"),
+                " 2025 ",
+                tags$a(
+                  href = "https://kwizresearch.com",
+                  target = "_blank",
+                  "Kwiz Computing Technologies"
+                )
               )
-            )
-          ),
-          tags$div(
-            class = "col-md-6 text-end",
-            tags$span(
-              "Data: ",
-              tags$a(
-                href = "https://www.enterprisesurveys.org",
-                target = "_blank",
-                "World Bank Enterprise Surveys"
+            ),
+            tags$div(
+              class = "col-md-6 text-end",
+              tags$span(
+                "Data: ",
+                tags$a(
+                  href = "https://www.enterprisesurveys.org",
+                  target = "_blank",
+                  "World Bank Enterprise Surveys"
+                )
               )
             )
           )
@@ -423,6 +444,89 @@ ui <- function(request) {
       )
     )
   )
+}
+
+# Mobile UI wrapper with switch button
+mobile_ui_wrapper <- function() {
+  tags$div(
+    # Add viewport meta for mobile
+    tags$head(
+      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"),
+      tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
+      # Mark body with UI mode for JS detection
+      tags$script(HTML("document.body.setAttribute('data-ui-mode', 'mobile');")),
+      tags$style(HTML("
+        /* Mobile-specific styles */
+        .desktop-switch-fab {
+          position: fixed;
+          bottom: 80px;
+          right: 16px;
+          z-index: 9999;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #1B6B5F;
+          color: white;
+          border: none;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .desktop-switch-fab:active {
+          transform: scale(0.95);
+        }
+      "))
+    ),
+    mod_mobile_ui$ui("mobile_ui"),
+    # Switch to desktop button (FAB style)
+    tags$a(
+      href = "?ui=desktop",
+      class = "desktop-switch-fab",
+      title = "Switch to Desktop View",
+      icon("desktop")
+    )
+  )
+}
+
+#' @export
+ui <- function(request) {
+  # Check for explicit UI mode in query string
+  query <- parseQueryString(request$QUERY_STRING %||% "")
+  ui_mode <- query$ui
+
+  # Determine which UI to show
+  if (!is.null(ui_mode)) {
+    # Explicit mode requested via query parameter
+    use_mobile <- (ui_mode == "mobile")
+  } else {
+    # Auto-detect from User-Agent
+    use_mobile <- detect_mobile_from_ua(request)
+  }
+
+  if (use_mobile) {
+    # Return mobile UI
+    return(mobile_ui_wrapper())
+  }
+
+  # Desktop UI with Kwiz Research Theme
+  kwiz_theme <- bs_theme(
+    version = 5,
+    bootswatch = "flatly",
+    primary = "#1B6B5F",
+    secondary = "#F49B7A",
+    success = "#2E7D32",
+    info = "#17a2b8",
+    warning = "#F4A460",
+    danger = "#dc3545",
+    bg = "#FFFFFF",
+    fg = "#333333",
+    base_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif",
+    heading_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+  ) |>
+    bs_add_rules(sass::sass_file("app/styles/main.scss"))
+
+  desktop_ui(kwiz_theme)
 }
 
   #' @export
@@ -841,4 +945,7 @@ ui <- function(request) {
   mod_custom_analysis$server("custom_analysis", wbes_data, global_filters)
   mod_data_quality$server("data_quality", wbes_data, global_filters)
   mod_about$server("about")
+
+  # Mobile UI module - shares data and filters with desktop
+  mod_mobile_ui$server("mobile_ui", wbes_data, global_filters, wb_prefetched_data)
 }
