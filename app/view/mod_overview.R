@@ -245,9 +245,14 @@ ui <- function(id) {
 }
 
 #' @export
-server <- function(id, wbes_data, global_filters = NULL) {
+server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
  moduleServer(id, function(input, output, session) {
    ns <- session$ns
+
+   # For dual rendering to mobile UI, we need access to root session's output
+   # Mobile outputs use "mobile_ui-<output_id>_mobile" naming convention
+   mobile_output <- if (!is.null(root_session)) root_session$output else NULL
+   mobile_ns_prefix <- "mobile_ui-"
 
    # Filtered data reactive - uses global filters from sidebar
    filtered_data <- reactive({
@@ -380,12 +385,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
    })
 
    # World Map - with color and size encoding
-   output$world_map <- renderLeaflet({
-     req(filtered_data())
-
-     # Get data with coordinates (already merged in wbes_data)
-     data <- filtered_data()
-
+   # Create map rendering function that can be reused for mobile
+   create_world_map <- function(data, indicator, marker_size_range = c(6, 22)) {
      # Check if lat/lng columns exist
      has_coords <- "lat" %in% names(data) && "lng" %in% names(data)
 
@@ -396,8 +397,6 @@ server <- function(id, wbes_data, global_filters = NULL) {
            setView(lng = 20, lat = 10, zoom = 2)
        )
      }
-
-     indicator <- input$map_indicator
 
      # Handle lon/lng naming
      if ("lng" %in% names(data) && !"lon" %in% names(data)) {
@@ -427,10 +426,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
          na.color = "#808080"
        )
 
-       # Size scaling - rescale indicator values to marker sizes (5-20)
+       # Size scaling - rescale indicator values to marker sizes
        size_values <- data[[indicator]]
        size_values[is.na(size_values)] <- min(size_values, na.rm = TRUE)
-       data$marker_size <- rescale(size_values, to = c(6, 22))
+       data$marker_size <- rescale(size_values, to = marker_size_range)
 
        leaflet(data) |>
          addTiles() |>
@@ -464,13 +463,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
          addTiles() |>
          setView(lng = 20, lat = 10, zoom = 2)
      }
+   }
+
+   # Desktop map output
+   output$world_map <- renderLeaflet({
+     req(filtered_data())
+     indicator <- input$map_indicator
+     create_world_map(filtered_data(), indicator, marker_size_range = c(6, 22))
    })
 
-   # Obstacles Chart
-   output$obstacles_chart <- renderPlotly({
-     req(filtered_data())
-     data <- filtered_data()
+   # Mobile map output (rendered when mobile session available)
+   if (!is.null(mobile_output)) {
+     mobile_output[[paste0(mobile_ns_prefix, "world_map_mobile")]] <- renderLeaflet({
+       req(filtered_data())
+       # For mobile, use desktop's map_indicator or default
+       indicator <- input$map_indicator %||% "power_outages_per_month"
+       create_world_map(filtered_data(), indicator, marker_size_range = c(5, 18))
+     })
+   }
 
+   # Obstacles Chart - reusable function for dual rendering
+   create_obstacles_chart <- function(data, for_mobile = FALSE) {
      # Calculate average values for major obstacles from actual data
      obstacles <- data.frame(
        obstacle = character(),
@@ -524,6 +537,9 @@ server <- function(id, wbes_data, global_filters = NULL) {
        obstacles <- arrange(obstacles, pct)
        obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
 
+       # Adjust margins for mobile
+       left_margin <- if (for_mobile) 100 else 150
+
        plot_ly(obstacles,
                y = ~obstacle,
                x = ~pct,
@@ -536,8 +552,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
                hovertemplate = "%{y}: %{x:.1f}%<extra></extra>") |>
          layout(
            xaxis = list(title = "% of Firms", ticksuffix = "%"),
-           yaxis = list(title = ""),
-           margin = list(l = 150),
+           yaxis = list(title = "", tickfont = list(size = if (for_mobile) 10 else 12)),
+           margin = list(l = left_margin, r = 10, t = 10, b = 40),
            plot_bgcolor = "rgba(0,0,0,0)",
            paper_bgcolor = "rgba(0,0,0,0)"
          ) |>
@@ -558,15 +574,24 @@ server <- function(id, wbes_data, global_filters = NULL) {
            )
          )
      }
+   }
+
+   # Desktop obstacles chart
+   output$obstacles_chart <- renderPlotly({
+     req(filtered_data())
+     create_obstacles_chart(filtered_data(), for_mobile = FALSE)
    })
 
-   # Regional Comparison
-   output$regional_comparison <- renderPlotly({
-     req(filtered_data())
+   # Mobile obstacles chart
+   if (!is.null(mobile_output)) {
+     mobile_output[[paste0(mobile_ns_prefix, "obstacles_chart_mobile")]] <- renderPlotly({
+       req(filtered_data())
+       create_obstacles_chart(filtered_data(), for_mobile = TRUE)
+     })
+   }
 
-     # Use filtered data (respects region and firm_size filters)
-     data <- filtered_data()
-
+   # Regional Comparison - reusable function
+   create_regional_comparison <- function(data, for_mobile = FALSE) {
      # Calculate regional aggregates from filtered data
      if (!is.null(data) && "region" %in% names(data)) {
        regional <- data |>
@@ -580,6 +605,12 @@ server <- function(id, wbes_data, global_filters = NULL) {
          )
 
        if (nrow(regional) > 0) {
+         # Mobile-optimized settings
+         tick_angle <- if (for_mobile) 45 else -45
+         legend_y <- if (for_mobile) -0.3 else -0.2
+         bottom_margin <- if (for_mobile) 100 else 100
+         tick_size <- if (for_mobile) 9 else 12
+
          plot_ly(regional) |>
            add_trace(
              x = ~region,
@@ -604,10 +635,10 @@ server <- function(id, wbes_data, global_filters = NULL) {
            ) |>
            layout(
              barmode = "group",
-             xaxis = list(title = "", tickangle = -45),
+             xaxis = list(title = "", tickangle = tick_angle, tickfont = list(size = tick_size)),
              yaxis = list(title = "Value"),
-             legend = list(orientation = "h", y = -0.2),
-             margin = list(b = 100),
+             legend = list(orientation = "h", y = legend_y),
+             margin = list(b = bottom_margin, t = 10),
              plot_bgcolor = "rgba(0,0,0,0)",
              paper_bgcolor = "rgba(0,0,0,0)"
            ) |>
@@ -618,11 +649,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
            layout(
              annotations = list(
                text = "No regional data available",
-               xref = "paper",
-               yref = "paper",
-               x = 0.5,
-               y = 0.5,
-               showarrow = FALSE
+               xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
              )
            )
        }
@@ -632,40 +659,50 @@ server <- function(id, wbes_data, global_filters = NULL) {
          layout(
            annotations = list(
              text = "No regional data available",
-             xref = "paper",
-             yref = "paper",
-             x = 0.5,
-             y = 0.5,
-             showarrow = FALSE
+             xref = "paper", yref = "paper", x = 0.5, y = 0.5, showarrow = FALSE
            )
          )
      }
+   }
+
+   # Desktop regional comparison
+   output$regional_comparison <- renderPlotly({
+     req(filtered_data())
+     create_regional_comparison(filtered_data(), for_mobile = FALSE)
    })
 
-   # Infrastructure Gauge
-   output$infrastructure_gauge <- renderPlotly({
-     req(filtered_data())
-     data <- filtered_data()
+   # Mobile regional comparison
+   if (!is.null(mobile_output)) {
+     mobile_output[[paste0(mobile_ns_prefix, "regional_comparison_mobile")]] <- renderPlotly({
+       req(filtered_data())
+       create_regional_comparison(filtered_data(), for_mobile = TRUE)
+     })
+   }
 
+   # Infrastructure Gauge - reusable function
+   create_infrastructure_gauge <- function(data, for_mobile = FALSE) {
      # Calculate infrastructure quality index from actual data
-     # Higher power outages = worse infrastructure, so invert the scale
-     # Scale: 100 - (average power outages * 10) or use capacity utilization as proxy
      infra_score <- 50  # default
 
      if ("power_outages_per_month" %in% names(data)) {
        avg_outages <- mean(data$power_outages_per_month, na.rm = TRUE)
        # Convert outages to a 0-100 score (fewer outages = better score)
-       # Assume 0 outages = 100, 10+ outages = 0
        infra_score <- max(0, min(100, 100 - (avg_outages * 10)))
      }
+
+     # Mobile-optimized settings
+     title_size <- if (for_mobile) 12 else 14
+     title_text <- if (for_mobile) "Infrastructure" else "Infrastructure Quality Index"
+     tick_size <- if (for_mobile) 8 else 10
+     threshold_width <- if (for_mobile) 3 else 4
 
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
        value = round(infra_score, 1),
-       title = list(text = "Infrastructure Quality Index"),
+       title = list(text = title_text, font = list(size = title_size)),
        gauge = list(
-         axis = list(range = list(0, 100)),
+         axis = list(range = list(0, 100), tickfont = list(size = tick_size)),
          bar = list(color = "#1B6B5F"),
          steps = list(
            list(range = c(0, 40), color = "#ffebee"),
@@ -673,24 +710,35 @@ server <- function(id, wbes_data, global_filters = NULL) {
            list(range = c(70, 100), color = "#e8f5e9")
          ),
          threshold = list(
-           line = list(color = "#F49B7A", width = 4),
+           line = list(color = "#F49B7A", width = threshold_width),
            thickness = 0.75,
            value = 75
          )
        )
      ) |>
        layout(
-         margin = list(t = 50, b = 30),
+         margin = list(t = if (for_mobile) 40 else 50, b = if (for_mobile) 10 else 30, l = 20, r = 20),
          paper_bgcolor = "rgba(0,0,0,0)"
        ) |>
        config(displayModeBar = FALSE)
+   }
+
+   # Desktop infrastructure gauge
+   output$infrastructure_gauge <- renderPlotly({
+     req(filtered_data())
+     create_infrastructure_gauge(filtered_data(), for_mobile = FALSE)
    })
 
-   # Finance Gauge
-   output$finance_gauge <- renderPlotly({
-     req(filtered_data())
-     data <- filtered_data()
+   # Mobile infrastructure gauge
+   if (!is.null(mobile_output)) {
+     mobile_output[[paste0(mobile_ns_prefix, "infrastructure_gauge_mobile")]] <- renderPlotly({
+       req(filtered_data())
+       create_infrastructure_gauge(filtered_data(), for_mobile = TRUE)
+     })
+   }
 
+   # Finance Gauge - reusable function
+   create_finance_gauge <- function(data, for_mobile = FALSE) {
      # Calculate financial access index from actual data
      finance_score <- 50  # default
 
@@ -698,13 +746,19 @@ server <- function(id, wbes_data, global_filters = NULL) {
        finance_score <- mean(data$firms_with_credit_line_pct, na.rm = TRUE)
      }
 
+     # Mobile-optimized settings
+     title_size <- if (for_mobile) 12 else 14
+     title_text <- if (for_mobile) "Credit Access" else "Credit Access Index"
+     tick_size <- if (for_mobile) 8 else 10
+     threshold_width <- if (for_mobile) 3 else 4
+
      plot_ly(
        type = "indicator",
        mode = "gauge+number",
        value = round(finance_score, 1),
-       title = list(text = "Credit Access Index"),
+       title = list(text = title_text, font = list(size = title_size)),
        gauge = list(
-         axis = list(range = list(0, 100)),
+         axis = list(range = list(0, 100), tickfont = list(size = tick_size)),
          bar = list(color = "#F49B7A"),
          steps = list(
            list(range = c(0, 30), color = "#ffebee"),
@@ -712,18 +766,32 @@ server <- function(id, wbes_data, global_filters = NULL) {
            list(range = c(60, 100), color = "#e8f5e9")
          ),
          threshold = list(
-           line = list(color = "#1B6B5F", width = 4),
+           line = list(color = "#1B6B5F", width = threshold_width),
            thickness = 0.75,
            value = 50
          )
        )
      ) |>
        layout(
-         margin = list(t = 50, b = 30),
+         margin = list(t = if (for_mobile) 40 else 50, b = if (for_mobile) 10 else 30, l = 20, r = 20),
          paper_bgcolor = "rgba(0,0,0,0)"
        ) |>
        config(displayModeBar = FALSE)
+   }
+
+   # Desktop finance gauge
+   output$finance_gauge <- renderPlotly({
+     req(filtered_data())
+     create_finance_gauge(filtered_data(), for_mobile = FALSE)
    })
+
+   # Mobile finance gauge
+   if (!is.null(mobile_output)) {
+     mobile_output[[paste0(mobile_ns_prefix, "finance_gauge_mobile")]] <- renderPlotly({
+       req(filtered_data())
+       create_finance_gauge(filtered_data(), for_mobile = TRUE)
+     })
+   }
 
    # ============================================================
    # Density Plots with Dynamic Variable Selection

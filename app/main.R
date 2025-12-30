@@ -943,7 +943,8 @@ ui <- function(request) {
   })
 
   # Module servers - pass both raw data and filter state
-  mod_overview$server("overview", wbes_data, global_filters)
+  # Pass root session for dual-rendering to mobile UI
+  mod_overview$server("overview", wbes_data, global_filters, root_session = session)
 
   # Profile modules - pass wb_prefetched_data for cached WB access
   mod_country_profile$server("country_profile", wbes_data, global_filters, wb_prefetched_data)
