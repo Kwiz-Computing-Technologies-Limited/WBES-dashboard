@@ -8,7 +8,7 @@ box::use(
         updateSelectInput, downloadButton, renderText, textOutput],
   shinyMobile[f7Page, f7TabLayout, f7Navbar, f7Tabs, f7Tab, f7Card, f7Block,
               f7List, f7ListItem, f7Select, f7Button, f7Accordion,
-              f7AccordionItem, f7Icon, f7Chip, updateF7Select],
+              f7AccordionItem, f7Icon, f7Chip],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_trace],
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first],
@@ -107,10 +107,11 @@ ui <- function(id) {
             strong = TRUE,
             inset = TRUE,
             tags$h3("Country Profile", class = "text-color-primary"),
-            f7Select(
-              inputId = ns("country_select_mobile"),
+            selectInput(
+              ns("country_select_mobile"),
               label = "Select Country",
-              choices = c("Loading..." = "")
+              choices = c("Loading..." = ""),
+              width = "100%"
             )
           ),
 
@@ -253,34 +254,39 @@ ui <- function(id) {
           f7Card(
             title = "Global Filters",
 
-            f7Select(
-              inputId = ns("mobile_region_filter"),
+            selectInput(
+              ns("mobile_region_filter"),
               label = "Region",
-              choices = c("All Regions" = "all")
+              choices = c("All Regions" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_sector_filter"),
+            selectInput(
+              ns("mobile_sector_filter"),
               label = "Sector",
-              choices = c("All Sectors" = "all")
+              choices = c("All Sectors" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_size_filter"),
+            selectInput(
+              ns("mobile_size_filter"),
               label = "Firm Size",
-              choices = c("All Sizes" = "all")
+              choices = c("All Sizes" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_income_filter"),
+            selectInput(
+              ns("mobile_income_filter"),
               label = "Income Group",
-              choices = c("All Income Levels" = "all")
+              choices = c("All Income Levels" = "all"),
+              width = "100%"
             ),
 
-            f7Select(
-              inputId = ns("mobile_year_filter"),
+            selectInput(
+              ns("mobile_year_filter"),
               label = "Survey Year",
-              choices = c("Latest Year" = "latest", "All Years" = "all")
+              choices = c("Latest Year" = "latest", "All Years" = "all"),
+              width = "100%"
             ),
 
             f7Button(
@@ -310,6 +316,8 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
     ns <- session$ns
 
     # Update filter choices when data loads
+    # Note: shinyMobile 2.0 updateF7Select doesn't support choices update,
+    # so we use standard Shiny updateSelectInput instead
     observeEvent(wbes_data(), {
       req(wbes_data())
       data <- wbes_data()
@@ -317,7 +325,7 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       if (!is.null(data$latest)) {
         # Update country selector
         countries <- sort(unique(data$latest$country))
-        updateF7Select(
+        shiny::updateSelectInput(
           session, "country_select_mobile",
           choices = stats::setNames(countries, countries)
         )
@@ -327,28 +335,28 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
           unique(data$latest$region),
           unique(data$latest$region)
         ))
-        updateF7Select(session, "mobile_region_filter", choices = regions)
+        shiny::updateSelectInput(session, "mobile_region_filter", choices = regions)
 
         # Update sector filter
         sectors <- c("All Sectors" = "all", stats::setNames(
           unique(na.omit(data$latest$sector)),
           unique(na.omit(data$latest$sector))
         ))
-        updateF7Select(session, "mobile_sector_filter", choices = sectors)
+        shiny::updateSelectInput(session, "mobile_sector_filter", choices = sectors)
 
         # Update size filter
         sizes <- c("All Sizes" = "all", stats::setNames(
           unique(na.omit(data$latest$firm_size)),
           unique(na.omit(data$latest$firm_size))
         ))
-        updateF7Select(session, "mobile_size_filter", choices = sizes)
+        shiny::updateSelectInput(session, "mobile_size_filter", choices = sizes)
 
         # Update income filter
         incomes <- c("All Income Levels" = "all", stats::setNames(
           unique(na.omit(data$latest$income)),
           unique(na.omit(data$latest$income))
         ))
-        updateF7Select(session, "mobile_income_filter", choices = incomes)
+        shiny::updateSelectInput(session, "mobile_income_filter", choices = incomes)
       }
     })
 
@@ -817,11 +825,11 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
 
     # Reset filters
     observeEvent(input$reset_filters_mobile, {
-      updateF7Select(session, "mobile_region_filter", selected = "all")
-      updateF7Select(session, "mobile_sector_filter", selected = "all")
-      updateF7Select(session, "mobile_size_filter", selected = "all")
-      updateF7Select(session, "mobile_income_filter", selected = "all")
-      updateF7Select(session, "mobile_year_filter", selected = "latest")
+      shiny::updateSelectInput(session, "mobile_region_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_sector_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_size_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_income_filter", selected = "all")
+      shiny::updateSelectInput(session, "mobile_year_filter", selected = "latest")
     })
 
     # Return mobile filter state for potential sync with desktop
