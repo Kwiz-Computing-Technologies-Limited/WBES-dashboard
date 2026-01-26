@@ -6,7 +6,8 @@ box::use(
   shiny[bootstrapPage, moduleServer, NS, tags, icon, HTML, selectInput, tagList,
         updateSelectInput, updateSelectizeInput, observeEvent, reactive, req, div, fluidRow, column,
         actionButton, selectizeInput, sliderInput, uiOutput, renderUI, reactiveVal,
-        getQueryString, parseQueryString, httpResponse],
+        getQueryString, parseQueryString, httpResponse, conditionalPanel],
+  shinyjs[useShinyjs, show, hide, hidden, runjs],
   rlang[`%||%`],
   bslib[
     bs_theme, bs_add_rules, nav_panel, nav_spacer, nav_menu,
@@ -77,13 +78,9 @@ desktop_ui <- function(kwiz_theme) {
 
     # Header with branding
     header = tags$head(
-      tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
       tags$meta(name = "description", content = "World Bank Enterprise Surveys Dashboard"),
       tags$meta(name = "author", content = "Kwiz Computing Technologies"),
-      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
       useWaiter(),
-      # Mark body with UI mode for JS detection
-      tags$script(HTML("document.body.setAttribute('data-ui-mode', 'desktop');")),
       tags$style(HTML("
         .bslib-sidebar-layout { --bslib-sidebar-width: 280px; }
         .sidebar { background-color: #f8f9fa; border-right: 1px solid #dee2e6; overflow-y: auto; }
@@ -117,19 +114,6 @@ desktop_ui <- function(kwiz_theme) {
         .sidebar .mb-3 {
           position: relative;
           clear: both;
-        }
-
-        /* UI Switch button */
-        .ui-switch-btn {
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          z-index: 9999;
-          opacity: 0.7;
-          transition: opacity 0.3s;
-        }
-        .ui-switch-btn:hover {
-          opacity: 1;
         }
       "))
     ),
@@ -403,10 +387,11 @@ desktop_ui <- function(kwiz_theme) {
 
     # Footer
     footer = tags$div(
-      # Switch to mobile button (shown on desktop)
-      tags$a(
-        href = "?ui=mobile",
+      # Switch to mobile button (shown on desktop) - uses JS for no-reload switching
+      tags$button(
+        type = "button",
         class = "btn btn-sm btn-outline-secondary ui-switch-btn d-none d-md-block",
+        onclick = "switchUIMode('mobile'); return false;",
         icon("mobile-alt"),
         " Mobile View"
       ),
@@ -446,8 +431,8 @@ desktop_ui <- function(kwiz_theme) {
   )
 }
 
-# Mobile UI wrapper with switch button
-mobile_ui_wrapper <- function() {
+# Mobile UI wrapper with switch button (now uses action button instead of link for no-reload switch)
+mobile_ui_wrapper <- function(ns = function(x) x) {
   # shinyMobile's f7Page must be the root - use tagList instead of div wrapper
   tagList(
     # Add viewport meta and styles in head
@@ -474,6 +459,7 @@ mobile_ui_wrapper <- function() {
           align-items: center;
           justify-content: center;
           text-decoration: none;
+          cursor: pointer;
         }
         .desktop-switch-fab:hover {
           background: #145449;
@@ -485,12 +471,13 @@ mobile_ui_wrapper <- function() {
     ),
     # f7Page must be the root element for shinyMobile to work
     mod_mobile_ui$ui("mobile_ui"),
-    # Switch to desktop button (FAB style) - injected after f7Page
-    tags$a(
-      href = "?ui=desktop",
+    # Switch to desktop button (FAB style) - now an action button for no-reload switching
+    actionButton(
+      ns("switch_to_desktop"),
+      label = NULL,
+      icon = icon("desktop"),
       class = "desktop-switch-fab",
-      title = "Switch to Desktop View",
-      icon("desktop")
+      title = "Switch to Desktop View"
     )
   )
 }
@@ -501,18 +488,13 @@ ui <- function(request) {
   query <- parseQueryString(request$QUERY_STRING %||% "")
   ui_mode <- query$ui
 
-  # Determine which UI to show
+  # Determine initial UI to show
   if (!is.null(ui_mode)) {
     # Explicit mode requested via query parameter
-    use_mobile <- (ui_mode == "mobile")
+    initial_mobile <- (ui_mode == "mobile")
   } else {
     # Auto-detect from User-Agent
-    use_mobile <- detect_mobile_from_ua(request)
-  }
-
-  if (use_mobile) {
-    # Return mobile UI
-    return(mobile_ui_wrapper())
+    initial_mobile <- detect_mobile_from_ua(request)
   }
 
   # Desktop UI with Kwiz Research Theme
@@ -532,7 +514,91 @@ ui <- function(request) {
   ) |>
     bs_add_rules(sass::sass_file("app/styles/main.scss"))
 
-  desktop_ui(kwiz_theme)
+  # Build unified UI with both views - switching happens client-side without reload
+  tagList(
+    useShinyjs(),
+    tags$head(
+      tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+      tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
+      tags$style(HTML("
+        /* Hide containers based on view mode */
+        .desktop-view-container { display: block; }
+        .mobile-view-container { display: none; }
+        body[data-ui-mode='mobile'] .desktop-view-container { display: none; }
+        body[data-ui-mode='mobile'] .mobile-view-container { display: block; }
+
+        /* Mobile FAB button for switching to desktop */
+        .desktop-switch-fab {
+          position: fixed;
+          bottom: 80px;
+          right: 16px;
+          z-index: 9999;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: #1B6B5F;
+          color: white;
+          border: none;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .desktop-switch-fab:hover { background: #145449; }
+
+        /* Desktop button for switching to mobile */
+        .ui-switch-btn {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          z-index: 9999;
+          opacity: 0.7;
+          transition: opacity 0.3s;
+        }
+        .ui-switch-btn:hover { opacity: 1; }
+      ")),
+      # JavaScript for view switching without page reload
+      tags$script(HTML(sprintf("
+        // Set initial UI mode
+        document.body.setAttribute('data-ui-mode', '%s');
+
+        // Function to switch views
+        window.switchUIMode = function(mode) {
+          document.body.setAttribute('data-ui-mode', mode);
+          // Update URL without reload (for bookmarking)
+          var url = new URL(window.location);
+          url.searchParams.set('ui', mode);
+          window.history.replaceState({}, '', url);
+          // Trigger Shiny input update
+          Shiny.setInputValue('current_ui_mode', mode, {priority: 'event'});
+        };
+      ", if (initial_mobile) "mobile" else "desktop")))
+    ),
+
+    # Desktop UI container
+    tags$div(
+      id = "desktop_container",
+      class = "desktop-view-container",
+      desktop_ui(kwiz_theme)
+    ),
+
+    # Mobile UI container
+    tags$div(
+      id = "mobile_container",
+      class = "mobile-view-container",
+      mod_mobile_ui$ui("mobile_ui"),
+      # Switch to desktop button (FAB style)
+      actionButton(
+        "switch_to_desktop",
+        label = NULL,
+        icon = icon("desktop"),
+        class = "desktop-switch-fab",
+        title = "Switch to Desktop View",
+        onclick = "switchUIMode('desktop'); return false;"
+      )
+    )
+  )
 }
 
   #' @export

@@ -12,7 +12,9 @@ box::use(
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
-  app/logic/chart_utils[create_chart_caption, map_with_caption]
+  app/logic/chart_utils[create_chart_caption, map_with_caption],
+  app/logic/stat_utils[calculate_correlation_matrix, format_correlation_table,
+                       anova_with_tukey, format_anova_results]
 )
 
 # Helper function to create chart container with caption
@@ -113,7 +115,10 @@ ui <- function(id) {
             icon = icon("bolt"),
             fluidRow(
               column(6,
-                chart_with_caption(ns, "infra_chart1", height = "300px", title = "Infrastructure Obstacles")
+                tagList(
+                  chart_with_caption(ns, "infra_chart1", height = "300px", title = "Infrastructure Obstacles"),
+                  uiOutput(ns("infra_correlation"))
+                )
               ),
               column(6,
                 chart_with_caption(ns, "infra_chart2", height = "300px", title = "Power Source Distribution")
@@ -134,7 +139,10 @@ ui <- function(id) {
             icon = icon("university"),
             fluidRow(
               column(6,
-                chart_with_caption(ns, "finance_chart1", height = "300px", title = "Financial Access Overview")
+                tagList(
+                  chart_with_caption(ns, "finance_chart1", height = "300px", title = "Financial Access Overview"),
+                  uiOutput(ns("finance_correlation"))
+                )
               ),
               column(6,
                 chart_with_caption(ns, "finance_chart2", height = "300px", title = "Collateral Requirements")
@@ -147,7 +155,10 @@ ui <- function(id) {
             icon = icon("balance-scale"),
             fluidRow(
               column(6,
-                chart_with_caption(ns, "gov_chart1", height = "300px", title = "Bribery by Transaction Type")
+                tagList(
+                  chart_with_caption(ns, "gov_chart1", height = "300px", title = "Bribery by Transaction Type"),
+                  uiOutput(ns("governance_correlation"))
+                )
               ),
               column(6,
                 chart_with_caption(ns, "gov_chart2", height = "300px", title = "Regulatory Burden")
@@ -160,7 +171,10 @@ ui <- function(id) {
             icon = icon("users"),
             fluidRow(
               column(6,
-                chart_with_caption(ns, "workforce_chart1", height = "300px", title = "Gender Composition")
+                tagList(
+                  chart_with_caption(ns, "workforce_chart1", height = "300px", title = "Gender Composition"),
+                  uiOutput(ns("workforce_correlation"))
+                )
               ),
               column(6,
                 chart_with_caption(ns, "workforce_chart2", height = "300px", title = "Training & Skills")
@@ -173,7 +187,10 @@ ui <- function(id) {
             icon = icon("shield-alt"),
             fluidRow(
               column(6,
-                chart_with_caption(ns, "crime_chart1", height = "300px", title = "Crime & Security Costs")
+                tagList(
+                  chart_with_caption(ns, "crime_chart1", height = "300px", title = "Crime & Security Costs"),
+                  uiOutput(ns("crime_correlation"))
+                )
               ),
               column(6,
                 chart_with_caption(ns, "crime_chart2", height = "300px", title = "Crime-Related Losses")
@@ -189,7 +206,10 @@ ui <- function(id) {
                 chart_with_caption(ns, "performance_chart1", height = "300px", title = "Operational Performance")
               ),
               column(6,
-                chart_with_caption(ns, "performance_chart2", height = "300px", title = "Export Orientation")
+                tagList(
+                  chart_with_caption(ns, "performance_chart2", height = "300px", title = "Export Orientation"),
+                  uiOutput(ns("performance_correlation"))
+                )
               )
             )
           ),
@@ -1392,6 +1412,178 @@ server <- function(id, wbes_data, global_filters = NULL) {
             paper_bgcolor = "rgba(0,0,0,0)"
           )
       }
+    })
+
+    # ============================================================
+    # Correlation Matrices for Sector Profile Charts
+    # ============================================================
+
+    # Infrastructure Correlation Matrix
+    output$infra_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      # Infrastructure variables
+      infra_vars <- c("power_outages_per_month", "avg_outage_duration_hrs",
+                      "firms_with_generator_pct", "water_insufficiency_pct",
+                      "transport_obstacle", "electricity_obstacle_pct")
+      var_labels <- c(
+        "power_outages_per_month" = "Outages/Month",
+        "avg_outage_duration_hrs" = "Duration (hrs)",
+        "firms_with_generator_pct" = "Generator (%)",
+        "water_insufficiency_pct" = "Water Issues (%)",
+        "transport_obstacle" = "Transport Obstacle",
+        "electricity_obstacle_pct" = "Electricity Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, infra_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Finance Correlation Matrix
+    output$finance_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      finance_vars <- c("firms_with_credit_line_pct", "firms_with_bank_account_pct",
+                        "collateral_required_pct", "loan_application_pct",
+                        "overdraft_facility_pct")
+      var_labels <- c(
+        "firms_with_credit_line_pct" = "Credit Line (%)",
+        "firms_with_bank_account_pct" = "Bank Account (%)",
+        "collateral_required_pct" = "Collateral (%)",
+        "loan_application_pct" = "Applied for Loan (%)",
+        "overdraft_facility_pct" = "Overdraft (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, finance_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Governance/Bribery Correlation Matrix
+    output$governance_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      gov_vars <- c("bribery_incidence_pct", "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS",
+                    "corruption_obstacle_pct", "mgmt_time_regulations_pct")
+      var_labels <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "IC.FRM.CORR.ZS" = "Corruption Obstacle",
+        "IC.FRM.BRIB.ZS" = "Bribery (WB)",
+        "corruption_obstacle_pct" = "Corruption (%)",
+        "mgmt_time_regulations_pct" = "Mgmt Time on Regs"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, gov_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Crime & Security Correlation Matrix
+    output$crime_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      crime_vars <- c("IC.FRM.CRIM.ZS", "IC.FRM.SECU.ZS", "crime_obstacle_pct",
+                      "security_costs_pct", "crime_losses_pct")
+      var_labels <- c(
+        "IC.FRM.CRIM.ZS" = "Crime Obstacle (WB)",
+        "IC.FRM.SECU.ZS" = "Security Costs (WB)",
+        "crime_obstacle_pct" = "Crime Obstacle (%)",
+        "security_costs_pct" = "Security Costs (%)",
+        "crime_losses_pct" = "Crime Losses (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, crime_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Workforce Correlation Matrix
+    output$workforce_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      workforce_vars <- c("IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS", "IC.FRM.WKFC.ZS",
+                          "female_workers_pct", "female_ownership_pct", "workforce_obstacle_pct")
+      var_labels <- c(
+        "IC.FRM.FEMW.ZS" = "Female Workers (WB)",
+        "IC.FRM.FEMO.ZS" = "Female Ownership (WB)",
+        "IC.FRM.WKFC.ZS" = "Workforce Obstacle (WB)",
+        "female_workers_pct" = "Female Workers (%)",
+        "female_ownership_pct" = "Female Ownership (%)",
+        "workforce_obstacle_pct" = "Workforce Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, workforce_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Performance/Export Correlation Matrix
+    output$performance_correlation <- renderUI({
+      req(sector_data())
+      d <- sector_data()
+
+      perf_vars <- c("capacity_utilization_pct", "IC.FRM.CAPU.ZS", "IC.FRM.EXPRT.ZS",
+                     "export_firms_pct", "annual_sales_growth_pct", "annual_employment_growth_pct")
+      var_labels <- c(
+        "capacity_utilization_pct" = "Capacity Util (%)",
+        "IC.FRM.CAPU.ZS" = "Capacity (WB)",
+        "IC.FRM.EXPRT.ZS" = "Export Firms (WB)",
+        "export_firms_pct" = "Export Firms (%)",
+        "annual_sales_growth_pct" = "Sales Growth (%)",
+        "annual_employment_growth_pct" = "Employment Growth (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, perf_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across firms/countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
     })
 
   })

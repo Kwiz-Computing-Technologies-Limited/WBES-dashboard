@@ -5,20 +5,22 @@ box::use(
 shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
         observeEvent, actionButton, tabsetPanel, tabPanel, HTML,
-        downloadButton, downloadHandler],
+        downloadButton, downloadHandler, tagList],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of],
   leaflet[leafletOutput, renderLeaflet],
-  stats[setNames, reorder],
+  stats[setNames, reorder, complete.cases],
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
-  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
+  app/logic/stat_utils[anova_with_tukey, format_anova_results,
+                       calculate_correlation_matrix, format_correlation_table]
 )
 
 # Helper function to create chart container with download button and caption
@@ -219,7 +221,8 @@ ui <- function(id) {
               column(12,
                 table_with_download(ns, "overview_table")
               )
-            )
+            ),
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("overview_stats"))))
           ),
 
           # Infrastructure Tab
@@ -262,7 +265,9 @@ ui <- function(id) {
             fluidRow(
               class = "mt-3",
               column(12, card(card_header(icon("lightbulb"), " Infrastructure Insights"), card_body(uiOutput(ns("infra_insights")))))
-            )
+            ),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("infra_stats"))))
           ),
 
           # Finance Tab
@@ -302,7 +307,9 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "finance_collateral_burden", height = "350px"))
             ),
             # Insights Row
-            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Finance Insights"), card_body(uiOutput(ns("finance_insights"))))))
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Finance Insights"), card_body(uiOutput(ns("finance_insights")))))),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("finance_stats"))))
           ),
 
           # Governance Tab
@@ -340,7 +347,9 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "governance_regulatory_burden", height = "350px"))
             ),
             # Insights Row
-            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Governance Insights"), card_body(uiOutput(ns("governance_insights"))))))
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Governance Insights"), card_body(uiOutput(ns("governance_insights")))))),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("governance_stats"))))
           ),
 
           # Workforce Tab
@@ -378,7 +387,9 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "workforce_obstacle_correlation", height = "350px"))
             ),
             # Insights Row
-            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Workforce Insights"), card_body(uiOutput(ns("workforce_insights"))))))
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Workforce Insights"), card_body(uiOutput(ns("workforce_insights")))))),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("workforce_stats"))))
           ),
 
           # Performance Tab
@@ -417,7 +428,9 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "performance_growth_distribution", height = "350px"))
             ),
             # Insights Row
-            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Performance Insights"), card_body(uiOutput(ns("performance_insights"))))))
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Performance Insights"), card_body(uiOutput(ns("performance_insights")))))),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("performance_stats"))))
           ),
 
           # Crime Tab
@@ -454,7 +467,9 @@ ui <- function(id) {
               column(6, chart_with_download(ns, "crime_impact_performance", height = "350px"))
             ),
             # Insights Row
-            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights"))))))
+            fluidRow(class = "mt-3", column(12, card(card_header(icon("lightbulb"), " Crime Insights"), card_body(uiOutput(ns("crime_insights")))))),
+            # Statistical Tests Row
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("crime_stats"))))
           )
         )
       )
@@ -2152,6 +2167,253 @@ server <- function(id, wbes_data, global_filters = NULL) {
         htmlwidgets::saveWidget(map, file)
       }
     )
+
+    # ============================================================
+    # Statistical Tests for Cross-Regional Comparisons
+    # ============================================================
+
+    # Helper function to create statistical tests for regional comparisons
+    # Uses country-level data with region as grouping factor
+    create_regional_stats <- function(data, indicator, indicator_label) {
+      if (is.null(data) || nrow(data) < 3) return(NULL)
+      if (!indicator %in% names(data)) return(NULL)
+      if (!"region" %in% names(data)) return(NULL)
+
+      # Prepare data for ANOVA - use region as the grouping factor
+      df <- data.frame(
+        value = as.numeric(data[[indicator]]),
+        region = as.factor(data$region)
+      )
+      df <- df[complete.cases(df), ]
+
+      # Need at least 2 regions with data
+      region_counts <- table(df$region)
+      valid_regions <- names(region_counts)[region_counts >= 2]
+
+      if (length(valid_regions) < 2 || nrow(df) < 3) return(NULL)
+
+      # Perform test
+      result <- anova_with_tukey(df, "value", "region")
+      format_anova_results(result, title = paste(indicator_label, "- Regional Comparison"))
+    }
+
+    # Overview Statistics
+    output$overview_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) {
+        return(tags$div(class = "text-muted small", "Select at least 3 countries for statistical analysis"))
+      }
+
+      # Run ANOVA for key indicators across domains
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "firms_with_credit_line_pct" = "Credit Access",
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "capacity_utilization_pct" = "Capacity Utilization"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) {
+        return(tags$div(class = "text-muted small", "Insufficient data for statistical tests"))
+      }
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests (ANOVA + Tukey HSD)")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Infrastructure Statistics
+    output$infra_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "avg_outage_duration_hrs" = "Outage Duration",
+        "firms_with_generator_pct" = "Generator Usage",
+        "electricity_obstacle" = "Electricity Obstacle"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Finance Statistics
+    output$finance_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "firms_with_credit_line_pct" = "Credit Access",
+        "firms_with_bank_account_pct" = "Bank Account",
+        "loan_rejection_rate_pct" = "Loan Rejection",
+        "collateral_required_pct" = "Collateral Required"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Governance Statistics
+    output$governance_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "corruption_obstacle_pct" = "Corruption Obstacle",
+        "mgmt_time_regulations_pct" = "Regulation Time"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Workforce Statistics
+    output$workforce_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "female_ownership_pct" = "Female Ownership",
+        "female_workers_pct" = "Female Workers",
+        "workforce_obstacle_pct" = "Workforce Obstacle"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Performance Statistics
+    output$performance_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "capacity_utilization_pct" = "Capacity Utilization",
+        "export_firms_pct" = "Export Firms",
+        "export_share_pct" = "Export Share",
+        "annual_sales_growth_pct" = "Sales Growth"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Crime Statistics
+    output$crime_stats <- renderUI({
+      req(selected_region_data())
+      d <- selected_region_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "crime_obstacle_pct" = "Crime Obstacle",
+        "security_costs_pct" = "Security Costs"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_regional_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
 
   })
 }

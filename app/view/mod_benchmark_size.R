@@ -5,20 +5,22 @@ box::use(
   shiny[moduleServer, NS, reactive, req, tags, icon, div, h2, h3, h4, p,
         fluidRow, column, selectInput, selectizeInput, renderUI, uiOutput,
         observeEvent, actionButton, tabsetPanel, tabPanel, HTML,
-        downloadButton, downloadHandler],
+        downloadButton, downloadHandler, tagList],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config, subplot],
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of],
   leaflet[leafletOutput, renderLeaflet],
-  stats[setNames, reorder],
+  stats[setNames, reorder, complete.cases],
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map_3d, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
-  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id]
+  app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
+  app/logic/stat_utils[anova_with_tukey, format_anova_results,
+                       calculate_correlation_matrix, format_correlation_table]
 )
 
 # Helper function to create chart container with download button and caption
@@ -212,6 +214,7 @@ ui <- function(id) {
             fluidRow(
               column(12, chart_with_download(ns, "overview_heatmap", height = "500px"))
             ),
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("overview_stats")))),
             fluidRow(class = "mt-4", column(12, table_with_download(ns, "overview_table")))
           ),
 
@@ -226,7 +229,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("infra_kpi_obstacle")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "infra_comparison")),
+              column(8,
+                chart_with_download(ns, "infra_comparison"),
+                uiOutput(ns("infra_stats"))
+              ),
               column(4, chart_with_download(ns, "infra_radar"))
             ),
             fluidRow(
@@ -253,7 +259,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("finance_kpi_collateral")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "finance_comparison")),
+              column(8,
+                chart_with_download(ns, "finance_comparison"),
+                uiOutput(ns("finance_stats"))
+              ),
               column(4, chart_with_download(ns, "finance_radar"))
             ),
             fluidRow(
@@ -279,7 +288,10 @@ ui <- function(id) {
               column(4, uiOutput(ns("governance_kpi_regulations")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "governance_comparison")),
+              column(8,
+                chart_with_download(ns, "governance_comparison"),
+                uiOutput(ns("governance_stats"))
+              ),
               column(4, chart_with_download(ns, "governance_radar"))
             ),
             fluidRow(
@@ -305,7 +317,10 @@ ui <- function(id) {
               column(4, uiOutput(ns("workforce_kpi_obstacle")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "workforce_comparison")),
+              column(8,
+                chart_with_download(ns, "workforce_comparison"),
+                uiOutput(ns("workforce_stats"))
+              ),
               column(4, chart_with_download(ns, "workforce_radar"))
             ),
             fluidRow(
@@ -332,7 +347,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("performance_kpi_growth")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "performance_comparison")),
+              column(8,
+                chart_with_download(ns, "performance_comparison"),
+                uiOutput(ns("performance_stats"))
+              ),
               column(4, chart_with_download(ns, "performance_radar"))
             ),
             fluidRow(
@@ -357,7 +375,10 @@ ui <- function(id) {
               column(6, uiOutput(ns("crime_kpi_security")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "crime_comparison")),
+              column(8,
+                chart_with_download(ns, "crime_comparison"),
+                uiOutput(ns("crime_stats"))
+              ),
               column(4, chart_with_download(ns, "crime_radar"))
             ),
             fluidRow(
@@ -2003,6 +2024,247 @@ server <- function(id, wbes_data, global_filters = NULL) {
         htmlwidgets::saveWidget(map, file)
       }
     )
+
+    # ============================================================
+    # Statistical Tests for Cross-Size Comparisons (ANOVA + Tukey HSD)
+    # ============================================================
+
+    # Helper function to create statistical tests for firm size comparisons
+    create_size_stats <- function(data, indicator, indicator_label) {
+      if (is.null(data) || nrow(data) < 3) return(NULL)
+      if (!indicator %in% names(data)) return(NULL)
+
+      # For size comparisons, use firm_size as grouping variable
+      df <- data.frame(
+        value = as.numeric(data[[indicator]]),
+        firm_size = as.factor(data$firm_size)
+      )
+      df <- df[complete.cases(df), ]
+
+      if (nrow(df) < 3) return(NULL)
+
+      # Perform test
+      result <- anova_with_tukey(df, "value", "firm_size")
+      format_anova_results(result, title = paste(indicator_label, "- Size Comparison"))
+    }
+
+    # Overview Statistics
+    output$overview_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) {
+        return(tags$div(class = "text-muted small", "Select at least 3 firm sizes for statistical analysis"))
+      }
+
+      # Run ANOVA for key indicators across domains
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "firms_with_credit_line_pct" = "Credit Access",
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "capacity_utilization_pct" = "Capacity Utilization"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) {
+        return(tags$div(class = "text-muted small", "Insufficient data for statistical tests"))
+      }
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests (ANOVA + Tukey HSD)")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Infrastructure Statistics
+    output$infra_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "avg_outage_duration_hrs" = "Outage Duration",
+        "firms_with_generator_pct" = "Generator Usage",
+        "electricity_obstacle" = "Electricity Obstacle"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Finance Statistics
+    output$finance_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "firms_with_credit_line_pct" = "Credit Access",
+        "firms_with_bank_account_pct" = "Bank Account",
+        "loan_rejection_rate_pct" = "Loan Rejection",
+        "collateral_required_pct" = "Collateral Required"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Governance Statistics
+    output$governance_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "corruption_obstacle_pct" = "Corruption Obstacle",
+        "mgmt_time_regulations_pct" = "Regulation Time"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Workforce Statistics
+    output$workforce_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "female_ownership_pct" = "Female Ownership",
+        "female_workers_pct" = "Female Workers",
+        "workforce_obstacle_pct" = "Workforce Obstacle"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Performance Statistics
+    output$performance_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "capacity_utilization_pct" = "Capacity Utilization",
+        "export_firms_pct" = "Export Firms",
+        "export_share_pct" = "Export Share",
+        "annual_sales_growth_pct" = "Sales Growth"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Crime Statistics
+    output$crime_stats <- renderUI({
+      req(comparison_data())
+      d <- comparison_data()
+
+      if (nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "crime_obstacle_pct" = "Crime Obstacle",
+        "security_costs_pct" = "Security Costs"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_size_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
 
   })
 }

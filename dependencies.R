@@ -30,6 +30,7 @@ library(jsonlite)
 
 # UI Enhancements
 library(waiter)
+library(shinyjs)
 
 # Logging
 library(logger)

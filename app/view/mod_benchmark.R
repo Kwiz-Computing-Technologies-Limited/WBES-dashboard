@@ -11,7 +11,8 @@ box::use(
   DT[DTOutput, renderDT, datatable],
   dplyr[filter, select, arrange, mutate, desc, group_by, summarise, n, across, any_of, bind_rows, left_join],
   leaflet[leafletOutput, renderLeaflet],
-  stats[setNames, reorder],
+  stats[setNames, reorder, complete.cases],
+  # base[droplevels],
   htmlwidgets[saveWidget],
   utils[write.csv],
   rlang[sym],
@@ -20,6 +21,8 @@ box::use(
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
   app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
+  app/logic/stat_utils[anova_with_tukey, format_anova_results,
+                       calculate_correlation_matrix, format_correlation_table],
   app/logic/wb_integration[
     get_wb_country_context,
     get_wb_context_from_cache,
@@ -216,6 +219,7 @@ ui <- function(id) {
             fluidRow(
               column(12, chart_with_download(ns, "overview_heatmap", height = "500px", title = "Multi-Indicator Comparison Heatmap"))
             ),
+            fluidRow(class = "mt-3", column(12, uiOutput(ns("overview_stats")))),
             fluidRow(class = "mt-4", column(12, table_with_download(ns, "overview_table")))
           ),
 
@@ -230,7 +234,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("infra_kpi_water")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "infra_comparison", title = "Infrastructure Comparison")),
+              column(8,
+                chart_with_download(ns, "infra_comparison", title = "Infrastructure Comparison"),
+                uiOutput(ns("infra_stats"))
+              ),
               column(4, chart_with_download(ns, "infra_radar", title = "Infrastructure Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -259,7 +266,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("finance_kpi_collateral")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "finance_comparison", title = "Finance Access Comparison")),
+              column(8,
+                chart_with_download(ns, "finance_comparison", title = "Finance Access Comparison"),
+                uiOutput(ns("finance_stats"))
+              ),
               column(4, chart_with_download(ns, "finance_radar", title = "Finance Access Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -287,7 +297,10 @@ ui <- function(id) {
               column(4, uiOutput(ns("governance_kpi_regulations")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "governance_comparison", title = "Governance Comparison")),
+              column(8,
+                chart_with_download(ns, "governance_comparison", title = "Governance Comparison"),
+                uiOutput(ns("governance_stats"))
+              ),
               column(4, chart_with_download(ns, "governance_radar", title = "Governance Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -314,7 +327,10 @@ ui <- function(id) {
               column(4, uiOutput(ns("workforce_kpi_obstacle")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "workforce_comparison", title = "Workforce Comparison")),
+              column(8,
+                chart_with_download(ns, "workforce_comparison", title = "Workforce Comparison"),
+                uiOutput(ns("workforce_stats"))
+              ),
               column(4, chart_with_download(ns, "workforce_radar", title = "Workforce Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -342,7 +358,10 @@ ui <- function(id) {
               column(3, uiOutput(ns("performance_kpi_growth")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "performance_comparison", title = "Performance Comparison")),
+              column(8,
+                chart_with_download(ns, "performance_comparison", title = "Performance Comparison"),
+                uiOutput(ns("performance_stats"))
+              ),
               column(4, chart_with_download(ns, "performance_radar", title = "Performance Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -369,7 +388,10 @@ ui <- function(id) {
               column(6, uiOutput(ns("crime_kpi_security")))
             ),
             fluidRow(
-              column(8, chart_with_download(ns, "crime_comparison", title = "Crime Comparison")),
+              column(8,
+                chart_with_download(ns, "crime_comparison", title = "Crime Comparison"),
+                uiOutput(ns("crime_stats"))
+              ),
               column(4, chart_with_download(ns, "crime_radar", title = "Crime & Security Radar"))
             ),
             fluidRow(class = "mt-3",
@@ -412,7 +434,8 @@ ui <- function(id) {
                   card(
                     card_header(icon("chart-bar"), "Macroeconomic Comparison"),
                     card_body(
-                      chart_with_download(ns, "macro_economic_comparison", height = "400px", title = "GDP, Growth, and Inflation by Country")
+                      chart_with_download(ns, "macro_economic_comparison", height = "400px", title = "GDP, Growth, and Inflation by Country"),
+                      uiOutput(ns("macro_economic_stats"))
                     )
                   )
                 )
@@ -424,7 +447,8 @@ ui <- function(id) {
                     card_header(icon("plug"), "National Infrastructure"),
                     card_body(
                       chart_with_download(ns, "macro_infrastructure_chart", height = "350px", title = "Electricity & Internet Access"),
-                      p(class = "text-muted small mt-2", "National-level access rates from World Bank complement firm-level WBES infrastructure data.")
+                      p(class = "text-muted small mt-2", "National-level access rates from World Bank complement firm-level WBES infrastructure data."),
+                      uiOutput(ns("macro_infrastructure_stats"))
                     )
                   )
                 ),
@@ -433,7 +457,8 @@ ui <- function(id) {
                     card_header(icon("landmark"), "Governance Quality (WGI)"),
                     card_body(
                       chart_with_download(ns, "macro_governance_chart", height = "350px", title = "Worldwide Governance Indicators"),
-                      p(class = "text-muted small mt-2", "WGI scores range from -2.5 (weak) to +2.5 (strong governance).")
+                      p(class = "text-muted small mt-2", "WGI scores range from -2.5 (weak) to +2.5 (strong governance)."),
+                      uiOutput(ns("macro_governance_stats"))
                     )
                   )
                 )
@@ -447,7 +472,8 @@ ui <- function(id) {
                       chart_with_download(ns, "wbes_vs_wb_comparison", height = "400px", title = "WBES Perceptions vs World Bank Data"),
                       p(class = "text-muted small mt-2",
                         "Compares firm-reported metrics (WBES) with national statistics (World Bank). ",
-                        "Gaps may indicate differences between firm experience and national averages.")
+                        "Gaps may indicate differences between firm experience and national averages."),
+                      uiOutput(ns("wbes_vs_wb_stats"))
                     )
                   )
                 )
@@ -458,7 +484,8 @@ ui <- function(id) {
                   card(
                     card_header(icon("users"), "Labor Market"),
                     card_body(
-                      chart_with_download(ns, "macro_labor_chart", height = "300px", title = "Labor Force Participation & Unemployment")
+                      chart_with_download(ns, "macro_labor_chart", height = "300px", title = "Labor Force Participation & Unemployment"),
+                      uiOutput(ns("macro_labor_stats"))
                     )
                   )
                 ),
@@ -466,7 +493,8 @@ ui <- function(id) {
                   card(
                     card_header(icon("ship"), "Trade & Investment"),
                     card_body(
-                      chart_with_download(ns, "macro_trade_chart", height = "300px", title = "Exports, Imports & FDI")
+                      chart_with_download(ns, "macro_trade_chart", height = "300px", title = "Exports, Imports & FDI"),
+                      uiOutput(ns("macro_trade_stats"))
                     )
                   )
                 )
@@ -547,12 +575,21 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       )
     })
 
-    # Data filtered by selected countries
+    # Data filtered by selected countries (country-level aggregates for charts)
     comparison_data <- reactive({
       req(filtered_data(), input$countries_compare)
       data <- filtered_data()
       data <- filter(data, country %in% input$countries_compare)
       data
+    })
+
+    # Firm-level data filtered by selected countries (for statistical tests)
+    firm_level_data <- reactive({
+      req(wbes_data(), input$countries_compare)
+      firm_data <- wbes_data()$processed
+      if (is.null(firm_data)) return(NULL)
+      firm_data <- filter(firm_data, country %in% input$countries_compare)
+      firm_data
     })
 
     # Get the current grouping dimension
@@ -2527,6 +2564,419 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
         htmlwidgets::saveWidget(map, file)
       }
     )
+
+    # ============================================================
+    # Statistical Tests for Cross-Country Comparisons
+    # ============================================================
+
+    # Helper function to create statistical tests for country comparisons
+    # Uses real firm-level data from WBES microdata
+    create_country_stats <- function(firm_data, indicator, indicator_label) {
+      if (is.null(firm_data) || nrow(firm_data) < 10) return(NULL)
+      if (!indicator %in% names(firm_data)) return(NULL)
+
+      # Extract the indicator and country columns
+      df <- data.frame(
+        value = as.numeric(firm_data[[indicator]]),
+        country = as.factor(firm_data$country)
+      )
+      df <- df[complete.cases(df), ]
+
+      # Need at least 2 countries with data and minimum observations
+      country_counts <- table(df$country)
+      valid_countries <- names(country_counts[country_counts >= 5])
+      if (length(valid_countries) < 2) return(NULL)
+
+      df <- df[df$country %in% valid_countries, ]
+      df$country <- droplevels(df$country)
+
+      if (nrow(df) < 10) return(NULL)
+
+      # Perform ANOVA with Tukey HSD on the real firm-level data
+      result <- anova_with_tukey(df, "value", "country")
+      format_anova_results(result, title = paste(indicator_label, "- Country Comparison"))
+    }
+
+    # Overview Statistics
+    output$overview_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) {
+        return(tags$div(class = "text-muted small", "Insufficient firm-level data for statistical analysis"))
+      }
+
+      # Run ANOVA for key indicators
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "firms_with_credit_line_pct" = "Credit Access",
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "capacity_utilization_pct" = "Capacity Utilization"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) {
+        return(tags$div(class = "text-muted small", "Insufficient data for statistical tests"))
+      }
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests (ANOVA + Tukey HSD)")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Infrastructure Statistics
+    output$infra_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "power_outages_per_month" = "Power Outages",
+        "avg_outage_duration_hrs" = "Outage Duration",
+        "firms_with_generator_pct" = "Generator Usage",
+        "water_insufficiency_pct" = "Water Issues"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Finance Statistics
+    output$finance_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "firms_with_credit_line_pct" = "Credit Access",
+        "firms_with_bank_account_pct" = "Bank Account",
+        "loan_rejected_pct" = "Loan Rejection",
+        "collateral_pct_of_loan" = "Collateral Required"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Governance Statistics
+    output$governance_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "bribery_depth_pct" = "Bribery Depth",
+        "senior_mgmt_time_on_regulations_pct" = "Regulation Time"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Workforce Statistics
+    output$workforce_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "female_ownership_pct" = "Female Ownership",
+        "female_workers_pct" = "Female Workers",
+        "firms_offering_training_pct" = "Training Offered"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Performance Statistics
+    output$performance_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "capacity_utilization_pct" = "Capacity Utilization",
+        "direct_exports_pct" = "Direct Exports",
+        "annual_sales_growth_pct" = "Sales Growth"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Crime Statistics
+    output$crime_stats <- renderUI({
+      req(firm_level_data())
+      d <- firm_level_data()
+
+      if (is.null(d) || nrow(d) < 10) return(NULL)
+
+      indicators <- c(
+        "crime_obstacle_pct" = "Crime Obstacle",
+        "security_costs_pct" = "Security Costs"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Macro Economic Statistics
+    output$macro_economic_stats <- renderUI({
+      req(macro_comparison_data())
+      d <- macro_comparison_data()
+
+      if (is.null(d) || nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "gdp_per_capita" = "GDP per Capita",
+        "gdp_growth" = "GDP Growth",
+        "inflation" = "Inflation"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        if (!ind %in% names(d)) return(NULL)
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Macro Infrastructure Statistics
+    output$macro_infrastructure_stats <- renderUI({
+      req(macro_comparison_data())
+      d <- macro_comparison_data()
+
+      if (is.null(d) || nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "electricity_access" = "Electricity Access",
+        "internet_users" = "Internet Users"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        if (!ind %in% names(d)) return(NULL)
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Macro Governance Statistics
+    output$macro_governance_stats <- renderUI({
+      req(macro_comparison_data())
+      d <- macro_comparison_data()
+
+      if (is.null(d) || nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "control_corruption" = "Control of Corruption",
+        "rule_of_law" = "Rule of Law",
+        "regulatory_quality" = "Regulatory Quality"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        if (!ind %in% names(d)) return(NULL)
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # WBES vs WB Statistics
+    output$wbes_vs_wb_stats <- renderUI({
+      req(macro_comparison_data())
+      tags$div(
+        class = "small text-muted mt-2",
+        icon("info-circle"),
+        " Paired comparisons between WBES and WB metrics require firm-level data. ",
+        "Country-level gaps are shown in the chart above."
+      )
+    })
+
+    # Macro Labor Statistics
+    output$macro_labor_stats <- renderUI({
+      req(macro_comparison_data())
+      d <- macro_comparison_data()
+
+      if (is.null(d) || nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "labor_participation" = "Labor Participation",
+        "unemployment" = "Unemployment"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        if (!ind %in% names(d)) return(NULL)
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
+
+    # Macro Trade Statistics
+    output$macro_trade_stats <- renderUI({
+      req(macro_comparison_data())
+      d <- macro_comparison_data()
+
+      if (is.null(d) || nrow(d) < 3) return(NULL)
+
+      indicators <- c(
+        "exports_gdp" = "Exports (% GDP)",
+        "imports_gdp" = "Imports (% GDP)",
+        "fdi_net" = "FDI Inflows"
+      )
+
+      results <- lapply(names(indicators), function(ind) {
+        if (!ind %in% names(d)) return(NULL)
+        create_country_stats(d, ind, indicators[[ind]])
+      })
+      results <- results[!sapply(results, is.null)]
+
+      if (length(results) == 0) return(NULL)
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Tests")
+        ),
+        tagList(results)
+      )
+    })
 
   })
 }

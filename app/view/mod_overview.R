@@ -2,10 +2,11 @@
 # Dashboard Overview Module
 
 box::use(
- shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
+ shiny[moduleServer, NS, reactive, reactiveVal, req, tags, HTML, icon, div, h2, h3, h4, p, span, br,
         fluidRow, column, selectInput, sliderInput, actionButton, observeEvent, renderUI, uiOutput,
         showModal, removeModal, textInput, selectizeInput, modalDialog, modalButton, updateSelectInput,
-        downloadButton, downloadHandler, renderTable, tableOutput],
+        downloadButton, downloadHandler, renderTable, tableOutput, invalidateLater, isolate, observe],
+ shinyjs[useShinyjs, show, hide, runjs],
  bslib[card, card_header, card_body, value_box, layout_columns],
  plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers,
@@ -78,10 +79,10 @@ ui <- function(id) {
    ),
 
 
-   # Main Content - Map and Top Constraints
+   # Main Content - Map on its own row
    fluidRow(
      class = "mb-4",
-     column(8,
+     column(12,
        card(
          card_header(icon("map-marked-alt"), "Business Environment Map"),
          card_body(
@@ -99,29 +100,29 @@ ui <- function(id) {
           map_with_caption(ns, "world_map", height = "450px", title = "Business Environment by Country")
         )
       )
-    ),
-    column(4,
+    )
+  ),
+
+   # Top Constraints and Regional Comparison - side by side
+   fluidRow(
+     class = "mb-4",
+     column(6,
       card(
         card_header(icon("exclamation-triangle"), "Top Business Obstacles"),
         card_body(
-          chart_with_download(ns, "obstacles_chart", height = "500px", title = "Top Business Constraints"),
+          chart_with_download(ns, "obstacles_chart", height = "400px", title = "Top Business Constraints"),
           p(
             class = "text-muted small mt-2",
             "Bars rank the most frequently cited obstacles among surveyed firms, making it easy to see which constraints dominate the business landscape."
           )
         )
       )
-    )
-  ),
-
-   # Regional Comparison
-   fluidRow(
-     class = "mb-4",
-     column(12,
+    ),
+    column(6,
       card(
         card_header(icon("chart-bar"), "Regional Comparison - Key Indicators"),
         card_body(
-          chart_with_download(ns, "regional_comparison", title = "Regional Performance Comparison"),
+          chart_with_download(ns, "regional_comparison", height = "400px", title = "Regional Performance Comparison"),
           p(
             class = "text-muted small mt-2",
             "Grouped bars compare infrastructure reliability, access to finance, and bribery exposure across regions, highlighting where each region performs strongest."
@@ -172,21 +173,45 @@ ui <- function(id) {
     class = "mb-4 mt-4",
     column(12,
       h3(icon("chart-area"), "Distribution of Key Indicators", class = "text-primary-teal mb-3"),
-      p(class = "text-muted", "Density plots showing the distribution of business environment metrics across countries. Select any available indicator to view its distribution.")
+      p(class = "text-muted", "Density plots showing the distribution of business environment metrics across countries. Use the arrows, dropdown, or auto-scroll to explore different indicators.")
     )
   ),
 
   fluidRow(
     class = "mb-4",
+    # Distribution Plot 1 with navigation
     column(6,
       card(
-        card_header(icon("chart-area"), "Distribution Plot 1"),
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span(icon("chart-area"), " Distribution Plot 1"),
+          div(
+            class = "d-flex align-items-center gap-2",
+            actionButton(ns("auto_scroll_1"), label = NULL, icon = icon("play"),
+                        class = "btn-sm btn-outline-primary", title = "Auto-scroll through indicators"),
+            actionButton(ns("stop_scroll_1"), label = NULL, icon = icon("stop"),
+                        class = "btn-sm btn-outline-secondary", title = "Stop auto-scroll", style = "display: none;")
+          )
+        ),
         card_body(
-          selectInput(
-            ns("density_var_1"),
-            "Select Indicator:",
-            choices = NULL,
-            width = "100%"
+          div(
+            class = "d-flex align-items-center gap-1 mb-3",
+            actionButton(ns("prev_1"), label = NULL, icon = icon("chevron-left"),
+                        class = "btn-sm btn-outline-secondary flex-shrink-0",
+                        style = "width: 36px; padding: 0.25rem 0.5rem;",
+                        title = "Previous indicator"),
+            div(style = "flex: 1; min-width: 0;",
+              selectInput(
+                ns("density_var_1"),
+                label = NULL,
+                choices = NULL,
+                width = "100%"
+              )
+            ),
+            actionButton(ns("next_1"), label = NULL, icon = icon("chevron-right"),
+                        class = "btn-sm btn-outline-secondary flex-shrink-0",
+                        style = "width: 36px; padding: 0.25rem 0.5rem;",
+                        title = "Next indicator")
           ),
           chart_with_download(ns, "density_plot_1", height = "320px"),
           uiOutput(ns("density_stats_1")),
@@ -198,15 +223,39 @@ ui <- function(id) {
         )
       )
     ),
+    # Distribution Plot 2 with navigation
     column(6,
       card(
-        card_header(icon("chart-area"), "Distribution Plot 2"),
+        card_header(
+          class = "d-flex justify-content-between align-items-center",
+          span(icon("chart-area"), " Distribution Plot 2"),
+          div(
+            class = "d-flex align-items-center gap-2",
+            actionButton(ns("auto_scroll_2"), label = NULL, icon = icon("play"),
+                        class = "btn-sm btn-outline-primary", title = "Auto-scroll through indicators"),
+            actionButton(ns("stop_scroll_2"), label = NULL, icon = icon("stop"),
+                        class = "btn-sm btn-outline-secondary", title = "Stop auto-scroll", style = "display: none;")
+          )
+        ),
         card_body(
-          selectInput(
-            ns("density_var_2"),
-            "Select Indicator:",
-            choices = NULL,
-            width = "100%"
+          div(
+            class = "d-flex align-items-center gap-1 mb-3",
+            actionButton(ns("prev_2"), label = NULL, icon = icon("chevron-left"),
+                        class = "btn-sm btn-outline-secondary flex-shrink-0",
+                        style = "width: 36px; padding: 0.25rem 0.5rem;",
+                        title = "Previous indicator"),
+            div(style = "flex: 1; min-width: 0;",
+              selectInput(
+                ns("density_var_2"),
+                label = NULL,
+                choices = NULL,
+                width = "100%"
+              )
+            ),
+            actionButton(ns("next_2"), label = NULL, icon = icon("chevron-right"),
+                        class = "btn-sm btn-outline-secondary flex-shrink-0",
+                        style = "width: 36px; padding: 0.25rem 0.5rem;",
+                        title = "Next indicator")
           ),
           chart_with_download(ns, "density_plot_2", height = "320px"),
           uiOutput(ns("density_stats_2")),
@@ -214,50 +263,6 @@ ui <- function(id) {
             class = "mt-3",
             tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
             uiOutput(ns("dist_fit_table_2"))
-          )
-        )
-      )
-    )
-  ),
-
-  fluidRow(
-    class = "mb-4",
-    column(6,
-      card(
-        card_header(icon("chart-area"), "Distribution Plot 3"),
-        card_body(
-          selectInput(
-            ns("density_var_3"),
-            "Select Indicator:",
-            choices = NULL,
-            width = "100%"
-          ),
-          chart_with_download(ns, "density_plot_3", height = "320px"),
-          uiOutput(ns("density_stats_3")),
-          tags$div(
-            class = "mt-3",
-            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
-            uiOutput(ns("dist_fit_table_3"))
-          )
-        )
-      )
-    ),
-    column(6,
-      card(
-        card_header(icon("chart-area"), "Distribution Plot 4"),
-        card_body(
-          selectInput(
-            ns("density_var_4"),
-            "Select Indicator:",
-            choices = NULL,
-            width = "100%"
-          ),
-          chart_with_download(ns, "density_plot_4", height = "320px"),
-          uiOutput(ns("density_stats_4")),
-          tags$div(
-            class = "mt-3",
-            tags$h6(icon("table"), " Best Fit Distributions", class = "text-primary-teal"),
-            uiOutput(ns("dist_fit_table_4"))
           )
         )
       )
@@ -852,15 +857,135 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
        # Set default selections for each plot
        defaults <- c(
          if ("female_workers_pct" %in% choices) "female_workers_pct" else if ("IC.FRM.FEMW.ZS" %in% choices) "IC.FRM.FEMW.ZS" else choices[1],
-         if ("capacity_utilization_pct" %in% choices) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% choices) "IC.FRM.CAPU.ZS" else choices[min(2, length(choices))],
-         if ("power_outages_per_month" %in% choices) "power_outages_per_month" else choices[min(3, length(choices))],
-         if ("bribery_incidence_pct" %in% choices) "bribery_incidence_pct" else if ("IC.FRM.BRIB.ZS" %in% choices) "IC.FRM.BRIB.ZS" else choices[min(4, length(choices))]
+         if ("capacity_utilization_pct" %in% choices) "capacity_utilization_pct" else if ("IC.FRM.CAPU.ZS" %in% choices) "IC.FRM.CAPU.ZS" else choices[min(2, length(choices))]
        )
 
        updateSelectInput(session, "density_var_1", choices = choices, selected = defaults[1])
        updateSelectInput(session, "density_var_2", choices = choices, selected = defaults[2])
-       updateSelectInput(session, "density_var_3", choices = choices, selected = defaults[3])
-       updateSelectInput(session, "density_var_4", choices = choices, selected = defaults[4])
+     }
+   })
+
+   # ============================================================
+   # Auto-scroll and Navigation Controls for Density Plots
+   # ============================================================
+
+   # Reactive values to track auto-scroll state
+   auto_scroll_active_1 <- reactiveVal(FALSE)
+   auto_scroll_active_2 <- reactiveVal(FALSE)
+
+   # Helper function to get next/previous index
+   get_nav_index <- function(current, choices, direction = "next") {
+     if (length(choices) == 0) return(NULL)
+     current_idx <- which(choices == current)
+     if (length(current_idx) == 0) current_idx <- 1
+
+     if (direction == "next") {
+       new_idx <- if (current_idx >= length(choices)) 1 else current_idx + 1
+     } else {
+       new_idx <- if (current_idx <= 1) length(choices) else current_idx - 1
+     }
+     choices[new_idx]
+   }
+
+   # Plot 1 Navigation
+   observeEvent(input$prev_1, {
+     auto_scroll_active_1(FALSE)
+     hide("stop_scroll_1")
+     show("auto_scroll_1")
+     choices <- available_density_vars()
+     if (length(choices) > 0) {
+       new_val <- get_nav_index(input$density_var_1, choices, "prev")
+       updateSelectInput(session, "density_var_1", selected = new_val)
+     }
+   })
+
+   observeEvent(input$next_1, {
+     auto_scroll_active_1(FALSE)
+     hide("stop_scroll_1")
+     show("auto_scroll_1")
+     choices <- available_density_vars()
+     if (length(choices) > 0) {
+       new_val <- get_nav_index(input$density_var_1, choices, "next")
+       updateSelectInput(session, "density_var_1", selected = new_val)
+     }
+   })
+
+   observeEvent(input$auto_scroll_1, {
+     auto_scroll_active_1(TRUE)
+     hide("auto_scroll_1")
+     show("stop_scroll_1")
+   })
+
+   observeEvent(input$stop_scroll_1, {
+     auto_scroll_active_1(FALSE)
+     hide("stop_scroll_1")
+     show("auto_scroll_1")
+   })
+
+   # Manual dropdown change stops auto-scroll for plot 1
+   observeEvent(input$density_var_1, {
+     # Only stop if it was a manual change (not from auto-scroll)
+     # We detect this by checking if auto_scroll is active but the value changed externally
+   }, ignoreInit = TRUE)
+
+   # Auto-scroll observer for plot 1
+   observe({
+     if (auto_scroll_active_1()) {
+       invalidateLater(4000)  # 4 seconds interval
+       choices <- isolate(available_density_vars())
+       if (length(choices) > 0) {
+         current <- isolate(input$density_var_1)
+         new_val <- get_nav_index(current, choices, "next")
+         updateSelectInput(session, "density_var_1", selected = new_val)
+       }
+     }
+   })
+
+   # Plot 2 Navigation
+   observeEvent(input$prev_2, {
+     auto_scroll_active_2(FALSE)
+     hide("stop_scroll_2")
+     show("auto_scroll_2")
+     choices <- available_density_vars()
+     if (length(choices) > 0) {
+       new_val <- get_nav_index(input$density_var_2, choices, "prev")
+       updateSelectInput(session, "density_var_2", selected = new_val)
+     }
+   })
+
+   observeEvent(input$next_2, {
+     auto_scroll_active_2(FALSE)
+     hide("stop_scroll_2")
+     show("auto_scroll_2")
+     choices <- available_density_vars()
+     if (length(choices) > 0) {
+       new_val <- get_nav_index(input$density_var_2, choices, "next")
+       updateSelectInput(session, "density_var_2", selected = new_val)
+     }
+   })
+
+   observeEvent(input$auto_scroll_2, {
+     auto_scroll_active_2(TRUE)
+     hide("auto_scroll_2")
+     show("stop_scroll_2")
+   })
+
+   observeEvent(input$stop_scroll_2, {
+     auto_scroll_active_2(FALSE)
+     hide("stop_scroll_2")
+     show("auto_scroll_2")
+   })
+
+   # Auto-scroll observer for plot 2
+   observe({
+     if (auto_scroll_active_2()) {
+       invalidateLater(4000)  # 4 seconds interval
+       choices <- isolate(available_density_vars())
+       if (length(choices) > 0) {
+         current <- isolate(input$density_var_2)
+         new_val <- get_nav_index(current, choices, "next")
+         updateSelectInput(session, "density_var_2", selected = new_val)
+       }
      }
    })
 
@@ -971,7 +1096,7 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
      )
    }
 
-   # Color palette for the 4 plots
+   # Color palette for the density plots
    density_colors <- c("#1B6B5F", "#9c27b0", "#ff5722", "#2196f3")
 
    # Density plots
@@ -985,16 +1110,6 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
      create_density_plot(filtered_data(), input$density_var_2, density_colors[2])
    })
 
-   output$density_plot_3 <- renderPlotly({
-     req(filtered_data(), input$density_var_3)
-     create_density_plot(filtered_data(), input$density_var_3, density_colors[3])
-   })
-
-   output$density_plot_4 <- renderPlotly({
-     req(filtered_data(), input$density_var_4)
-     create_density_plot(filtered_data(), input$density_var_4, density_colors[4])
-   })
-
    # Stats summaries
    output$density_stats_1 <- renderUI({
      req(filtered_data(), input$density_var_1)
@@ -1004,16 +1119,6 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
    output$density_stats_2 <- renderUI({
      req(filtered_data(), input$density_var_2)
      create_stats_summary(filtered_data(), input$density_var_2)
-   })
-
-   output$density_stats_3 <- renderUI({
-     req(filtered_data(), input$density_var_3)
-     create_stats_summary(filtered_data(), input$density_var_3)
-   })
-
-   output$density_stats_4 <- renderUI({
-     req(filtered_data(), input$density_var_4)
-     create_stats_summary(filtered_data(), input$density_var_4)
    })
 
    # ============================================================
@@ -1114,18 +1219,33 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
          # Method of moments for starting values
          m <- mean(scaled_values)
          v <- var(scaled_values)
-         alpha_start <- m * ((m * (1 - m) / v) - 1)
-         beta_start <- (1 - m) * ((m * (1 - m) / v) - 1)
-         if (alpha_start > 0 && beta_start > 0) {
-           fit_beta <- fitdistr(scaled_values, "beta", start = list(shape1 = alpha_start, shape2 = beta_start))
-           ks_beta <- ks.test(scaled_values, "pbeta", shape1 = fit_beta$estimate["shape1"], shape2 = fit_beta$estimate["shape2"])
-           results$Beta <- list(
-             distribution = "Beta",
-             params = paste0("\u03B1=", round(fit_beta$estimate["shape1"], 2), ", \u03B2=", round(fit_beta$estimate["shape2"], 2)),
-             aic = 2 * 2 - 2 * fit_beta$loglik,
-             ks_stat = round(ks_beta$statistic, 4),
-             p_value = round(ks_beta$p.value, 4)
-           )
+         # Ensure variance is positive and not too small
+         if (v > 1e-10 && v < m * (1 - m)) {
+           alpha_start <- m * ((m * (1 - m) / v) - 1)
+           beta_start <- (1 - m) * ((m * (1 - m) / v) - 1)
+           if (alpha_start > 0.01 && beta_start > 0.01 && is.finite(alpha_start) && is.finite(beta_start)) {
+             fit_beta <- fitdistr(scaled_values, "beta", start = list(shape1 = alpha_start, shape2 = beta_start))
+             # Use tryCatch for KS test as well since it can fail with certain parameter combinations
+             ks_result <- tryCatch({
+               ks.test(scaled_values, "pbeta", shape1 = fit_beta$estimate["shape1"], shape2 = fit_beta$estimate["shape2"])
+             }, error = function(e) NULL, warning = function(w) {
+               suppressWarnings(ks.test(scaled_values, "pbeta", shape1 = fit_beta$estimate["shape1"], shape2 = fit_beta$estimate["shape2"]))
+             })
+
+             if (!is.null(ks_result)) {
+               # Ensure p-value is valid (not NA or NaN)
+               p_val <- if (is.finite(ks_result$p.value)) round(ks_result$p.value, 4) else NA
+               ks_stat_val <- if (is.finite(ks_result$statistic)) round(ks_result$statistic, 4) else NA
+
+               results$Beta <- list(
+                 distribution = "Beta",
+                 params = paste0("\u03B1=", round(fit_beta$estimate["shape1"], 2), ", \u03B2=", round(fit_beta$estimate["shape2"], 2)),
+                 aic = 2 * 2 - 2 * fit_beta$loglik,
+                 ks_stat = ks_stat_val,
+                 p_value = p_val
+               )
+             }
+           }
          }
        }, error = function(e) NULL)
      }
@@ -1134,7 +1254,7 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
        return(tags$p(class = "text-muted small", "Could not fit any distributions to this data"))
      }
 
-     # Convert to data frame and sort by AIC (lower is better)
+     # Convert to data frame
      df <- do.call(rbind, lapply(results, function(r) {
        data.frame(
          Distribution = r$distribution,
@@ -1147,7 +1267,13 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
        )
      }))
 
-     df <- df[order(df$AIC), ]
+     # Rank by significance first, then AIC
+     # Significant fits (p >= 0.05) are ranked higher than non-significant ones
+     # Within each group, rank by AIC (lower is better)
+     df$is_significant <- !is.na(df$`p-value`) & df$`p-value` >= 0.05
+     any_significant <- any(df$is_significant)
+     df <- df[order(-df$is_significant, df$AIC), ]
+     df$is_significant <- NULL
      rownames(df) <- NULL
 
      # Add rank column
@@ -1172,17 +1298,20 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
          tags$tbody(
            lapply(1:nrow(df), function(i) {
              row <- df[i, ]
-             # Highlight best fit (rank 1)
-             row_class <- if (i == 1) "table-success" else ""
+             # Only highlight rank 1 if it has a significant p-value
+             is_best_fit <- i == 1 && any_significant
+             row_class <- if (is_best_fit) "table-info" else ""
              tags$tr(
                class = row_class,
                tags$td(row$Rank),
                tags$td(tags$strong(row$Distribution)),
                tags$td(row$Parameters),
                tags$td(row$AIC),
-               tags$td(row$`KS Stat`),
+               tags$td(if (is.na(row$`KS Stat`)) "N/A" else row$`KS Stat`),
                tags$td(
-                 if (row$`p-value` < 0.05) {
+                 if (is.na(row$`p-value`)) {
+                   tags$span(class = "text-muted", "N/A")
+                 } else if (row$`p-value` < 0.05) {
                    tags$span(class = "text-danger", row$`p-value`)
                  } else {
                    tags$span(class = "text-success", row$`p-value`)
@@ -1194,7 +1323,7 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
        ),
        tags$p(
          class = "text-muted small mt-1 mb-0",
-         tags$em("Best fit highlighted. Lower AIC = better fit. p-value > 0.05 suggests data follows the distribution.")
+         tags$em("Ranked by significance (p \u2265 0.05) first, then AIC. Green p-values indicate statistically valid fits.")
        )
      )
    }
@@ -1208,16 +1337,6 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
    output$dist_fit_table_2 <- renderUI({
      req(filtered_data(), input$density_var_2)
      fit_distributions(filtered_data(), input$density_var_2)
-   })
-
-   output$dist_fit_table_3 <- renderUI({
-     req(filtered_data(), input$density_var_3)
-     fit_distributions(filtered_data(), input$density_var_3)
-   })
-
-   output$dist_fit_table_4 <- renderUI({
-     req(filtered_data(), input$density_var_4)
-     fit_distributions(filtered_data(), input$density_var_4)
    })
 
    # ============================================================
@@ -1242,8 +1361,6 @@ server <- function(id, wbes_data, global_filters = NULL, root_session = NULL) {
    output$dl_finance_gauge <- simple_chart_download("finance_index")
    output$dl_density_plot_1 <- simple_chart_download("density_plot_1")
    output$dl_density_plot_2 <- simple_chart_download("density_plot_2")
-   output$dl_density_plot_3 <- simple_chart_download("density_plot_3")
-   output$dl_density_plot_4 <- simple_chart_download("density_plot_4")
 
  })
 }

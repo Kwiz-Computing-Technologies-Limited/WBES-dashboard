@@ -2,7 +2,7 @@
 # Country Profile Deep Dive Module
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span,
+  shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span, HTML,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, observe, renderText, textOutput,
         downloadButton, downloadHandler, reactiveVal],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, value_box],
@@ -16,6 +16,9 @@ box::use(
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/chart_utils[create_chart_caption, map_with_caption],
+  app/logic/stat_utils[paired_comparison_test, format_paired_test_results,
+                       calculate_correlation_matrix, format_correlation_table,
+                       anova_with_tukey, format_anova_results],
   app/logic/wb_integration[
     get_wb_country_context,
     get_wb_context_from_cache,
@@ -156,7 +159,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Bars rank which infrastructure services firms flag as biggest obstacles, indicating where reliability investments are needed."
-                  )
+                  ),
+                  uiOutput(ns("infra_correlation"))
                 )
               ),
               column(6,
@@ -202,7 +206,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Financial product uptake across credit and deposit instruments highlights where inclusion gaps remain."
-                  )
+                  ),
+                  uiOutput(ns("finance_correlation"))
                 )
               ),
               column(6,
@@ -227,7 +232,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Bribery prevalence by transaction type surfaces which interactions with government most often trigger informal payments."
-                  )
+                  ),
+                  uiOutput(ns("governance_correlation"))
                 )
               ),
               column(6,
@@ -252,7 +258,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Shows workforce composition including female participation and skill levels."
-                  )
+                  ),
+                  uiOutput(ns("workforce_correlation"))
                 )
               ),
               column(6,
@@ -311,7 +318,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Displays export orientation and international market participation."
-                  )
+                  ),
+                  uiOutput(ns("performance_correlation"))
                 )
               )
             )
@@ -325,7 +333,8 @@ ui <- function(id) {
               p(
                 class = "text-muted small mt-2",
                 "Trend lines track how outages, credit access, and bribery have evolved over survey waves, making it easy to spot improvements or setbacks."
-              )
+              ),
+              uiOutput(ns("timeseries_correlation"))
             )
           ),
 
@@ -373,7 +382,8 @@ ui <- function(id) {
                     p(
                       class = "text-muted small mt-2",
                       "Compares firm-reported metrics (WBES) with national statistics (World Bank) to identify perception gaps."
-                    )
+                    ),
+                    uiOutput(ns("wbes_vs_wb_stats"))
                   )
                 )
               ),
@@ -395,7 +405,8 @@ ui <- function(id) {
                     p(
                       class = "text-muted small mt-2",
                       "GDP growth and inflation trends over time provide macroeconomic context."
-                    )
+                    ),
+                    uiOutput(ns("economic_correlation"))
                   )
                 )
               )
@@ -1723,19 +1734,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
         NULL
       }
 
-      # Check if we're still loading WB data
-      prefetched <- if (!is.null(wb_prefetched_data)) wb_prefetched_data() else NULL
-      if (is.null(prefetched)) {
-        # Still loading - show spinner
-        return(tags$div(
-          class = "text-center p-4",
-          tags$div(
-            icon("spinner", class = "fa-spin fa-2x text-primary-teal"),
-            tags$p(class = "mt-2 text-muted", "Loading World Bank macro indicators...")
-          )
-        ))
-      }
-
+      # Get WB data - the wb_country_data() reactive handles prefetch cache with API fallback
       wb_data <- wb_country_data()
 
       if (is.null(wb_data)) {
@@ -1976,6 +1975,95 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>
         config(displayModeBar = FALSE)
+    })
+
+    # Statistical test for WBES vs National Indicators
+    output$wbes_vs_wb_stats <- renderUI({
+      req(country_data())
+      d <- country_data()
+      wb_data <- wb_country_data()
+
+      if (is.null(wb_data) || nrow(d) == 0) {
+        return(NULL)
+      }
+
+      # Collect paired comparisons for statistical testing
+      test_results <- list()
+
+      # Electricity: WBES generator usage vs WB electricity access
+      if ("firms_with_generator_pct" %in% names(d) && !is.na(d$firms_with_generator_pct[1]) &&
+          !is.null(wb_data[["EG.ELC.ACCS.ZS"]]) && !is.na(wb_data[["EG.ELC.ACCS.ZS"]])) {
+        wbes_val <- 100 - as.numeric(d$firms_with_generator_pct[1])
+        wb_val <- wb_data[["EG.ELC.ACCS.ZS"]]
+        diff <- wbes_val - wb_val
+        test_results$power <- list(
+          indicator = "Reliable Power",
+          wbes = wbes_val,
+          national = wb_val,
+          diff = diff,
+          interpretation = if (abs(diff) > 10) "Large gap" else if (abs(diff) > 5) "Moderate gap" else "Small gap"
+        )
+      }
+
+      # Internet: WBES vs WB
+      if ("internet_access_pct" %in% names(d) && !is.na(d$internet_access_pct[1]) &&
+          !is.null(wb_data[["IT.NET.USER.ZS"]]) && !is.na(wb_data[["IT.NET.USER.ZS"]])) {
+        wbes_val <- as.numeric(d$internet_access_pct[1])
+        wb_val <- wb_data[["IT.NET.USER.ZS"]]
+        diff <- wbes_val - wb_val
+        test_results$internet <- list(
+          indicator = "Internet Access",
+          wbes = wbes_val,
+          national = wb_val,
+          diff = diff,
+          interpretation = if (abs(diff) > 10) "Large gap" else if (abs(diff) > 5) "Moderate gap" else "Small gap"
+        )
+      }
+
+      # Corruption: WBES bribery vs WB control of corruption
+      if ("bribery_incidence_pct" %in% names(d) && !is.na(d$bribery_incidence_pct[1]) &&
+          !is.null(wb_data[["CC.EST"]]) && !is.na(wb_data[["CC.EST"]])) {
+        wbes_val <- 100 - as.numeric(d$bribery_incidence_pct[1])
+        wb_val <- ((wb_data[["CC.EST"]] + 2.5) / 5) * 100
+        diff <- wbes_val - wb_val
+        test_results$corruption <- list(
+          indicator = "Low Corruption",
+          wbes = wbes_val,
+          national = wb_val,
+          diff = diff,
+          interpretation = if (abs(diff) > 10) "Large gap" else if (abs(diff) > 5) "Moderate gap" else "Small gap"
+        )
+      }
+
+      if (length(test_results) == 0) {
+        return(NULL)
+      }
+
+      # Format results as table
+      rows <- lapply(test_results, function(r) {
+        gap_class <- if (abs(r$diff) > 10) "text-danger" else if (abs(r$diff) > 5) "text-warning" else "text-success"
+        sprintf("<tr><td>%s</td><td>%.1f</td><td>%.1f</td><td class='%s'>%+.1f</td><td>%s</td></tr>",
+                r$indicator, r$wbes, r$national, gap_class, r$diff, r$interpretation)
+      })
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("chart-bar"), " Statistical Comparison")
+        ),
+        HTML(paste0(
+          "<table class='table table-sm table-bordered' style='font-size: 11px;'>",
+          "<thead><tr><th>Indicator</th><th>WBES</th><th>National</th><th>Gap</th><th>Interpretation</th></tr></thead>",
+          "<tbody>", paste(rows, collapse = ""), "</tbody>",
+          "</table>"
+        )),
+        tags$small(
+          class = "text-muted",
+          "Note: Gaps > 10 pts indicate large perception differences. ",
+          "Positive values mean WBES (firm-level) exceeds national statistics."
+        )
+      )
     })
 
     # Governance Indicators Chart (WGI)
@@ -2223,6 +2311,208 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
     output$dl_wbes_vs_wb_chart <- simple_chart_download("wbes_vs_wb_comparison")
     output$dl_governance_chart <- simple_chart_download("governance_indicators")
     output$dl_economic_trends_chart <- simple_chart_download("economic_trends")
+
+    # ============================================================
+    # Correlation Matrices for Country Profile Charts
+    # ============================================================
+
+    # Infrastructure Correlation Matrix
+    output$infra_correlation <- renderUI({
+      req(filtered_data())
+      d <- filtered_data()
+
+      # Infrastructure variables
+      infra_vars <- c("power_outages_per_month", "avg_outage_duration_hrs",
+                      "firms_with_generator_pct", "water_insufficiency_pct",
+                      "transport_obstacle_pct", "electricity_obstacle_pct")
+      var_labels <- c(
+        "power_outages_per_month" = "Outages/Month",
+        "avg_outage_duration_hrs" = "Duration (hrs)",
+        "firms_with_generator_pct" = "Generator (%)",
+        "water_insufficiency_pct" = "Water Issues (%)",
+        "transport_obstacle_pct" = "Transport Obstacle",
+        "electricity_obstacle_pct" = "Electricity Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, infra_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Finance Correlation Matrix
+    output$finance_correlation <- renderUI({
+      req(filtered_data())
+      d <- filtered_data()
+
+      finance_vars <- c("firms_with_credit_line_pct", "firms_with_bank_account_pct",
+                        "collateral_pct_of_loan", "loan_rejected_pct",
+                        "working_capital_financed_externally_pct")
+      var_labels <- c(
+        "firms_with_credit_line_pct" = "Credit Line (%)",
+        "firms_with_bank_account_pct" = "Bank Account (%)",
+        "collateral_pct_of_loan" = "Collateral (%)",
+        "loan_rejected_pct" = "Rejected (%)",
+        "working_capital_financed_externally_pct" = "External Finance (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, finance_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Governance/Bribery Correlation Matrix
+    output$governance_correlation <- renderUI({
+      req(filtered_data())
+      d <- filtered_data()
+
+      gov_vars <- c("bribery_incidence_pct", "bribery_depth_pct",
+                    "gifts_to_get_operating_license_pct", "gifts_to_get_import_license_pct",
+                    "gifts_to_get_construction_permit_pct", "gifts_for_govt_contract_pct",
+                    "senior_mgmt_time_on_regulations_pct")
+      var_labels <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "bribery_depth_pct" = "Bribery Depth",
+        "gifts_to_get_operating_license_pct" = "Operating License",
+        "gifts_to_get_import_license_pct" = "Import License",
+        "gifts_to_get_construction_permit_pct" = "Construction Permit",
+        "gifts_for_govt_contract_pct" = "Govt Contract",
+        "senior_mgmt_time_on_regulations_pct" = "Mgmt Time on Regs"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, gov_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Workforce Correlation Matrix
+    output$workforce_correlation <- renderUI({
+      req(filtered_data())
+      d <- filtered_data()
+
+      workforce_vars <- c("female_workers_pct", "female_ownership_pct",
+                          "skilled_workers_pct", "unskilled_workers_pct",
+                          "firms_offering_training_pct", "labor_obstacle_pct")
+      var_labels <- c(
+        "female_workers_pct" = "Female Workers (%)",
+        "female_ownership_pct" = "Female Ownership (%)",
+        "skilled_workers_pct" = "Skilled (%)",
+        "unskilled_workers_pct" = "Unskilled (%)",
+        "firms_offering_training_pct" = "Training (%)",
+        "labor_obstacle_pct" = "Labor Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, workforce_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Performance/Export Correlation Matrix
+    output$performance_correlation <- renderUI({
+      req(filtered_data())
+      d <- filtered_data()
+
+      perf_vars <- c("capacity_utilization_pct", "direct_exports_pct",
+                     "indirect_exports_pct", "annual_sales_growth_pct",
+                     "annual_employment_growth_pct", "labor_productivity")
+      var_labels <- c(
+        "capacity_utilization_pct" = "Capacity Util (%)",
+        "direct_exports_pct" = "Direct Exports (%)",
+        "indirect_exports_pct" = "Indirect Exports (%)",
+        "annual_sales_growth_pct" = "Sales Growth (%)",
+        "annual_employment_growth_pct" = "Employment Growth (%)",
+        "labor_productivity" = "Labor Productivity"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, perf_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Time Series Correlation Matrix
+    output$timeseries_correlation <- renderUI({
+      req(wbes_data(), input$country_select)
+
+      # Get panel data for the country
+      panel_data <- wbes_data()$country_panel
+      if (is.null(panel_data)) return(NULL)
+
+      d <- panel_data |> filter(country == input$country_select)
+      if (nrow(d) < 3) {
+        return(tags$div(
+          class = "small text-muted mt-2",
+          "Insufficient time points for correlation analysis"
+        ))
+      }
+
+      ts_vars <- c("power_outages_per_month", "firms_with_credit_line_pct",
+                   "bribery_incidence_pct", "capacity_utilization_pct")
+      var_labels <- c(
+        "power_outages_per_month" = "Power Outages",
+        "firms_with_credit_line_pct" = "Credit Access",
+        "bribery_incidence_pct" = "Bribery",
+        "capacity_utilization_pct" = "Capacity Util"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, ts_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (over time)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Economic Trends Correlation Matrix (WB data)
+    output$economic_correlation <- renderUI({
+      wb_data <- wb_country_data()
+      if (is.null(wb_data)) return(NULL)
+
+      # For single country, we can't compute correlations
+      # Instead show relationships based on global patterns
+      tags$div(
+        class = "small text-muted mt-2",
+        icon("info-circle"),
+        " Cross-country correlations available in Regional Profile or Benchmark views."
+      )
+    })
 
   })
 }

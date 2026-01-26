@@ -15,7 +15,9 @@ box::use(
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
-  app/logic/chart_utils[create_chart_caption, map_with_caption]
+  app/logic/chart_utils[create_chart_caption, map_with_caption],
+  app/logic/stat_utils[calculate_correlation_matrix, format_correlation_table,
+                       anova_with_tukey, format_anova_results]
 )
 
 # Helper function to create chart container with download button and caption
@@ -136,7 +138,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Bars rank which infrastructure services firms in this region flag as biggest obstacles."
-                  )
+                  ),
+                  uiOutput(ns("infra_correlation"))
                 )
               ),
               column(6,
@@ -181,7 +184,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Financial product uptake across credit and deposit instruments for this region."
-                  )
+                  ),
+                  uiOutput(ns("finance_correlation"))
                 )
               ),
               column(6,
@@ -206,7 +210,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Bribery prevalence by transaction type for firms in this region."
-                  )
+                  ),
+                  uiOutput(ns("governance_correlation"))
                 )
               ),
               column(6,
@@ -231,7 +236,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Gender composition in workforce and ownership for firms in this region."
-                  )
+                  ),
+                  uiOutput(ns("workforce_correlation"))
                 )
               ),
               column(6,
@@ -290,7 +296,8 @@ ui <- function(id) {
                   p(
                     class = "text-muted small mt-2",
                     "Export orientation of firms in this region."
-                  )
+                  ),
+                  uiOutput(ns("performance_correlation"))
                 )
               )
             )
@@ -1523,6 +1530,158 @@ server <- function(id, wbes_data, global_filters = NULL) {
     output$dl_performance_chart1 <- simple_chart_download("capacity_utilization")
     output$dl_performance_chart2 <- simple_chart_download("export_orientation")
     output$dl_country_dist <- simple_chart_download("country_distribution")
+
+    # ============================================================
+    # Correlation Matrices for Regional Profile Charts
+    # ============================================================
+
+    # Infrastructure Correlation Matrix
+    output$infra_correlation <- renderUI({
+      req(region_data())
+      d <- region_data()
+
+      # Infrastructure variables
+      infra_vars <- c("power_outages_per_month", "avg_outage_duration_hrs",
+                      "firms_with_generator_pct", "water_insufficiency_pct",
+                      "transport_obstacle_pct", "electricity_obstacle_pct")
+
+      var_labels <- c(
+        "power_outages_per_month" = "Power Outages",
+        "avg_outage_duration_hrs" = "Outage Duration",
+        "firms_with_generator_pct" = "Generator Use (%)",
+        "water_insufficiency_pct" = "Water Issues (%)",
+        "transport_obstacle_pct" = "Transport Obstacle",
+        "electricity_obstacle_pct" = "Electricity Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, infra_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Finance Correlation Matrix
+    output$finance_correlation <- renderUI({
+      req(region_data())
+      d <- region_data()
+
+      finance_vars <- c("firms_with_credit_line_pct", "firms_with_bank_account_pct",
+                        "collateral_required_pct", "loan_application_pct",
+                        "overdraft_facility_pct")
+
+      var_labels <- c(
+        "firms_with_credit_line_pct" = "Credit Line (%)",
+        "firms_with_bank_account_pct" = "Bank Account (%)",
+        "collateral_required_pct" = "Collateral (%)",
+        "loan_application_pct" = "Loan Applied (%)",
+        "overdraft_facility_pct" = "Overdraft (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, finance_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Governance/Bribery Correlation Matrix
+    output$governance_correlation <- renderUI({
+      req(region_data())
+      d <- region_data()
+
+      gov_vars <- c("bribery_incidence_pct", "IC.FRM.CORR.ZS", "IC.FRM.BRIB.ZS",
+                    "corruption_obstacle_pct", "mgmt_time_regulations_pct")
+
+      var_labels <- c(
+        "bribery_incidence_pct" = "Bribery Incidence",
+        "IC.FRM.CORR.ZS" = "Corruption Obstacle",
+        "IC.FRM.BRIB.ZS" = "Bribery Rate",
+        "corruption_obstacle_pct" = "Corruption (%)",
+        "mgmt_time_regulations_pct" = "Mgmt Time on Regs"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, gov_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Workforce Correlation Matrix
+    output$workforce_correlation <- renderUI({
+      req(region_data())
+      d <- region_data()
+
+      workforce_vars <- c("female_workers_pct", "female_ownership_pct",
+                          "IC.FRM.FEMW.ZS", "IC.FRM.FEMO.ZS",
+                          "IC.FRM.WKFC.ZS", "workforce_obstacle_pct")
+
+      var_labels <- c(
+        "female_workers_pct" = "Female Workers (%)",
+        "female_ownership_pct" = "Female Ownership (%)",
+        "IC.FRM.FEMW.ZS" = "Female Workers (WB)",
+        "IC.FRM.FEMO.ZS" = "Female Owners (WB)",
+        "IC.FRM.WKFC.ZS" = "Workforce Obstacle (WB)",
+        "workforce_obstacle_pct" = "Workforce Obstacle"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, workforce_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
+
+    # Performance/Export Correlation Matrix
+    output$performance_correlation <- renderUI({
+      req(region_data())
+      d <- region_data()
+
+      perf_vars <- c("capacity_utilization_pct", "export_firms_pct",
+                     "IC.FRM.CAPU.ZS", "IC.FRM.EXPRT.ZS",
+                     "annual_sales_growth_pct", "annual_employment_growth_pct")
+
+      var_labels <- c(
+        "capacity_utilization_pct" = "Capacity Util (%)",
+        "export_firms_pct" = "Export Firms (%)",
+        "IC.FRM.CAPU.ZS" = "Capacity (WB)",
+        "IC.FRM.EXPRT.ZS" = "Exports (WB)",
+        "annual_sales_growth_pct" = "Sales Growth (%)",
+        "annual_employment_growth_pct" = "Employment Growth (%)"
+      )
+
+      cor_result <- calculate_correlation_matrix(d, perf_vars, method = "spearman")
+
+      tags$div(
+        class = "mt-3 p-2 border rounded bg-light",
+        tags$div(
+          class = "small text-primary-teal mb-2",
+          tags$strong(icon("table"), " Correlation Matrix (across countries)")
+        ),
+        format_correlation_table(cor_result, var_labels)
+      )
+    })
 
   })
 }

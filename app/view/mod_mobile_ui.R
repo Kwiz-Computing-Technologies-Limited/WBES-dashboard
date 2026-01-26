@@ -3,19 +3,21 @@
 # Provides mobile-optimized interface for the WBES Dashboard
 
 box::use(
-  shiny[moduleServer, NS, reactive, req, tags, HTML, icon, div, h2, h3, h4, p, span,
+  shiny[moduleServer, NS, reactive, reactiveVal, req, tags, HTML, icon, div, h2, h3, h4, p, span,
         fluidRow, column, selectInput, actionButton, observeEvent, renderUI, uiOutput,
-        updateSelectInput, downloadButton, renderText, textOutput],
+        updateSelectInput, downloadButton, renderText, textOutput, invalidateLater, isolate, observe],
   shinyMobile[f7Page, f7TabLayout, f7Navbar, f7Tabs, f7Tab, f7Card, f7Block,
               f7List, f7ListItem, f7Select, f7Button, f7Accordion,
               f7AccordionItem, f7Icon, f7Chip],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, config, add_trace],
-  leaflet[leafletOutput, renderLeaflet],
-  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, any_of],
+  leaflet[leafletOutput, renderLeaflet, leaflet, addTiles, addCircleMarkers, setView, colorNumeric, addLegend, labelFormat],
+  dplyr[filter, arrange, desc, mutate, summarise, group_by, n, first, any_of, across],
   rlang[`%||%`],
-  stats[na.omit, setNames, density, median, sd, reorder],
+  stats[na.omit, setNames, density, median, sd, reorder, var, dnorm, dlnorm, dgamma, dexp, dbeta,
+        pnorm, plnorm, pgamma, pexp, pbeta, ks.test],
   scales[rescale],
   utils[head],
+  MASS[fitdistr],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region]
 )
@@ -74,7 +76,8 @@ ui <- function(id) {
           # Map Card
           f7Card(
             title = "Business Environment Map",
-            f7Select(
+            # Use standard selectInput instead of f7Select for better compatibility
+            selectInput(
               inputId = ns("map_indicator_mobile"),
               label = "Select Indicator",
               choices = c(
@@ -82,7 +85,8 @@ ui <- function(id) {
                 "Access to Credit" = "firms_with_credit_line_pct",
                 "Bribery Incidence" = "bribery_incidence_pct",
                 "Capacity Utilization" = "capacity_utilization_pct"
-              )
+              ),
+              width = "100%"
             ),
             leafletOutput(ns("world_map_mobile"), height = "300px")
           ),
@@ -116,29 +120,77 @@ ui <- function(id) {
           ),
 
           # Density Plots Section
-          f7Card(
-            title = "Distribution Analysis",
-            tags$p("Distribution of key business metrics", class = "text-color-gray", style = "font-size: 12px;"),
-            selectInput(
-              ns("density_var_1_mobile"),
-              label = "Indicator 1",
-              choices = c("Loading..." = ""),
-              width = "100%"
-            ),
-            plotlyOutput(ns("density_plot_1_mobile"), height = "200px"),
-            uiOutput(ns("density_stats_1_mobile"))
+          f7Block(
+            strong = TRUE,
+            inset = TRUE,
+            tags$h4("Distribution Analysis", style = "color: #1B6B5F; margin-bottom: 5px;"),
+            tags$p("Explore distribution of key business metrics", style = "font-size: 12px; color: #666;")
           ),
 
+          # Distribution Plot 1 with navigation
           f7Card(
             title = NULL,
-            selectInput(
-              ns("density_var_2_mobile"),
-              label = "Indicator 2",
-              choices = c("Loading..." = ""),
-              width = "100%"
+            # Navigation controls row
+            tags$div(
+              style = "display: flex; align-items: center; gap: 4px; margin-bottom: 10px;",
+              actionButton(ns("prev_1_mobile"), label = NULL, icon = icon("chevron-left"),
+                          class = "btn-sm", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;"),
+              tags$div(style = "flex: 1; min-width: 0;",
+                selectInput(
+                  ns("density_var_1_mobile"),
+                  label = NULL,
+                  choices = c("Loading..." = ""),
+                  width = "100%"
+                )
+              ),
+              actionButton(ns("next_1_mobile"), label = NULL, icon = icon("chevron-right"),
+                          class = "btn-sm", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;"),
+              actionButton(ns("auto_scroll_1_mobile"), label = NULL, icon = icon("play"),
+                          class = "btn-sm btn-outline-primary", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;", title = "Auto-scroll"),
+              actionButton(ns("stop_scroll_1_mobile"), label = NULL, icon = icon("stop"),
+                          class = "btn-sm btn-outline-secondary", style = "width: 32px; padding: 4px 6px; display: none; flex-shrink: 0;", title = "Stop")
+            ),
+            plotlyOutput(ns("density_plot_1_mobile"), height = "200px"),
+            uiOutput(ns("density_stats_1_mobile")),
+            # Distribution fit table
+            tags$div(
+              style = "margin-top: 10px;",
+              tags$h6(icon("table"), " Best Fit", style = "color: #1B6B5F; font-size: 12px;"),
+              uiOutput(ns("dist_fit_table_1_mobile"))
+            )
+          ),
+
+          # Distribution Plot 2 with navigation
+          f7Card(
+            title = NULL,
+            # Navigation controls row
+            tags$div(
+              style = "display: flex; align-items: center; gap: 4px; margin-bottom: 10px;",
+              actionButton(ns("prev_2_mobile"), label = NULL, icon = icon("chevron-left"),
+                          class = "btn-sm", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;"),
+              tags$div(style = "flex: 1; min-width: 0;",
+                selectInput(
+                  ns("density_var_2_mobile"),
+                  label = NULL,
+                  choices = c("Loading..." = ""),
+                  width = "100%"
+                )
+              ),
+              actionButton(ns("next_2_mobile"), label = NULL, icon = icon("chevron-right"),
+                          class = "btn-sm", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;"),
+              actionButton(ns("auto_scroll_2_mobile"), label = NULL, icon = icon("play"),
+                          class = "btn-sm btn-outline-primary", style = "width: 32px; padding: 4px 6px; flex-shrink: 0;", title = "Auto-scroll"),
+              actionButton(ns("stop_scroll_2_mobile"), label = NULL, icon = icon("stop"),
+                          class = "btn-sm btn-outline-secondary", style = "width: 32px; padding: 4px 6px; display: none; flex-shrink: 0;", title = "Stop")
             ),
             plotlyOutput(ns("density_plot_2_mobile"), height = "200px"),
-            uiOutput(ns("density_stats_2_mobile"))
+            uiOutput(ns("density_stats_2_mobile")),
+            # Distribution fit table
+            tags$div(
+              style = "margin-top: 10px;",
+              tags$h6(icon("table"), " Best Fit", style = "color: #1B6B5F; font-size: 12px;"),
+              uiOutput(ns("dist_fit_table_2_mobile"))
+            )
           )
         ),
 
@@ -479,21 +531,210 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
       )
     })
 
-    # World Map - now rendered by mod_overview$server with root_session
-    # This output is populated by the dual-rendering pattern in mod_overview.R
-    # The map will respond to the global filters and the mobile map_indicator input
+    # ============================================================
+    # World Map
+    # ============================================================
+    output$world_map_mobile <- renderLeaflet({
+      req(filtered_data())
+      data <- filtered_data()
+      indicator <- input$map_indicator_mobile %||% "power_outages_per_month"
 
-    # Obstacles Chart - now rendered by mod_overview$server with root_session
-    # This output is populated by the dual-rendering pattern in mod_overview.R
+      # Check if lat/lng columns exist
+      has_coords <- "lat" %in% names(data) && "lng" %in% names(data)
 
-    # Regional Comparison - now rendered by mod_overview$server with root_session
-    # This output is populated by the dual-rendering pattern in mod_overview.R
+      if (!has_coords) {
+        return(
+          leaflet() |>
+            addTiles() |>
+            setView(lng = 20, lat = 10, zoom = 1)
+        )
+      }
 
-    # Infrastructure Gauge - now rendered by mod_overview$server with root_session
-    # This output is populated by the dual-rendering pattern in mod_overview.R
+      # Handle lon/lng naming
+      if ("lng" %in% names(data) && !"lon" %in% names(data)) {
+        data$lon <- data$lng
+      }
 
-    # Finance Gauge - now rendered by mod_overview$server with root_session
-    # This output is populated by the dual-rendering pattern in mod_overview.R
+      data <- data[!is.na(data$lat) & !is.na(data$lon), ]
+
+      if (indicator %in% names(data)) {
+        data <- data[!is.na(data[[indicator]]), ]
+      }
+
+      if (nrow(data) > 0 && indicator %in% names(data)) {
+        pal <- colorNumeric(
+          palette = c("#FFFFB2", "#FED976", "#FEB24C", "#FD8D3C", "#F03B20", "#BD0026"),
+          domain = data[[indicator]],
+          na.color = "#808080"
+        )
+
+        size_values <- data[[indicator]]
+        size_values[is.na(size_values)] <- min(size_values, na.rm = TRUE)
+        data$marker_size <- rescale(size_values, to = c(4, 14))
+
+        leaflet(data) |>
+          addTiles() |>
+          setView(lng = 20, lat = 10, zoom = 1) |>
+          addCircleMarkers(
+            lng = ~lon, lat = ~lat,
+            radius = ~marker_size,
+            color = ~pal(get(indicator)),
+            fillColor = ~pal(get(indicator)),
+            fillOpacity = 0.7,
+            stroke = TRUE,
+            weight = 1,
+            popup = ~paste0("<strong>", country, "</strong><br>", round(get(indicator), 1))
+          )
+      } else {
+        leaflet() |>
+          addTiles() |>
+          setView(lng = 20, lat = 10, zoom = 1)
+      }
+    })
+
+    # ============================================================
+    # Obstacles Chart
+    # ============================================================
+    output$obstacles_chart_mobile <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      obstacles <- data.frame(obstacle = character(), pct = numeric(), stringsAsFactors = FALSE)
+
+      if ("IC.FRM.FINA.ZS" %in% names(data)) {
+        obstacles <- rbind(obstacles, data.frame(obstacle = "Finance", pct = mean(data$IC.FRM.FINA.ZS, na.rm = TRUE)))
+      }
+      if ("IC.FRM.ELEC.ZS" %in% names(data)) {
+        obstacles <- rbind(obstacles, data.frame(obstacle = "Electricity", pct = mean(data$IC.FRM.ELEC.ZS, na.rm = TRUE)))
+      }
+      if ("IC.FRM.CORR.ZS" %in% names(data)) {
+        obstacles <- rbind(obstacles, data.frame(obstacle = "Corruption", pct = mean(data$IC.FRM.CORR.ZS, na.rm = TRUE)))
+      }
+      if ("IC.FRM.CRIM.ZS" %in% names(data)) {
+        obstacles <- rbind(obstacles, data.frame(obstacle = "Crime", pct = mean(data$IC.FRM.CRIM.ZS, na.rm = TRUE)))
+      }
+
+      obstacles <- obstacles[!is.na(obstacles$pct), ]
+
+      if (nrow(obstacles) > 0) {
+        obstacles <- arrange(obstacles, pct)
+        obstacles$obstacle <- factor(obstacles$obstacle, levels = obstacles$obstacle)
+
+        plot_ly(obstacles, y = ~obstacle, x = ~pct, type = "bar", orientation = "h",
+                marker = list(color = "#1B6B5F")) |>
+          layout(
+            xaxis = list(title = "% of Firms", ticksuffix = "%"),
+            yaxis = list(title = ""),
+            margin = list(l = 80, r = 10, t = 10, b = 40)
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |>
+          layout(annotations = list(text = "No data", showarrow = FALSE, xref = "paper", yref = "paper", x = 0.5, y = 0.5))
+      }
+    })
+
+    # ============================================================
+    # Regional Comparison
+    # ============================================================
+    output$regional_comparison_mobile <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      if (!"region" %in% names(data)) {
+        return(plot_ly() |> layout(annotations = list(text = "No regional data", showarrow = FALSE)))
+      }
+
+      regional <- data |>
+        filter(!is.na(region)) |>
+        group_by(region) |>
+        summarise(
+          power_outages = mean(power_outages_per_month, na.rm = TRUE),
+          credit_access = mean(firms_with_credit_line_pct, na.rm = TRUE),
+          bribery = mean(bribery_incidence_pct, na.rm = TRUE),
+          .groups = "drop"
+        )
+
+      if (nrow(regional) > 0) {
+        plot_ly(regional) |>
+          add_trace(x = ~region, y = ~power_outages, type = "bar", name = "Outages", marker = list(color = "#1B6B5F")) |>
+          add_trace(x = ~region, y = ~credit_access, type = "bar", name = "Credit %", marker = list(color = "#F49B7A")) |>
+          add_trace(x = ~region, y = ~bribery, type = "bar", name = "Bribery %", marker = list(color = "#6C757D")) |>
+          layout(
+            barmode = "group",
+            xaxis = list(title = "", tickangle = 45, tickfont = list(size = 8)),
+            yaxis = list(title = ""),
+            legend = list(orientation = "h", y = -0.35, font = list(size = 8)),
+            margin = list(b = 80, t = 10)
+          ) |>
+          config(displayModeBar = FALSE)
+      } else {
+        plot_ly() |> layout(annotations = list(text = "No data", showarrow = FALSE))
+      }
+    })
+
+    # ============================================================
+    # Infrastructure Gauge
+    # ============================================================
+    output$infrastructure_gauge_mobile <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      infra_score <- 50
+      if ("power_outages_per_month" %in% names(data)) {
+        avg_outages <- mean(data$power_outages_per_month, na.rm = TRUE)
+        infra_score <- max(0, min(100, 100 - (avg_outages * 10)))
+      }
+
+      plot_ly(
+        type = "indicator",
+        mode = "gauge+number",
+        value = round(infra_score, 1),
+        title = list(text = "Infrastructure", font = list(size = 11)),
+        gauge = list(
+          axis = list(range = list(0, 100), tickfont = list(size = 8)),
+          bar = list(color = "#1B6B5F"),
+          steps = list(
+            list(range = c(0, 40), color = "#ffebee"),
+            list(range = c(40, 70), color = "#fff3e0"),
+            list(range = c(70, 100), color = "#e8f5e9")
+          )
+        )
+      ) |>
+        layout(margin = list(t = 30, b = 10, l = 20, r = 20)) |>
+        config(displayModeBar = FALSE)
+    })
+
+    # ============================================================
+    # Finance Gauge
+    # ============================================================
+    output$finance_gauge_mobile <- renderPlotly({
+      req(filtered_data())
+      data <- filtered_data()
+
+      finance_score <- 50
+      if ("firms_with_credit_line_pct" %in% names(data)) {
+        finance_score <- mean(data$firms_with_credit_line_pct, na.rm = TRUE)
+      }
+
+      plot_ly(
+        type = "indicator",
+        mode = "gauge+number",
+        value = round(finance_score, 1),
+        title = list(text = "Credit Access", font = list(size = 11)),
+        gauge = list(
+          axis = list(range = list(0, 100), tickfont = list(size = 8)),
+          bar = list(color = "#F49B7A"),
+          steps = list(
+            list(range = c(0, 30), color = "#ffebee"),
+            list(range = c(30, 60), color = "#fff3e0"),
+            list(range = c(60, 100), color = "#e8f5e9")
+          )
+        )
+      ) |>
+        layout(margin = list(t = 30, b = 10, l = 20, r = 20)) |>
+        config(displayModeBar = FALSE)
+    })
 
     # ============================================================
     # Density Plots with Dynamic Variable Selection
@@ -680,6 +921,207 @@ server <- function(id, wbes_data, global_filters, wb_prefetched_data = NULL) {
     output$density_stats_2_mobile <- renderUI({
       req(filtered_data(), input$density_var_2_mobile)
       create_stats_summary_mobile(filtered_data(), input$density_var_2_mobile)
+    })
+
+    # ============================================================
+    # Navigation Controls for Density Plots
+    # ============================================================
+
+    # Reactive values to track auto-scroll state
+    auto_scroll_active_1_mobile <- reactiveVal(FALSE)
+    auto_scroll_active_2_mobile <- reactiveVal(FALSE)
+
+    # Helper function to get next/previous index
+    get_nav_index_mobile <- function(current, choices, direction = "next") {
+      if (length(choices) == 0) return(NULL)
+      current_idx <- which(choices == current)
+      if (length(current_idx) == 0) current_idx <- 1
+
+      if (direction == "next") {
+        new_idx <- if (current_idx >= length(choices)) 1 else current_idx + 1
+      } else {
+        new_idx <- if (current_idx <= 1) length(choices) else current_idx - 1
+      }
+      choices[new_idx]
+    }
+
+    # Plot 1 Navigation
+    observeEvent(input$prev_1_mobile, {
+      auto_scroll_active_1_mobile(FALSE)
+      choices <- available_density_vars_mobile()
+      if (length(choices) > 0) {
+        new_val <- get_nav_index_mobile(input$density_var_1_mobile, choices, "prev")
+        shiny::updateSelectInput(session, "density_var_1_mobile", selected = new_val)
+      }
+    })
+
+    observeEvent(input$next_1_mobile, {
+      auto_scroll_active_1_mobile(FALSE)
+      choices <- available_density_vars_mobile()
+      if (length(choices) > 0) {
+        new_val <- get_nav_index_mobile(input$density_var_1_mobile, choices, "next")
+        shiny::updateSelectInput(session, "density_var_1_mobile", selected = new_val)
+      }
+    })
+
+    observeEvent(input$auto_scroll_1_mobile, {
+      auto_scroll_active_1_mobile(TRUE)
+    })
+
+    observeEvent(input$stop_scroll_1_mobile, {
+      auto_scroll_active_1_mobile(FALSE)
+    })
+
+    # Auto-scroll observer for plot 1
+    observe({
+      if (auto_scroll_active_1_mobile()) {
+        invalidateLater(4000)
+        choices <- isolate(available_density_vars_mobile())
+        if (length(choices) > 0) {
+          current <- isolate(input$density_var_1_mobile)
+          new_val <- get_nav_index_mobile(current, choices, "next")
+          shiny::updateSelectInput(session, "density_var_1_mobile", selected = new_val)
+        }
+      }
+    })
+
+    # Plot 2 Navigation
+    observeEvent(input$prev_2_mobile, {
+      auto_scroll_active_2_mobile(FALSE)
+      choices <- available_density_vars_mobile()
+      if (length(choices) > 0) {
+        new_val <- get_nav_index_mobile(input$density_var_2_mobile, choices, "prev")
+        shiny::updateSelectInput(session, "density_var_2_mobile", selected = new_val)
+      }
+    })
+
+    observeEvent(input$next_2_mobile, {
+      auto_scroll_active_2_mobile(FALSE)
+      choices <- available_density_vars_mobile()
+      if (length(choices) > 0) {
+        new_val <- get_nav_index_mobile(input$density_var_2_mobile, choices, "next")
+        shiny::updateSelectInput(session, "density_var_2_mobile", selected = new_val)
+      }
+    })
+
+    observeEvent(input$auto_scroll_2_mobile, {
+      auto_scroll_active_2_mobile(TRUE)
+    })
+
+    observeEvent(input$stop_scroll_2_mobile, {
+      auto_scroll_active_2_mobile(FALSE)
+    })
+
+    # Auto-scroll observer for plot 2
+    observe({
+      if (auto_scroll_active_2_mobile()) {
+        invalidateLater(4000)
+        choices <- isolate(available_density_vars_mobile())
+        if (length(choices) > 0) {
+          current <- isolate(input$density_var_2_mobile)
+          new_val <- get_nav_index_mobile(current, choices, "next")
+          shiny::updateSelectInput(session, "density_var_2_mobile", selected = new_val)
+        }
+      }
+    })
+
+    # ============================================================
+    # Distribution Fitting (Mobile - Simplified)
+    # ============================================================
+
+    # Helper function to fit distributions (mobile - simplified table)
+    fit_distributions_mobile <- function(data, col_name) {
+      if (is.null(col_name) || col_name == "" || !col_name %in% names(data)) {
+        return(NULL)
+      }
+
+      values <- data[[col_name]]
+      values <- values[!is.na(values) & is.finite(values)]
+
+      if (length(values) < 10) {
+        return(tags$p(style = "font-size: 10px; color: #999;", "Need 10+ observations"))
+      }
+
+      results <- list()
+
+      # Normal distribution
+      tryCatch({
+        fit_norm <- fitdistr(values, "normal")
+        ks_norm <- ks.test(values, "pnorm", mean = fit_norm$estimate["mean"], sd = fit_norm$estimate["sd"])
+        results$Normal <- list(dist = "Normal", aic = 2 * 2 - 2 * fit_norm$loglik, p = round(ks_norm$p.value, 3))
+      }, error = function(e) NULL)
+
+      # Log-normal (positive values only)
+      if (all(values > 0)) {
+        tryCatch({
+          fit_lnorm <- fitdistr(values, "lognormal")
+          ks_lnorm <- ks.test(values, "plnorm", meanlog = fit_lnorm$estimate["meanlog"], sdlog = fit_lnorm$estimate["sdlog"])
+          results$Lognormal <- list(dist = "Log-normal", aic = 2 * 2 - 2 * fit_lnorm$loglik, p = round(ks_lnorm$p.value, 3))
+        }, error = function(e) NULL)
+
+        tryCatch({
+          fit_gamma <- fitdistr(values, "gamma")
+          ks_gamma <- ks.test(values, "pgamma", shape = fit_gamma$estimate["shape"], rate = fit_gamma$estimate["rate"])
+          results$Gamma <- list(dist = "Gamma", aic = 2 * 2 - 2 * fit_gamma$loglik, p = round(ks_gamma$p.value, 3))
+        }, error = function(e) NULL)
+      }
+
+      # Beta (for 0-100 range)
+      if (all(values >= 0) && all(values <= 100)) {
+        scaled <- pmax(0.001, pmin(0.999, values / 100))
+        tryCatch({
+          m <- mean(scaled); v <- var(scaled)
+          if (v > 1e-10 && v < m * (1 - m)) {
+            a <- m * ((m * (1 - m) / v) - 1)
+            b <- (1 - m) * ((m * (1 - m) / v) - 1)
+            if (a > 0.01 && b > 0.01) {
+              fit_beta <- fitdistr(scaled, "beta", start = list(shape1 = a, shape2 = b))
+              ks_beta <- tryCatch(ks.test(scaled, "pbeta", shape1 = fit_beta$estimate["shape1"], shape2 = fit_beta$estimate["shape2"]), error = function(e) NULL)
+              if (!is.null(ks_beta)) {
+                results$Beta <- list(dist = "Beta", aic = 2 * 2 - 2 * fit_beta$loglik, p = round(ks_beta$p.value, 3))
+              }
+            }
+          }
+        }, error = function(e) NULL)
+      }
+
+      if (length(results) == 0) {
+        return(tags$p(style = "font-size: 10px; color: #999;", "Could not fit distributions"))
+      }
+
+      # Sort by significance then AIC
+      df <- do.call(rbind, lapply(results, function(r) data.frame(dist = r$dist, aic = r$aic, p = r$p, stringsAsFactors = FALSE)))
+      df$sig <- !is.na(df$p) & df$p >= 0.05
+      df <- df[order(-df$sig, df$aic), ]
+
+      # Show only top 2 results for mobile
+      df <- head(df, 2)
+
+      tags$div(
+        style = "font-size: 10px;",
+        lapply(1:nrow(df), function(i) {
+          row <- df[i, ]
+          p_color <- if (!is.na(row$p) && row$p >= 0.05) "#28a745" else "#dc3545"
+          bg <- if (i == 1 && row$sig) "#e3f2fd" else "transparent"
+          tags$div(
+            style = paste0("padding: 3px 5px; background: ", bg, "; margin-bottom: 2px; border-radius: 3px;"),
+            tags$span(tags$strong(row$dist), style = "margin-right: 8px;"),
+            tags$span(paste0("AIC: ", round(row$aic, 0)), style = "margin-right: 8px; color: #666;"),
+            tags$span(paste0("p: ", if(is.na(row$p)) "N/A" else row$p), style = paste0("color: ", p_color, ";"))
+          )
+        })
+      )
+    }
+
+    # Distribution fit table outputs
+    output$dist_fit_table_1_mobile <- renderUI({
+      req(filtered_data(), input$density_var_1_mobile)
+      fit_distributions_mobile(filtered_data(), input$density_var_1_mobile)
+    })
+
+    output$dist_fit_table_2_mobile <- renderUI({
+      req(filtered_data(), input$density_var_2_mobile)
+      fit_distributions_mobile(filtered_data(), input$density_var_2_mobile)
     })
 
     # Benchmark Chart
