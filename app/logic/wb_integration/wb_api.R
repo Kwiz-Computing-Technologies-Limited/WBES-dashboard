@@ -781,23 +781,48 @@ prefetch_wb_data_for_countries <- function(wbes_countries, timeout_seconds = 300
   old_timeout <- getOption("timeout")
   options(timeout = timeout_seconds)
 
-  # Fetch data for all countries using batch API call
+  # Fetch data for all countries, ONE CATEGORY PER CALL so a single
+  # archived/invalid indicator (e.g. the WGI governance codes, which the World
+  # Bank API now rejects) cannot fail the whole prefetch. Surviving categories
+  # are merged into one wide frame keyed by iso3c + date.
   result <- tryCatch({
-    # Use batch fetch for efficiency - one API call for all countries
-    log_info("Fetching WB indicators in batch for all countries...")
+    log_info("Fetching WB indicators per category (resilient to dead indicators)...")
 
-    batch_data <- fetch_wb_indicators_batch(
-      iso3_codes = valid_mapping$iso3c,
-      indicators = all_codes,
-      start_year = 2006  # Match WBES coverage
-    )
+    cat_frames <- list()
+    for (category_name in names(indicators)) {
+      category_codes <- unname(unlist(indicators[[category_name]]))
+      fr <- tryCatch(
+        fetch_wb_indicators_batch(
+          iso3_codes = valid_mapping$iso3c,
+          indicators = category_codes,
+          start_year = 2006  # Match WBES coverage
+        ),
+        error = function(e) {
+          log_warn(sprintf("Category '%s' skipped: %s",
+                           category_name, substr(e$message, 1, 80)))
+          NULL
+        }
+      )
+      if (!is.null(fr) && nrow(fr) > 0) {
+        present <- intersect(category_codes, names(fr))
+        cat_frames[[category_name]] <- fr[, c("iso3c", "date", present), drop = FALSE]
+      }
+    }
 
-    if (is.null(batch_data) || nrow(batch_data) == 0) {
-      log_warn("Batch fetch returned no data")
+    if (length(cat_frames) == 0) {
+      log_warn("All WB indicator categories failed to fetch")
       return(NULL)
     }
 
-    log_info(sprintf("Batch fetch successful: %d rows of data", nrow(batch_data)))
+    batch_data <- Reduce(
+      function(a, b) dplyr::full_join(a, b, by = c("iso3c", "date")),
+      cat_frames
+    )
+    # Re-attach country name for downstream lookups.
+    batch_data <- dplyr::left_join(batch_data, valid_mapping, by = "iso3c")
+
+    log_info(sprintf("Prefetch successful: %d rows across %d categories",
+                     nrow(batch_data), length(cat_frames)))
 
     # Organize data by country for easy lookup
     # Create a named list with country names as keys

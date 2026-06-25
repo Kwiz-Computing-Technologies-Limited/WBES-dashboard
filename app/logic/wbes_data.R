@@ -19,8 +19,10 @@ box::use(
                           lazy_filter, lazy_select, lazy_summarise, is_lazy_arrow, force_collect]
 )
 
-# Expected filename for the WBES microdata
-RAW_DTA_FILENAME <- "ES-Indicators-Database-Global-Methodology_November_24_2025.dta"
+# Pattern matching the WBES microdata file. The date suffix changes with each
+# World Bank release, so match the stable prefix rather than a hard-coded date.
+RAW_DTA_PATTERN <- "ES-Indicators-Database-Global-Methodology.*\\.dta$"
+RAW_DTA_DISPLAY <- "ES-Indicators-Database-Global-Methodology_<release-date>.dta"
 
 #' Load complete WBES dataset
 #' This function loads real WBES microdata from local files.
@@ -104,11 +106,11 @@ load_wbes_data <- function(data_path = here("data"), use_cache = TRUE, cache_hou
     "║ The WBES dashboard requires real microdata to run, but none was found.    ║\n",
     "║                                                                            ║\n",
     "║ Expected data file:                                                        ║\n",
-    "║   ", RAW_DTA_FILENAME, "                                                  ║\n",
+    "║   ", RAW_DTA_DISPLAY, "                                                  ║\n",
     "║                                                                            ║\n",
     "║ Required setup:                                                            ║\n",
     "║   1. Ensure assets.zip exists in: ", data_path, "                          ║\n",
-    "║   2. The ZIP file must contain: ", RAW_DTA_FILENAME, "                     ║\n",
+    "║   2. The ZIP file must contain: ", RAW_DTA_DISPLAY, "                     ║\n",
     "║   3. Encoding: latin1 (handled automatically)                              ║\n",
     "║                                                                            ║\n",
     "║ Alternative: Place .dta files directly in the data/ directory              ║\n",
@@ -195,8 +197,8 @@ load_from_zip <- function(zip_file, data_path) {
     # FALLBACK: Look for .dta files (requires temp extraction due to haven::read_dta limitation)
     candidate_dta <- zip_contents$Name[grepl("\\.dta$", zip_contents$Name, ignore.case = TRUE)]
 
-    # Prefer the known combined microdata file name if present
-    preferred_match <- candidate_dta[basename(candidate_dta) == RAW_DTA_FILENAME]
+    # Prefer the known combined microdata file (match stable prefix, any date)
+    preferred_match <- candidate_dta[grepl(RAW_DTA_PATTERN, basename(candidate_dta))]
     dta_files_in_zip <- if (length(preferred_match) > 0) preferred_match else candidate_dta
 
     if (length(dta_files_in_zip) == 0) {
