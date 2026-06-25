@@ -1,0 +1,18 @@
+linters: linters_with_defaults(
+    line_length_linter = line_length_linter(100L),
+    # box::use() makes imports available in ways static analysis can't see, so
+    # object_usage_linter produces false positives on every imported symbol.
+    object_usage_linter = NULL,
+    object_name_linter = object_name_linter(
+      styles = c("snake_case", "SNAKE_CASE", "symbols", "CamelCase")
+    ),
+    commented_code_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    "app/js",
+    "app/static",
+    "app/styles",
+    "tests/cypress",
+    "renv"
+  )

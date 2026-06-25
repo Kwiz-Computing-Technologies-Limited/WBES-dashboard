@@ -4,7 +4,7 @@
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span, HTML,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, observe, renderText, textOutput,
-        downloadButton, downloadHandler, reactiveVal],
+        downloadButton, downloadHandler, reactiveVal, bindCache],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate, left_join, group_by, summarize, ungroup, slice_max],
@@ -551,7 +551,16 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       }, error = function(e) {
         NULL
       })
-    })
+    }) |>
+      # WB macro for a country-year is invariant to WBES filter changes, so cache
+      # by country + survey year to avoid recompute/refetch on every filter change.
+      bindCache(
+        input$country_select,
+        {
+          d <- country_data()
+          if (!is.null(d$year) && length(d$year) > 0) d$year[1] else NA_integer_
+        }
+      )
 
     # Geographic map for country profile
     output$country_profile_map <- renderLeaflet({

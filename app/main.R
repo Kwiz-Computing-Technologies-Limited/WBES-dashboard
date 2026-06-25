@@ -13,10 +13,7 @@ box::use(
     bs_theme, bs_add_rules, nav_panel, nav_spacer, nav_menu,
     nav_item, page_navbar, card, card_header, card_body, sidebar, layout_sidebar
   ],
-  waiter[useWaiter, waiterPreloader, spin_fading_circles, waiter_show, waiter_hide],
-  here[here],
-  future[future, plan],
-  promises[`%...>%`, `%...!%`]
+  waiter[useWaiter]
 )
 
 box::use(
@@ -39,14 +36,25 @@ box::use(
   app/view/mod_data_quality,
   app/view/mod_about,
   app/view/mod_mobile_ui,
-  app/logic/wbes_data[load_wbes_data],
-  app/logic/shared_filters[get_filter_choices, remove_na_columns],
+  app/logic/data_artifacts[load_app_data],
+  app/logic/shared_filters[get_filter_choices],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
                            manage_regions_modal_ui, edit_region_modal_ui, custom_regions_storage],
   app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
-                           manage_sectors_modal_ui, edit_sector_modal_ui, custom_sectors_storage],
-  app/logic/wb_integration[prefetch_wb_data_for_countries]
+                           manage_sectors_modal_ui, edit_sector_modal_ui, custom_sectors_storage]
 )
+
+# ---- App-scope data load: ONCE per R process, shared across all sessions ----
+# The heavy ETL (read .dta, World Bank enrichment, aggregation, macro prefetch)
+# runs OFFLINE in scripts/build_data.R. Here we only read the small precomputed
+# artifacts from data/processed/. No .dta read, no World Bank API on this path.
+# Falls back to a one-time ETL if artifacts are missing (see load_app_data()).
+APP_DATA <- load_app_data()
+
+# Shared, bounded LRU cache backing bindCache() across ALL sessions. Cached
+# values (e.g. World Bank macro lookups, heatmap matrices) are read-only, so a
+# cross-session cache is safe and lets common queries reuse work between users.
+shiny::shinyOptions(cache = cachem::cache_mem(max_size = 250 * 1024^2, evict = "lru"))
 
 # Helper function to detect mobile from User-Agent
 detect_mobile_from_ua <- function(request) {
@@ -604,143 +612,11 @@ ui <- function(request) {
   #' @export
   server <- function(input, output, session) {
 
-  # Set up parallel processing plan for async operations
-  # Use sequential on Posit Cloud (multisession fails), multisession locally
-  if (Sys.getenv("SHINY_PORT") != "" || Sys.getenv("R_CONFIG_ACTIVE") == "rsconnect") {
-    plan("sequential")
-  } else {
-    plan("multisession", workers = 2)
-  }
-
-  # Show loading screen
-  waiter_show(
-    html = tags$div(
-      spin_fading_circles(),
-      tags$h4("Loading WBES Data...", class = "mt-3", style = "color: #1B6B5F;")
-    ),
-    color = "#FFFFFF"
-  )
-
-    # Load data reactively (shared across modules)
-    wbes_data <- shiny::reactiveVal(NULL)
-
-    # Prefetched World Bank data (cached at startup)
-    wb_prefetched_data <- shiny::reactiveVal(NULL)
-
-  # Initialize data loading with async/futures for non-blocking operations
-  shiny::observe({
-    # Show loading notification
-    shiny::showNotification(
-      "Loading WBES Enterprise Survey data...",
-      type = "message",
-      duration = NULL,
-      id = "wbes_loading"
-    )
-
-    # Wrap data loading in a future for async execution
-    future({
-      tryCatch({
-        # Load data from assets.zip or .dta files (real data required)
-        data <- load_wbes_data(
-          data_path = here("data"),
-          use_cache = TRUE,
-          cache_hours = 24
-        )
-
-        # Remove NA columns from all data components
-        if (!is.null(data$latest)) {
-          data$latest <- remove_na_columns(data$latest)
-        }
-        if (!is.null(data$processed)) {
-          data$processed <- remove_na_columns(data$processed)
-        }
-        if (!is.null(data$country_panel)) {
-          data$country_panel <- remove_na_columns(data$country_panel)
-        }
-        if (!is.null(data$country_sector)) {
-          data$country_sector <- remove_na_columns(data$country_sector)
-        }
-        if (!is.null(data$country_size)) {
-          data$country_size <- remove_na_columns(data$country_size)
-        }
-        if (!is.null(data$country_region)) {
-          data$country_region <- remove_na_columns(data$country_region)
-        }
-
-        data
-
-      }, error = function(e) {
-        message("Error loading WBES data: ", e$message)
-        stop("Failed to load WBES data. Please ensure data/assets.zip is present.")
-      })
-    }) %...>% (function(data) {
-      # Success handler: set the reactive value
-      wbes_data(data)
-
-      # Remove WBES loading notification and show success
-      shiny::removeNotification(id = "wbes_loading")
-      shiny::showNotification(
-        sprintf("WBES data loaded: %d countries, %s firms",
-                length(unique(data$latest$country)),
-                format(nrow(data$processed), big.mark = ",")),
-        type = "message",
-        duration = 4
-      )
-
-      # Now prefetch World Bank data for all countries
-      shiny::showNotification(
-        "Loading World Bank macro indicators...",
-        type = "message",
-        duration = NULL,
-        id = "wb_loading"
-      )
-
-      # Prefetch WB data in the background
-      if (!is.null(data$countries) && length(data$countries) > 0) {
-        tryCatch({
-          wb_data <- prefetch_wb_data_for_countries(
-            wbes_countries = data$countries,
-            timeout_seconds = 300  # 5 minutes timeout
-          )
-          wb_prefetched_data(wb_data)
-
-          if (!is.null(wb_data)) {
-            shiny::removeNotification(id = "wb_loading")
-            shiny::showNotification(
-              sprintf("World Bank data loaded for %d countries", length(wb_data$by_country)),
-              type = "message",
-              duration = 5
-            )
-          } else {
-            shiny::removeNotification(id = "wb_loading")
-            shiny::showNotification(
-              "World Bank data unavailable - using live API fallback",
-              type = "warning",
-              duration = 5
-            )
-          }
-        }, error = function(e) {
-          shiny::removeNotification(id = "wb_loading")
-          shiny::showNotification(
-            paste("WB data prefetch failed:", e$message),
-            type = "warning",
-            duration = 5
-          )
-        })
-      }
-
-      waiter_hide()
-    }) %...!% (function(error) {
-      # Error handler: show error message and hide waiter
-      message("Async data loading failed: ", error$message)
-      waiter_hide()
-      shiny::showNotification(
-        paste("Failed to load data:", error$message),
-        type = "error",
-        duration = NULL
-      )
-    })
-  })
+  # Data is already loaded ONCE at app scope (APP_DATA) and shared across all
+  # sessions. Expose it through reactives so existing module wiring is unchanged.
+  # No per-session ETL, no .dta read, no World Bank API on the startup path.
+  wbes_data <- shiny::reactiveVal(APP_DATA)
+  wb_prefetched_data <- shiny::reactiveVal(APP_DATA$wb_macro)
 
   # Custom regions and sectors storage
   custom_regions <- shiny::reactiveVal(list())

@@ -13,6 +13,13 @@ data/wbes_processed_cache/
 data/*.rds
 data/.extracted/*.dta
 
+# Firm-level microdata artifact: NOT committed to the (public) repo. The app
+# fetches it at startup from WBES_PROCESSED_URL (e.g. Firebase Storage) and falls
+# back to this local file in development. The small AGGREGATE artifacts in
+# data/processed/ (latest, country_panel, regional, meta.rds, wb_macro.rds, ...)
+# ARE committed and are safe to publish.
+data/processed/processed.parquet
+
 # Methodology files
 ES-Indicators-Database-Global-Methodology_November_24_2025.dta
 *.dta

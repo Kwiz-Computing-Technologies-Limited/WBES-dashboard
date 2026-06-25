@@ -2,3 +2,12 @@
 ^renv\.lock$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+# Status / planning docs — not part of the app
+^.*\.md$
+^docs$
+# Raw source microdata (never deploy the 674 MB .dta; the app reads data/processed/)
+^data/assets\.zip$
+# Build + scratch
+^scripts/_.*\.R$
+^\.DS_Store$
+^tests/cypress$
