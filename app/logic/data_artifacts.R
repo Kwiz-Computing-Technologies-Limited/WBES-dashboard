@@ -14,7 +14,8 @@ box::use(
   here[here],
   logger[log_info, log_warn],
   stats[setNames],
-  utils[download.file]
+  utils[download.file, URLencode],
+  httr[GET, add_headers, write_disk, timeout, status_code, content]
 )
 
 ARTIFACT_SUBDIR <- "processed"
@@ -32,7 +33,51 @@ PARQUET_TABLES <- c(
 # drill-down in the few modules that use it.
 PROCESSED_URL_ENV <- "WBES_PROCESSED_URL"
 
+#' Download a gs://bucket/object using the runtime service-account identity
+#'
+#' Uses Application Default Credentials via the GCP metadata server (available on
+#' Cloud Run / GCE). No key files, no public bucket. Returns TRUE on success.
+#'
+#' @param gs_url A gs://bucket/path/to/object URL
+#' @param dest Local destination path
+#' @return TRUE if the object was downloaded to `dest`
+download_gcs_object <- function(gs_url, dest) {
+  m <- regmatches(gs_url, regexec("^gs://([^/]+)/(.+)$", gs_url))[[1]]
+  if (length(m) != 3) {
+    log_warn("Malformed gs:// URL for processed.parquet")
+    return(FALSE)
+  }
+  bucket <- m[2]
+  object <- URLencode(m[3], reserved = TRUE)
+
+  token <- tryCatch({
+    resp <- GET(
+      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+      add_headers(`Metadata-Flavor` = "Google"), timeout(5)
+    )
+    if (status_code(resp) != 200) NULL else content(resp)$access_token
+  }, error = function(e) NULL)
+  if (is.null(token)) {
+    log_warn("Could not obtain a GCS access token from the metadata server")
+    return(FALSE)
+  }
+
+  api <- sprintf("https://storage.googleapis.com/storage/v1/b/%s/o/%s?alt=media", bucket, object)
+  ok <- tryCatch({
+    resp <- GET(api, add_headers(Authorization = paste("Bearer", token)),
+                write_disk(dest, overwrite = TRUE), timeout(120))
+    status_code(resp) == 200
+  }, error = function(e) {
+    log_warn(sprintf("GCS download failed: %s", e$message))
+    FALSE
+  })
+  isTRUE(ok) && file.exists(dest) && file.size(dest) > 0
+}
+
 #' Resolve the firm-level processed.parquet to a local path (download if needed)
+#'
+#' Order: local file (dev / image-baked) -> WBES_PROCESSED_URL (gs:// via the
+#' service account, or an https download URL) -> NULL.
 #'
 #' @param data_path Base data directory
 #' @return Path to a readable processed.parquet, or NULL if unavailable
@@ -45,18 +90,26 @@ resolve_processed_path <- function(data_path = here("data")) {
   url <- Sys.getenv(PROCESSED_URL_ENV, unset = "")
   if (nzchar(url)) {
     dest <- file.path(tempdir(), "wbes_processed.parquet")
-    if (!file.exists(dest)) {
-      log_info(sprintf("Downloading firm-level microdata from %s ...", PROCESSED_URL_ENV))
-      ok <- tryCatch({
+    if (file.exists(dest)) {
+      return(dest)
+    }
+    log_info(sprintf("Fetching firm-level microdata from %s ...", PROCESSED_URL_ENV))
+    ok <- if (grepl("^gs://", url)) {
+      download_gcs_object(url, dest)
+    } else {
+      tryCatch({
         download.file(url, dest, mode = "wb", quiet = TRUE)
-        TRUE
+        file.exists(dest)
       }, error = function(e) {
         log_warn(sprintf("Download of processed.parquet failed: %s", e$message))
         FALSE
       })
-      if (!ok || !file.exists(dest)) return(NULL)
     }
-    return(dest)
+    if (isTRUE(ok) && file.exists(dest)) {
+      return(dest)
+    }
+    log_warn("Remote fetch of processed.parquet failed; firm-level drill-downs unavailable.")
+    return(NULL)
   }
 
   log_warn(paste0(
