@@ -1,0 +1,30 @@
+# Controls what is uploaded to Cloud Build (the Docker build context).
+# NOTE: when this file exists, gcloud uses it INSTEAD of .gitignore — so the
+# git-ignored data/processed/processed.parquet IS uploaded here on purpose, to be
+# baked into the (private) image for a self-contained, fast-cold-start deploy.
+
+.git/
+.gitignore
+.Rproj.user/
+*.Rproj
+.Rhistory
+.RData
+
+# renv library is reinstalled inside the image; don't ship it
+renv/library/
+renv/staging/
+renv/python/
+
+# Never upload the 674 MB raw microdata (only used by scripts/build_data.R)
+data/assets.zip
+data/*.dta
+data/*.csv
+data/wbes_processed_cache/
+
+# Docs / scratch / tests not needed in the image
+*.md
+docs/
+tests/cypress/
+*.log
+.DS_Store
+.posit/
