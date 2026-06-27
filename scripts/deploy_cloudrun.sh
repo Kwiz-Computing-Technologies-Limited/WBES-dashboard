@@ -48,10 +48,12 @@ gcloud run deploy "${SERVICE}" \
   --memory 2Gi \
   --cpu 2 \
   --cpu-boost \
+  --no-cpu-throttling \
   --timeout 300 \
-  --concurrency 40 \
-  --min-instances 0 \
-  --max-instances 4
+  --concurrency 60 \
+  --min-instances 1 \
+  --max-instances 4 \
+  --set-env-vars "WBES_PROCESSED_URL=gs://${PROJECT}-wbes-data/processed.parquet"
 
 echo "==> Done. Service URL:"
 gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT}" \

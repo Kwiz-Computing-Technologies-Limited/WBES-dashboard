@@ -56,6 +56,25 @@ APP_DATA <- load_app_data()
 # cross-session cache is safe and lets common queries reuse work between users.
 shiny::shinyOptions(cache = cachem::cache_mem(max_size = 250 * 1024^2, evict = "lru"))
 
+# Compile the Bootstrap/Sass theme ONCE at app scope. SCSS compilation is ~1-2s;
+# doing it inside ui() recompiled it on EVERY page load, which dominated request
+# latency. The theme is request-independent, so build it once and share it.
+KWIZ_THEME <- bs_theme(
+  version = 5,
+  bootswatch = "flatly",
+  primary = "#1B6B5F",
+  secondary = "#F49B7A",
+  success = "#2E7D32",
+  info = "#17a2b8",
+  warning = "#F4A460",
+  danger = "#dc3545",
+  bg = "#FFFFFF",
+  fg = "#333333",
+  base_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif",
+  heading_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+) |>
+  bs_add_rules(sass::sass_file("app/styles/main.scss"))
+
 # Helper function to detect mobile from User-Agent
 detect_mobile_from_ua <- function(request) {
   if (is.null(request) || is.null(request$HTTP_USER_AGENT)) {
@@ -490,6 +509,22 @@ mobile_ui_wrapper <- function(ns = function(x) x) {
   )
 }
 
+# Pre-render the heavy desktop UI ONCE to an HTML blob, preserving its <head>
+# content and JS/CSS dependencies. Serializing the ~768 KB / ~25-module tag tree
+# dominated per-request TTFB (~2 s locally, ~5 s on Cloud Run). Emitting the
+# cached string instead is effectively free; Shiny still injects the preserved
+# dependencies and head into the document, so widgets and styling are intact.
+.desktop_rt <- htmltools::renderTags(desktop_ui(KWIZ_THEME))
+DESKTOP_UI <- htmltools::attachDependencies(
+  tagList(
+    if (length(.desktop_rt$head)) tags$head(HTML(as.character(.desktop_rt$head))),
+    HTML(.desktop_rt$html)
+  ),
+  .desktop_rt$dependencies
+)
+# Mobile UI is small (~25 KB); build it once too.
+MOBILE_UI <- mod_mobile_ui$ui("mobile_ui")
+
 #' @export
 ui <- function(request) {
   # Check for explicit UI mode in query string
@@ -505,23 +540,7 @@ ui <- function(request) {
     initial_mobile <- detect_mobile_from_ua(request)
   }
 
-  # Desktop UI with Kwiz Research Theme
-  kwiz_theme <- bs_theme(
-    version = 5,
-    bootswatch = "flatly",
-    primary = "#1B6B5F",
-    secondary = "#F49B7A",
-    success = "#2E7D32",
-    info = "#17a2b8",
-    warning = "#F4A460",
-    danger = "#dc3545",
-    bg = "#FFFFFF",
-    fg = "#333333",
-    base_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif",
-    heading_font = "Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
-  ) |>
-    bs_add_rules(sass::sass_file("app/styles/main.scss"))
-
+  # Desktop UI uses the app-scope KWIZ_THEME (compiled once, see top of module).
   # Build unified UI with both views - switching happens client-side without reload
   tagList(
     useShinyjs(),
@@ -588,14 +607,14 @@ ui <- function(request) {
     tags$div(
       id = "desktop_container",
       class = "desktop-view-container",
-      desktop_ui(kwiz_theme)
+      DESKTOP_UI
     ),
 
     # Mobile UI container
     tags$div(
       id = "mobile_container",
       class = "mobile-view-container",
-      mod_mobile_ui$ui("mobile_ui"),
+      MOBILE_UI,
       # Switch to desktop button (FAB style)
       actionButton(
         "switch_to_desktop",
