@@ -15,9 +15,44 @@ permissions:
   id-token: write
 
 jobs:
+  # Automatic review of every opened/updated PR. On pull_request events
+  # claude-code-action runs only when given a `prompt` (agent mode); without one
+  # it logs "No trigger found" and skips, so the review never happens.
   claude-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request for correctness bugs, security problems and
+            regressions. Report only findings you are confident in, each with the
+            concrete input or state that goes wrong. Use inline comments for issues
+            tied to specific lines and one top-level comment for the summary.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+  # Interactive: answers and fixes on an "@claude" mention in a PR comment.
+  # No prompt here -- a prompt would switch comment events to agent mode and
+  # ignore what the comment asked for.
+  claude-mention:
     if: |
-      github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
@@ -27,7 +62,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Claude Code Action (review + autofix on @claude mention)
+      - name: Claude Code Action (@claude mention)
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
