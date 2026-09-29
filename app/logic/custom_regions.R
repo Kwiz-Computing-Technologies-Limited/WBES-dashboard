@@ -6,7 +6,8 @@ box::use(
         selectizeInput, actionButton, modalButton, removeModal, icon, tags],
   dplyr[filter],
   stats[setNames],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[set_input_value_js]
 )
 
 #' @export
@@ -99,8 +100,7 @@ manage_regions_modal_ui <- function(ns, custom_regions) {
                   icon = icon("edit"),
                   class = "btn-sm btn-outline-primary me-1",
                   title = "Edit this region",
-                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                  ns("edit_region_name"), region_name)
+                  onclick = set_input_value_js(ns("edit_region_name"), region_name)
                 ),
                 actionButton(
                   ns(paste0("delete_region_", region_name)),
@@ -108,8 +108,7 @@ manage_regions_modal_ui <- function(ns, custom_regions) {
                   icon = icon("trash"),
                   class = "btn-sm btn-outline-danger",
                   title = "Delete this region",
-                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                  ns("delete_region_name"), region_name)
+                  onclick = set_input_value_js(ns("delete_region_name"), region_name)
                 )
               )
             )

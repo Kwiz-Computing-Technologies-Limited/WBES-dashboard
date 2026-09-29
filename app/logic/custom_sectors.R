@@ -7,7 +7,8 @@ box::use(
         selectizeInput, actionButton, modalButton, removeModal, icon, tags],
   dplyr[filter],
   stats[setNames],
-  utils[head]
+  utils[head],
+  app/logic/shared_filters[set_input_value_js]
 )
 
 #' @export
@@ -100,8 +101,7 @@ manage_sectors_modal_ui <- function(ns, custom_sectors) {
                   icon = icon("edit"),
                   class = "btn-sm btn-outline-primary me-1",
                   title = "Edit this sector group",
-                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                  ns("edit_sector_name"), sector_name)
+                  onclick = set_input_value_js(ns("edit_sector_name"), sector_name)
                 ),
                 actionButton(
                   ns(paste0("delete_sector_", sector_name)),
@@ -109,8 +109,7 @@ manage_sectors_modal_ui <- function(ns, custom_sectors) {
                   icon = icon("trash"),
                   class = "btn-sm btn-outline-danger",
                   title = "Delete this sector group",
-                  onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                                  ns("delete_sector_name"), sector_name)
+                  onclick = set_input_value_js(ns("delete_sector_name"), sector_name)
                 )
               )
             )

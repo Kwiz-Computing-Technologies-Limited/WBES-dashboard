@@ -269,9 +269,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
       if (!is_aggregated(wbes_data())) return(NULL)
       filters <- if (!is.null(global_filters)) global_filters() else list()
       active <- function(x) !is.null(x) && length(x) > 0 && !all(x %in% c("all", "", NA))
+      # The ownership split (and the page's ownership selector) always applies;
+      # sector and size only through the global filters.
       dims <- c("female_ownership",
-                if (active(filters$sector) || active(input$sector)) "sector",
-                if (active(filters$firm_size) || active(input$firm_size)) "firm_size")
+                if (active(filters$sector)) "sector",
+                if (active(filters$firm_size)) "firm_size")
       scope <- apply_common_filters(
         wbes_data()$processed,
         region_value = filters$region, income_value = filters$income,

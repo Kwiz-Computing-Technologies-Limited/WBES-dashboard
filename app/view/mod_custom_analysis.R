@@ -15,8 +15,44 @@ box::use(
           coord_flip, theme_minimal, theme, labs, element_text, ggtitle,
           facet_wrap, scale_fill_manual, scale_color_manual],
   tidyr[pivot_longer],
+  htmltools[htmlEscape],
   DT[dataTableOutput, renderDataTable, datatable]
 )
+
+#' Build the downloadable HTML report
+#'
+#' Title and author are typed by the visitor, so they are HTML-escaped: pasted
+#' raw, a title such as `</title><script>...` would run when the file is opened.
+#'
+#' @param data The analysed rows (one per country)
+#' @param indicators Selected indicator ids
+#' @param title,author Report title and author as entered
+#' @return A complete HTML document as one string
+#' @export
+generate_html_report <- function(data, indicators, title, author) {
+  title <- htmlEscape(title)
+  author <- htmlEscape(author)
+  paste0(
+    "<!DOCTYPE html><html><head>",
+    "<title>", title, "</title>",
+    "<style>",
+    "body { font-family: Arial, sans-serif; margin: 40px; }",
+    "h1 { color: #1B6B5F; }",
+    "table { border-collapse: collapse; width: 100%; margin: 20px 0; }",
+    "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
+    "th { background-color: #1B6B5F; color: white; }",
+    "</style></head><body>",
+    "<h1>", title, "</h1>",
+    "<p><strong>Author:</strong> ", author, "</p>",
+    "<p><strong>Date:</strong> ", Sys.Date(), "</p>",
+    "<p><strong>Countries Analyzed:</strong> ", nrow(data), "</p>",
+    "<p><strong>Indicators:</strong> ", length(indicators), "</p>",
+    "<hr>",
+    "<h2>Summary Statistics</h2>",
+    "<p>This report provides a comprehensive analysis of business environment indicators.</p>",
+    "</body></html>"
+  )
+}
 
 #' @export
 ui <- function(id) {
@@ -549,29 +585,6 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
     )
 
-    # HTML report generator
-    generate_html_report <- function(data, indicators, title, author) {
-      paste0(
-        "<!DOCTYPE html><html><head>",
-        "<title>", title, "</title>",
-        "<style>",
-        "body { font-family: Arial, sans-serif; margin: 40px; }",
-        "h1 { color: #1B6B5F; }",
-        "table { border-collapse: collapse; width: 100%; margin: 20px 0; }",
-        "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
-        "th { background-color: #1B6B5F; color: white; }",
-        "</style></head><body>",
-        "<h1>", title, "</h1>",
-        "<p><strong>Author:</strong> ", author, "</p>",
-        "<p><strong>Date:</strong> ", Sys.Date(), "</p>",
-        "<p><strong>Countries Analyzed:</strong> ", nrow(data), "</p>",
-        "<p><strong>Indicators:</strong> ", length(indicators), "</p>",
-        "<hr>",
-        "<h2>Summary Statistics</h2>",
-        "<p>This report provides a comprehensive analysis of business environment indicators.</p>",
-        "</body></html>"
-      )
-    }
 
   })
 }

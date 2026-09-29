@@ -23,6 +23,7 @@ data/processed/processed.parquet
 # still finer than the country aggregates above, so it is bundled from local disk
 # at deploy time rather than published in this repo.
 data/processed/processed_cells.parquet
+data/public/
 
 # Methodology files
 ES-Indicators-Database-Global-Methodology_November_24_2025.dta

@@ -3,6 +3,7 @@
 # Provides unified filtering logic across all modules
 
 box::use(
+  jsonlite[toJSON],
   shiny[reactive, reactiveVal, observeEvent],
   dplyr[filter, select, contains, group_by, ungroup],
   stats[na.omit]
@@ -207,4 +208,55 @@ create_filter_state <- function() {
     custom_regions = reactiveVal(list()),
     active_tab = reactiveVal("overview")
   )
+}
+
+#' JavaScript that sends a value to a Shiny input, safe to put in an onclick
+#'
+#' Both arguments are written as JSON string literals, so a value such as a
+#' user-typed region name cannot close the string and run its own code. (The
+#' attribute's HTML escaping does not protect a JavaScript string: the browser
+#' decodes the entities before it runs the handler.)
+#'
+#' @param input_id Namespaced input id
+#' @param value The value to send
+#' @return A single JavaScript statement
+#' @export
+set_input_value_js <- function(input_id, value) {
+  sprintf("Shiny.setInputValue(%s, %s, {priority: 'event'})",
+          toJSON(input_id, auto_unbox = TRUE), toJSON(value, auto_unbox = TRUE))
+}
+
+#' Parse a list of country names from a URL parameter
+#'
+#' Accepts "|" or "," between names and ignores spaces around them. Eleven
+#' country names contain a comma themselves ("Korea, Rep.", "Congo, Dem.
+#' Rep."), so after a comma split, a piece that is not a country is joined with
+#' the pieces after it until the result is one.
+#'
+#' @param x The raw parameter value, e.g. "Kenya,Korea, Rep.|Uganda"
+#' @param countries Valid country names
+#' @return The recognised countries, in the order given, without duplicates
+#' @export
+parse_country_list <- function(x, countries) {
+  if (is.null(x) || !nzchar(x)) return(character(0))
+  pieces <- trimws(unlist(strsplit(x, "|", fixed = TRUE)))
+  out <- character(0)
+  for (piece in pieces) {
+    parts <- trimws(strsplit(piece, ",", fixed = TRUE)[[1]])
+    i <- 1
+    while (i <= length(parts)) {
+      found <- FALSE
+      for (j in seq(length(parts), i)) {
+        candidate <- paste(parts[i:j], collapse = ", ")
+        if (candidate %in% countries) {
+          out <- c(out, candidate)
+          i <- j + 1
+          found <- TRUE
+          break
+        }
+      }
+      if (!found) i <- i + 1
+    }
+  }
+  unique(out)
 }
