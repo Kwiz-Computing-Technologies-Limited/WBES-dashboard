@@ -154,7 +154,7 @@ ui <- function(id) {
                   ),
                   column(6,
                     textInput(ns("report_author"), "Author/Organization",
-                      value = "Kwiz Research",
+                      value = "Kwiz Computing Technologies",
                       placeholder = "Enter author name")
                   )
                 ),

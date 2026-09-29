@@ -10,11 +10,12 @@ box::use(
   leaflet[leafletOutput, renderLeaflet],
   dplyr[filter, arrange, mutate, group_by, summarise, coalesce],
   tidyr[pivot_wider],
-  stats[setNames, runif],
+  stats[setNames],
   utils[head],
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
+  app/logic/data_artifacts[is_aggregated, withheld_note],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/chart_utils[create_chart_caption, map_with_caption]
@@ -145,17 +146,17 @@ ui <- function(id) {
     )
   ),
 
-    # SME Finance Gap
+    # Credit-line access by country
     fluidRow(
       class = "mb-4",
       column(8,
       card(
-        card_header(icon("chart-bar"), "SME Finance Gap by Country"),
+        card_header(icon("chart-bar"), "Credit-Line Access by Country"),
         card_body(
-          chart_with_download(ns, "sme_finance_gap", height = "400px", title = "SME Finance Gap by Country"),
+          chart_with_download(ns, "sme_finance_gap", height = "400px", title = "Credit-Line Access by Country"),
           p(
             class = "text-muted small mt-2",
-            "Bars estimate the financing gap faced by SMEs, spotlighting markets where credit shortfalls are most acute."
+            "Share of surveyed firms with a line of credit or loan, for the twelve economies with the highest access under the current filters."
           )
         )
       )
@@ -168,7 +169,8 @@ ui <- function(id) {
           p(
             class = "text-muted small mt-2",
             "Bars compare credit access for female- versus male-owned firms, illustrating gender disparities in financing."
-          )
+          ),
+          uiOutput(ns("withheld_note"))
         )
       )
     )
@@ -258,6 +260,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       data
+    })
+
+    # Public data: the ownership split (and any sector/size selection) cannot
+    # include firms whose groups were too small to publish by that attribute.
+    output$withheld_note <- renderUI({
+      req(wbes_data())
+      if (!is_aggregated(wbes_data())) return(NULL)
+      filters <- if (!is.null(global_filters)) global_filters() else list()
+      active <- function(x) !is.null(x) && length(x) > 0 && !all(x %in% c("all", "", NA))
+      dims <- c("female_ownership",
+                if (active(filters$sector) || active(input$sector)) "sector",
+                if (active(filters$firm_size) || active(input$firm_size)) "firm_size")
+      scope <- apply_common_filters(
+        wbes_data()$processed,
+        region_value = filters$region, income_value = filters$income,
+        year_value = filters$year, custom_regions = filters$custom_regions,
+        filter_by_region_fn = filter_by_region
+      )
+      note <- withheld_note(scope, dims)
+      if (is.null(note)) return(NULL)
+      tags$p(class = "text-muted small mb-0", icon("info-circle"), " ", note)
     })
 
     # Interactive Map - uses country_panel when year filter active
@@ -498,7 +521,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
     })
     
-    # SME finance gap - aggregate firm-level data by country
+    # Credit-line access - aggregate firm-level data by country
     output$sme_finance_gap <- renderPlotly({
       req(filtered_data())
       firm_data <- filtered_data()
@@ -518,22 +541,15 @@ server <- function(id, wbes_data, global_filters = NULL) {
 
         data$country <- factor(data$country, levels = unique(data$country))
 
-        # Simulated gap data
-        data$need <- data$firms_with_credit_line_pct + runif(nrow(data), 20, 40)
-        data$gap <- data$need - data$firms_with_credit_line_pct
-
         plot_ly(data) |>
-        add_trace(y = ~country, x = ~firms_with_credit_line_pct, 
-                  name = "Current Access", type = "bar", orientation = "h",
-                  marker = list(color = "#1B6B5F")) |>
-        add_trace(y = ~country, x = ~gap,
-                  name = "Unmet Need (Gap)", type = "bar", orientation = "h",
-                  marker = list(color = "#F49B7A")) |>
+        add_trace(y = ~country, x = ~firms_with_credit_line_pct,
+                  name = "Firms with a line of credit", type = "bar", orientation = "h",
+                  marker = list(color = "#1B6B5F"),
+                  hovertemplate = "%{y}: %{x:.1f}%<extra></extra>") |>
         layout(
-          barmode = "stack",
-          xaxis = list(title = "% of SMEs", ticksuffix = "%"),
+          xaxis = list(title = "% of firms with a line of credit", ticksuffix = "%"),
           yaxis = list(title = ""),
-          legend = list(orientation = "h", y = -0.15),
+          showlegend = FALSE,
           margin = list(l = 100),
           paper_bgcolor = "rgba(0,0,0,0)"
         ) |>

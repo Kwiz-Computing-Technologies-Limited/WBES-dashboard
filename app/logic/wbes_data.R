@@ -13,6 +13,7 @@ box::use(
   stats[runif, setNames, na.omit],
   here[here],
   arrow[as_arrow_table],
+  countrycode[countrycode],
   app/logic/column_labels[extract_column_labels, create_wbes_label_mapping],
   app/logic/wb_integration[get_or_fetch_wb_data, get_wb_income_classifications, enrich_wbes_with_income],
   app/logic/parquet_cache[is_parquet_cache_fresh, load_wbes_parquet, save_wbes_parquet, to_df,
@@ -547,10 +548,15 @@ process_microdata <- function(data) {
         )
       ),
       country = trimws(country),  # Remove any whitespace
-      country_code = coalesce_chr(
-        get0("wbcode", ifnotfound = NULL),
-        get0("country_abr", ifnotfound = NULL)
+      country_code = resolve_country_code(
+        wbcode = get0("wbcode", ifnotfound = NULL),
+        country_abr = get0("country_abr", ifnotfound = NULL),
+        a0 = get0("a0", ifnotfound = NULL),
+        country = country
       ),
+      # A file that names countries only by code still gets a country name.
+      country = ifelse(is.na(country) | country == "",
+                       iso3_to_name(country_code), country),
       year = get0("year", ifnotfound = NA_integer_),
       region = if ("region" %in% names(data)) as.character(as_factor(region)) else NA_character_,
       # Income will be enriched from World Bank data after processing
@@ -677,6 +683,58 @@ compute_export_share <- function(data) {
   }
 
   NA_real_
+}
+
+#' Keep only values that are ISO3 country codes (three letters), else NA
+#' @param x Vector of candidate codes
+#' @return Character vector of upper-case ISO3 codes or NA
+#' @export
+as_iso3 <- function(x) {
+  if (is.null(x)) return(NULL)
+  x <- toupper(trimws(as.character(x)))
+  ifelse(!is.na(x) & grepl("^[A-Z]{3}$", x), x, NA_character_)
+}
+
+#' ISO3 country code for each microdata row
+#'
+#' Row by row: `wbcode`, then `country_abr`, then `a0`, then a match on the
+#' country name. `a0` counts only where it holds a three-letter code: some
+#' releases carry the ISO3 code there alone, but in the combined Enterprise
+#' Surveys file `a0` is the questionnaire type (3 = "Core"), which must not
+#' become a country code. Rows without any code were previously dropped before
+#' aggregation, emptying the country tables for code-only files.
+#'
+#' @param wbcode,country_abr,a0 Candidate code columns (NULL when absent)
+#' @param country Country names, used when no column holds a code
+#' @return Character vector of ISO3 codes (NA where none can be found)
+#' @export
+resolve_country_code <- function(wbcode = NULL, country_abr = NULL, a0 = NULL,
+                                 country = NULL) {
+  n <- max(lengths(list(wbcode, country_abr, a0, country)))
+  code <- rep(NA_character_, n)
+  for (candidate in list(wbcode, country_abr, a0)) {
+    if (is.null(candidate)) next
+    code <- ifelse(is.na(code), as_iso3(candidate), code)
+  }
+  if (!is.null(country) && anyNA(code)) {
+    missing <- is.na(code) & !is.na(country) & country != ""
+    names_needed <- unique(country[missing])
+    matched <- suppressWarnings(
+      countrycode(names_needed, "country.name", "iso3c", warn = FALSE)
+    )
+    code[missing] <- matched[match(country[missing], names_needed)]
+  }
+  code
+}
+
+#' Country name for ISO3 codes (NA where unknown)
+#' @param code Character vector of ISO3 codes
+#' @return Character vector of country names
+#' @export
+iso3_to_name <- function(code) {
+  codes <- unique(code[!is.na(code)])
+  names <- suppressWarnings(countrycode(codes, "iso3c", "country.name", warn = FALSE))
+  names[match(code, codes)]
 }
 
 coalesce_chr <- function(...) {

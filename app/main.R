@@ -36,8 +36,8 @@ box::use(
   app/view/mod_data_quality,
   app/view/mod_about,
   app/view/mod_mobile_ui,
-  app/logic/data_artifacts[load_app_data],
-  app/logic/shared_filters[get_filter_choices],
+  app/logic/data_artifacts[load_app_data, is_aggregated, withheld_note],
+  app/logic/shared_filters[get_filter_choices, apply_common_filters],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
                            manage_regions_modal_ui, edit_region_modal_ui, custom_regions_storage],
   app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
@@ -90,9 +90,11 @@ detect_mobile_from_ua <- function(request) {
 desktop_ui <- function(kwiz_theme) {
   page_navbar(
     id = "main_navbar",
+    window_title = "Business Environment Benchmarking | Kwiz Computing Technologies",
     title = tags$span(
       tags$img(
-        src = "static/images/logo.svg",
+        src = "static/images/kct-logo.svg",
+        alt = "Kwiz Computing Technologies",
         height = "35px",
         style = "margin-right: 10px; vertical-align: middle;"
       ),
@@ -110,6 +112,15 @@ desktop_ui <- function(kwiz_theme) {
       useWaiter(),
       tags$style(HTML("
         .bslib-sidebar-layout { --bslib-sidebar-width: 280px; }
+        .navbar .kct-name-full { display: none; }
+        @media (max-width: 1599.98px) {
+          .navbar .navbar-brand { font-size: 1rem; }
+          .navbar .nav-link { padding-left: 0.45rem !important; padding-right: 0.45rem !important; }
+        }
+        @media (min-width: 1700px) {
+          .navbar .kct-name-full { display: inline; }
+          .navbar .kct-name-short { display: none; }
+        }
         .sidebar { background-color: #f8f9fa; border-right: 1px solid #dee2e6; overflow-y: auto; }
         .sidebar .card { margin-bottom: 1rem; background-color: white; }
         .sidebar h5 { color: #1B6B5F; font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }
@@ -250,6 +261,9 @@ desktop_ui <- function(kwiz_theme) {
             )
           )
         ),
+
+        # Public data: how many firms a sector/size selection cannot include
+        uiOutput("withheld_note"),
 
         # Tab-specific filters placeholder
         tags$div(
@@ -405,8 +419,12 @@ desktop_ui <- function(kwiz_theme) {
       tags$a(
         href = "https://kwizresearch.com",
         target = "_blank",
+        title = "Kwiz Computing Technologies",
         icon("external-link-alt"),
-        " Kwiz Research",
+        # The full name only where the navbar has room for it; otherwise the menu
+        # wraps to a second row and every tab is pushed out of view.
+        tags$span(class = "kct-name-full", " Kwiz Computing Technologies"),
+        tags$span(class = "kct-name-short", " KCT"),
         class = "nav-link",
         style = "color: #F49B7A !important;"
       )
@@ -432,7 +450,7 @@ desktop_ui <- function(kwiz_theme) {
               class = "col-md-6",
               tags$span(
                 icon("copyright"),
-                " 2025 ",
+                " 2026 ",
                 tags$a(
                   href = "https://kwizresearch.com",
                   target = "_blank",
@@ -465,9 +483,9 @@ mobile_ui_wrapper <- function(ns = function(x) x) {
     # Add viewport meta and styles in head
     tags$head(
       tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"),
-      tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
+      tags$link(rel = "icon", type = "image/x-icon", href = "static/favicon.ico"),
       # Mark body with UI mode for JS detection
-      tags$script(HTML("document.body.setAttribute('data-ui-mode', 'mobile');")),
+      tags$script(HTML("document.addEventListener('DOMContentLoaded', function() { document.body.setAttribute('data-ui-mode', 'mobile'); });")),
       tags$style(HTML("
         /* Mobile-specific styles */
         .desktop-switch-fab {
@@ -546,13 +564,14 @@ ui <- function(request) {
     useShinyjs(),
     tags$head(
       tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
-      tags$link(rel = "icon", type = "image/svg+xml", href = "static/images/favicon.svg"),
+      tags$link(rel = "icon", type = "image/x-icon", href = "static/favicon.ico"),
       tags$style(HTML("
         /* Hide containers based on view mode */
         .desktop-view-container { display: block; }
         .mobile-view-container { display: none; }
         body[data-ui-mode='mobile'] .desktop-view-container { display: none; }
-        body[data-ui-mode='mobile'] .mobile-view-container { display: block; }
+        /* Framework7 lays out against its container, so it needs the full viewport */
+        body[data-ui-mode='mobile'] .mobile-view-container { display: block; position: fixed; inset: 0; }
 
         /* Mobile FAB button for switching to desktop */
         .desktop-switch-fab {
@@ -587,8 +606,29 @@ ui <- function(request) {
       ")),
       # JavaScript for view switching without page reload
       tags$script(HTML(sprintf("
-        // Set initial UI mode
-        document.body.setAttribute('data-ui-mode', '%s');
+        // Set initial UI mode. This script runs in the page head, before the body
+        // element exists. (Never write the tag literally in this script:
+        // shinyapps.io injects its own scripts after the first occurrence of it
+        // in the page, which would cut this script in two.)
+        document.addEventListener('DOMContentLoaded', function() {
+          document.body.setAttribute('data-ui-mode', '%s');
+        });
+
+        // Deep links: ?tab=<module id> (e.g. ?tab=country_profile) opens that page,
+        // so a view can be shared or bookmarked. ?country= and ?countries= are read
+        // by the Country Profile and Cross-Country modules themselves. This waits
+        // for the first idle: a switch made while the navbar is still initialising
+        // leaves Overview active underneath the requested page.
+        $(document).one('shiny:idle', function() {
+          var tab = new URLSearchParams(window.location.search).get('tab');
+          if (!tab) return;
+          var link = document.querySelector(\".navbar a[data-bs-toggle='tab'][data-value='\" + CSS.escape(tab) + \"']\");
+          if (!link) return;
+          link.click();
+          // The fill layout scrolls the body element, not the window; open the
+          // page at its top.
+          setTimeout(function() { document.body.scrollTop = 0; }, 300);
+        });
 
         // Function to switch views
         window.switchUIMode = function(mode) {
@@ -901,6 +941,26 @@ ui <- function(request) {
       custom_regions = custom_regions(),
       custom_sectors = custom_sectors()
     )
+  })
+
+  # In the public aggregated data, firms from groups under 5 have their sector
+  # (then size) withheld. A sector or size selection therefore cannot include
+  # them; say how many, for the region/income/year in view.
+  output$withheld_note <- renderUI({
+    data <- wbes_data()
+    if (!is_aggregated(data)) return(NULL)
+    f <- global_filters()
+    active <- function(x) !is.null(x) && length(x) > 0 && !all(x %in% c("all", "", NA))
+    dims <- c("sector", "firm_size")[c(active(f$sector), active(f$firm_size))]
+    if (length(dims) == 0) return(NULL)
+    scope <- apply_common_filters(
+      data$processed,
+      region_value = f$region, income_value = f$income, year_value = f$year,
+      custom_regions = f$custom_regions, filter_by_region_fn = filter_by_region
+    )
+    note <- withheld_note(scope, dims)
+    if (is.null(note)) return(NULL)
+    tags$div(class = "small text-muted mt-3", icon("info-circle"), " ", note)
   })
 
   # Module servers - pass both raw data and filter state

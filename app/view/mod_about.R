@@ -196,7 +196,7 @@ Available at: https://www.enterprisesurveys.org'
                 )
               ),
               column(4,
-                h5(icon("blog"), " Kwiz Research Blog"),
+                h5(icon("blog"), " Kwiz Computing Technologies Blog"),
                 tags$ul(
                   tags$li(a(href = "https://kwizresearch.com/blog",
                             target = "_blank", "Data Quality Assessment Best Practices")),

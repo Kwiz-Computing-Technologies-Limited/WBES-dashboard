@@ -28,7 +28,7 @@ ui <- function(id) {
   ns <- NS(id)
 
   f7Page(
-    title = "WBES Dashboard",
+    title = "Business Environment Benchmarking | Kwiz Computing Technologies",
     options = list(
       theme = "ios",
       dark = FALSE,

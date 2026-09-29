@@ -19,6 +19,10 @@ data/.extracted/*.dta
 # data/processed/ (latest, country_panel, regional, meta.rds, wb_macro.rds, ...)
 # ARE committed and are safe to publish.
 data/processed/processed.parquet
+# Its aggregated stand-in (scripts/build_public_cells.R) is safe to deploy but is
+# still finer than the country aggregates above, so it is bundled from local disk
+# at deploy time rather than published in this repo.
+data/processed/processed_cells.parquet
 
 # Methodology files
 ES-Indicators-Database-Global-Methodology_November_24_2025.dta

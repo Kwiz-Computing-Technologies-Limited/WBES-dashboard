@@ -1,6 +1,0 @@
-<svg width="200" height="40" xmlns="http://www.w3.org/2000/svg">
-  <rect width="200" height="40" fill="#1B6B5F" rx="4"/>
-  <text x="100" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#FFFFFF" text-anchor="middle">
-    WBES Dashboard
-  </text>
-</svg>
