@@ -606,7 +606,10 @@ ui <- function(request) {
       ")),
       # JavaScript for view switching without page reload
       tags$script(HTML(sprintf("
-        // Set initial UI mode (this runs in <head>, before <body> exists)
+        // Set initial UI mode. This script runs in the page head, before the body
+        // element exists. (Never write the tag literally in this script:
+        // shinyapps.io injects its own scripts after the first occurrence of it
+        // in the page, which would cut this script in two.)
         document.addEventListener('DOMContentLoaded', function() {
           document.body.setAttribute('data-ui-mode', '%s');
         });
@@ -622,7 +625,8 @@ ui <- function(request) {
           var link = document.querySelector(\".navbar a[data-bs-toggle='tab'][data-value='\" + CSS.escape(tab) + \"']\");
           if (!link) return;
           link.click();
-          // The fill layout scrolls <body>, not the window; open the page at its top.
+          // The fill layout scrolls the body element, not the window; open the
+          // page at its top.
           setTimeout(function() { document.body.scrollTop = 0; }, 300);
         });
 

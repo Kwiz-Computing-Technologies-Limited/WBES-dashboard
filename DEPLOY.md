@@ -52,6 +52,22 @@ add to the `gcloud run deploy` step:
 - **Never** put `data/assets.zip` (674 MB raw `.dta`) in the image — `.gcloudignore`
   excludes it. It is only needed locally to re-run `scripts/build_data.R`.
 
+## shinyapps.io (public demo)
+
+Live: **https://kwizresearchservices.shinyapps.io/wbes-dashboard/**
+(account `kwizresearchservices`, aggregated data mode)
+
+```bash
+Rscript scripts/build_public_cells.R                               # once per data refresh
+Rscript scripts/deploy_shinyapps.R kwizresearchservices wbes-dashboard
+```
+
+The script builds the bundle in a clean staging directory from an explicit file
+list (about 3 MB), writes `.Renviron` with `WBES_DATA_MODE=aggregated`
+(shinyapps.io takes environment variables only that way), and refuses to deploy
+if `processed.parquet`, `assets.zip` or any `.dta` is present. Packages come from
+`dependencies.R`, because deployment tools do not read `box::use()`.
+
 ## Public (aggregated) mode
 
 For a public host that must not carry firm-level microdata (e.g. shinyapps.io):
