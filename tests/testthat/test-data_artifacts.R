@@ -24,11 +24,13 @@ test_that("load_precomputed() returns the app data contract", {
 
   d <- load_precomputed(data_path)
 
-  # Required elements the modules consume.
+  # Required elements the modules consume. The firm-level table is optional:
+  # it is private (git-ignored) and absent from a fresh checkout; see the
+  # fresh-checkout test below.
   required <- c("latest", "country_panel", "country_sector", "country_size",
-                "country_region", "regional", "processed", "countries",
+                "country_region", "regional", "countries",
                 "country_codes", "years", "regions", "sectors",
-                "label_mapping", "metadata", "quality")
+                "label_mapping", "metadata", "quality", "firm_data_mode")
   for (el in required) {
     expect_true(el %in% names(d), info = paste("missing element:", el))
   }
@@ -39,8 +41,10 @@ test_that("load_precomputed() returns the app data contract", {
   # Aggregates are real, non-empty data frames.
   expect_true(is.data.frame(d$latest))
   expect_gt(nrow(d$latest), 0)
-  expect_gt(nrow(d$processed), 0)
   expect_true("country" %in% names(d$latest))
+  if (!is.null(d$processed)) {
+    expect_gt(nrow(d$processed), 0)
+  }
 })
 
 test_that("country dimension is internally consistent", {
@@ -52,4 +56,30 @@ test_that("country dimension is internally consistent", {
   expect_gt(length(d$years), 0)
   # latest holds one row per country aggregate.
   expect_equal(nrow(d$latest), length(unique(d$latest$country)))
+})
+
+test_that("a fresh checkout (committed aggregates only) loads without firm data", {
+  committed <- c("latest", "country_panel", "country_sector", "country_size",
+                 "country_region", "regional", "country_coordinates")
+  src <- file.path(data_path, "processed")
+  if (!all(file.exists(file.path(src, c(paste0(committed, ".parquet"), "meta.rds"))))) {
+    skip("Committed aggregate artifacts not present")
+  }
+  fresh <- file.path(tempfile("fresh-checkout-"), "data")
+  dir.create(file.path(fresh, "processed"), recursive = TRUE)
+  file.copy(file.path(src, c(paste0(committed, ".parquet"), "meta.rds", "wb_macro.rds")),
+            file.path(fresh, "processed"))
+
+  # No private artifact, no download URL, no forced mode.
+  old <- Sys.getenv(c("WBES_PROCESSED_URL", "WBES_DATA_MODE"), unset = NA)
+  Sys.unsetenv(c("WBES_PROCESSED_URL", "WBES_DATA_MODE"))
+  on.exit({
+    restore <- old[!is.na(old)]
+    if (length(restore) > 0) do.call(Sys.setenv, as.list(restore))
+  }, add = TRUE)
+
+  d <- load_precomputed(fresh)
+  expect_null(d$processed)
+  expect_equal(d$firm_data_mode, "none")
+  expect_gt(nrow(d$latest), 0)
 })
