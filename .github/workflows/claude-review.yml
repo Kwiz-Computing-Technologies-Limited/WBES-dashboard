@@ -14,6 +14,9 @@ permissions:
   issues: write
   id-token: write
 
+# Every job is gated on the ANTHROPIC_API_KEY secret. Without it the jobs finish
+# as skipped with a notice instead of failing, so adding this workflow before
+# the key exists puts no red check on anyone's pull request.
 jobs:
   # Automatic review of every opened/updated PR. On pull_request events
   # claude-code-action runs only when given a `prompt` (agent mode); without one
@@ -27,12 +30,20 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
+      - name: Skip when no API key is configured
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "::notice::ANTHROPIC_API_KEY is not set for this repository, so the Claude job is skipped."
+
       - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != ''
         with:
           fetch-depth: 0
 
       - name: Claude Code Review
+        if: env.ANTHROPIC_API_KEY != ''
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -57,12 +68,20 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
+      - name: Skip when no API key is configured
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "::notice::ANTHROPIC_API_KEY is not set for this repository, so the Claude job is skipped."
+
       - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != ''
         with:
           fetch-depth: 0
 
       - name: Claude Code Action (@claude mention)
+        if: env.ANTHROPIC_API_KEY != ''
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -77,12 +96,20 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
+      - name: Skip when no API key is configured
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo "::notice::ANTHROPIC_API_KEY is not set for this repository, so the Claude job is skipped."
+
       - uses: actions/checkout@v4
+        if: env.ANTHROPIC_API_KEY != ''
         with:
           fetch-depth: 0
 
       - name: Claude Security Review
+        if: env.ANTHROPIC_API_KEY != ''
         uses: anthropics/claude-code-security-review@main
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
