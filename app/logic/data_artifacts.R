@@ -44,9 +44,16 @@ DATA_MODE_ENV <- "WBES_DATA_MODE"
 #' unweighted means at cell granularity or coarser reproduce the firm-level
 #' means exactly. Firm-level spread is not recoverable from this table.
 #'
+#' Every row keeps its cell's `cell_id`. That column is what marks the rows as
+#' stand-ins rather than firms: it survives filtering and disappears as soon as
+#' the rows are summarised, which is exactly when inference becomes legitimate
+#' again (see stat_utils::is_cell_expanded()).
+#'
 #' @param cells Data frame read from processed_cells.parquet
 #' @return Data frame with one row per (retained) firm
+#' @export
 expand_cells <- function(cells) {
+  cells$cell_id <- seq_len(nrow(cells))
   count_cols <- grep("__n$", names(cells), value = TRUE)
   row_cell <- rep(seq_len(nrow(cells)), cells$n_firms)
   pos <- sequence(cells$n_firms)
@@ -162,6 +169,61 @@ artifacts_available <- function(data_path = here("data")) {
     file.exists(file.path(dir, "latest.parquet"))
 }
 
+#' Is this app data the public aggregated stand-in for the firm table?
+#'
+#' Only an explicit "aggregated" counts. The full-ETL fallback and older data
+#' lists carry real firm rows and may have no mode set at all.
+#'
+#' @param data The app data list
+#' @return TRUE when `data$processed` is expanded cells, not firms
+#' @export
+is_aggregated <- function(data) {
+  identical(data$firm_data_mode, "aggregated")
+}
+
+# The pooling stage from which each breakdown is withheld (build_public_cells.R).
+WITHHELD_FROM_STAGE <- c(sector = 1L, firm_size = 2L, female_ownership = 3L)
+
+#' How many firms a breakdown by `dimension` leaves out
+#'
+#' In the aggregated data, firms from groups too small to publish keep their
+#' country and year but have their sector (then size, then ownership) blanked.
+#' Filtering or grouping on that dimension drops them, so the figure shown is
+#' for the firms that could be attributed. This counts the ones that could not.
+#'
+#' @param rows Expanded cell rows (the app's `processed` in aggregated mode)
+#' @param dimension One of "sector", "firm_size", "female_ownership"
+#' @return Number of rows withheld from that breakdown (0 for real firm rows)
+#' @export
+withheld_firms <- function(rows, dimension) {
+  stage <- WITHHELD_FROM_STAGE[[dimension]]
+  if (is.null(rows) || !"pooled" %in% names(rows)) return(0L)
+  sum(rows$pooled >= stage, na.rm = TRUE)
+}
+
+#' A sentence saying how many firms a breakdown leaves out, or NULL if none
+#'
+#' @param rows Expanded cell rows in scope, before the breakdown's own filter
+#' @param dimensions Breakdown dimensions in play ("sector", "firm_size",
+#'   "female_ownership"); a firm is left out if any of them is withheld for it
+#' @return A character scalar, or NULL when nothing is withheld
+#' @export
+withheld_note <- function(rows, dimensions) {
+  dimensions <- intersect(dimensions, names(WITHHELD_FROM_STAGE))
+  if (length(dimensions) == 0 || is.null(rows) || nrow(rows) == 0) return(NULL)
+  # A lower stage withholds fewer attributes, so the most-detailed dimension decides.
+  lowest <- names(which.min(WITHHELD_FROM_STAGE[dimensions]))
+  n_out <- withheld_firms(rows, lowest)
+  if (n_out == 0) return(NULL)
+  labels <- c(sector = "sector", firm_size = "firm size", female_ownership = "ownership")
+  by <- paste(labels[dimensions], collapse = " or ")
+  sprintf(paste(
+    "Public data: %s of %s firms here (%.1f%%) are in groups too small to publish",
+    "by %s, so figures broken down by %s leave them out."),
+    format(n_out, big.mark = ","), format(nrow(rows), big.mark = ","),
+    100 * n_out / nrow(rows), by, by)
+}
+
 #' Load precomputed artifacts into the app's data structure
 #'
 #' Reconstructs the same list shape as wbes_data::load_wbes_data() (minus the
@@ -251,7 +313,19 @@ load_app_data <- function(data_path = here("data")) {
                 "country_size", "country_region")) {
     if (!is.null(data[[tbl]])) data[[tbl]] <- remove_na_columns(data[[tbl]])
   }
+  finish_etl_data(data)
+}
+
+#' Shape the full-ETL result into the runtime data contract
+#'
+#' @param data List returned by wbes_data::load_wbes_data()
+#' @return The same list without runtime-irrelevant elements, and with
+#'   `firm_data_mode` set: the ETL's processed table is real firm rows, so
+#'   firm-level statistics stay available (it is not the aggregated stand-in)
+#' @export
+finish_etl_data <- function(data) {
   data$raw <- NULL          # never needed at runtime
   data$wb_macro <- NULL     # fallback path has no prefetch; live API is the backstop
+  data$firm_data_mode <- if (is.null(data$processed)) "none" else "firm"
   data
 }

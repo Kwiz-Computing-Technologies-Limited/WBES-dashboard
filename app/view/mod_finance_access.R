@@ -15,6 +15,7 @@ box::use(
   htmlwidgets[saveWidget],
   utils[write.csv],
   app/logic/shared_filters[apply_common_filters],
+  app/logic/data_artifacts[is_aggregated, withheld_note],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/chart_utils[create_chart_caption, map_with_caption]
@@ -168,7 +169,8 @@ ui <- function(id) {
           p(
             class = "text-muted small mt-2",
             "Bars compare credit access for female- versus male-owned firms, illustrating gender disparities in financing."
-          )
+          ),
+          uiOutput(ns("withheld_note"))
         )
       )
     )
@@ -258,6 +260,27 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       data
+    })
+
+    # Public data: the ownership split (and any sector/size selection) cannot
+    # include firms whose groups were too small to publish by that attribute.
+    output$withheld_note <- renderUI({
+      req(wbes_data())
+      if (!is_aggregated(wbes_data())) return(NULL)
+      filters <- if (!is.null(global_filters)) global_filters() else list()
+      active <- function(x) !is.null(x) && length(x) > 0 && !all(x %in% c("all", "", NA))
+      dims <- c("female_ownership",
+                if (active(filters$sector) || active(input$sector)) "sector",
+                if (active(filters$firm_size) || active(input$firm_size)) "firm_size")
+      scope <- apply_common_filters(
+        wbes_data()$processed,
+        region_value = filters$region, income_value = filters$income,
+        year_value = filters$year, custom_regions = filters$custom_regions,
+        filter_by_region_fn = filter_by_region
+      )
+      note <- withheld_note(scope, dims)
+      if (is.null(note)) return(NULL)
+      tags$p(class = "text-muted small mb-0", icon("info-circle"), " ", note)
     })
 
     # Interactive Map - uses country_panel when year filter active

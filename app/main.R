@@ -36,8 +36,8 @@ box::use(
   app/view/mod_data_quality,
   app/view/mod_about,
   app/view/mod_mobile_ui,
-  app/logic/data_artifacts[load_app_data],
-  app/logic/shared_filters[get_filter_choices],
+  app/logic/data_artifacts[load_app_data, is_aggregated, withheld_note],
+  app/logic/shared_filters[get_filter_choices, apply_common_filters],
   app/logic/custom_regions[get_region_choices, filter_by_region, custom_region_modal_ui,
                            manage_regions_modal_ui, edit_region_modal_ui, custom_regions_storage],
   app/logic/custom_sectors[get_sector_choices, filter_by_sector, custom_sector_modal_ui,
@@ -261,6 +261,9 @@ desktop_ui <- function(kwiz_theme) {
             )
           )
         ),
+
+        # Public data: how many firms a sector/size selection cannot include
+        uiOutput("withheld_note"),
 
         # Tab-specific filters placeholder
         tags$div(
@@ -934,6 +937,26 @@ ui <- function(request) {
       custom_regions = custom_regions(),
       custom_sectors = custom_sectors()
     )
+  })
+
+  # In the public aggregated data, firms from groups under 5 have their sector
+  # (then size) withheld. A sector or size selection therefore cannot include
+  # them; say how many, for the region/income/year in view.
+  output$withheld_note <- renderUI({
+    data <- wbes_data()
+    if (!is_aggregated(data)) return(NULL)
+    f <- global_filters()
+    active <- function(x) !is.null(x) && length(x) > 0 && !all(x %in% c("all", "", NA))
+    dims <- c("sector", "firm_size")[c(active(f$sector), active(f$firm_size))]
+    if (length(dims) == 0) return(NULL)
+    scope <- apply_common_filters(
+      data$processed,
+      region_value = f$region, income_value = f$income, year_value = f$year,
+      custom_regions = f$custom_regions, filter_by_region_fn = filter_by_region
+    )
+    note <- withheld_note(scope, dims)
+    if (is.null(note)) return(NULL)
+    tags$div(class = "small text-muted mt-3", icon("info-circle"), " ", note)
   })
 
   # Module servers - pass both raw data and filter state

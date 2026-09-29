@@ -23,6 +23,7 @@ box::use(
   app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
   app/logic/stat_utils[anova_with_tukey, format_anova_results,
                        calculate_correlation_matrix, format_correlation_table],
+  app/logic/data_artifacts[is_aggregated],
   app/logic/wb_integration[
     get_wb_country_context,
     get_wb_context_from_cache,
@@ -591,7 +592,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
       req(wbes_data(), input$countries_compare)
       firm_data <- wbes_data()$processed
       # Aggregated cells carry no firm-level spread, so tests would be meaningless.
-      if (is.null(firm_data) || !identical(wbes_data()$firm_data_mode, "firm")) return(NULL)
+      if (is.null(firm_data) || is_aggregated(wbes_data())) return(NULL)
       firm_data <- filter(firm_data, country %in% input$countries_compare)
       firm_data
     })

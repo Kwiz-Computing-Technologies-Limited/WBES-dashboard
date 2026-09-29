@@ -11,6 +11,33 @@ box::use(
   shiny[tags, HTML, icon, div, span, fluidRow, column, tagList]
 )
 
+# Aggregated public data (WBES_DATA_MODE=aggregated) replaces firms with
+# group-average stand-ins marked by a `cell_id` column (data_artifacts.R). They
+# reproduce group means but carry no firm-level spread or covariance, so any
+# test run on them would report significance the data cannot support.
+CELL_ROWS_NOTE <- paste(
+  "Not available on the public aggregated data: it holds group averages, not",
+  "individual firms, so there is no firm-level variation to test."
+)
+
+#' Are these rows aggregated-cell stand-ins rather than real observations?
+#' @param data Data frame
+#' @return TRUE when `data` is expanded cells (see data_artifacts::expand_cells)
+#' @export
+is_cell_expanded <- function(data) {
+  is.data.frame(data) && "cell_id" %in% names(data)
+}
+
+#' The notice shown in place of a statistical result on aggregated data
+#' @return HTML tags
+#' @export
+cell_rows_notice <- function() {
+  tags$div(
+    class = "alert alert-secondary py-2 mt-2",
+    tags$small(icon("info-circle"), " ", CELL_ROWS_NOTE)
+  )
+}
+
 #' Calculate correlation matrix with p-values
 #' @param data Data frame with numeric columns
 #' @param vars Character vector of variable names to include
@@ -18,6 +45,10 @@ box::use(
 #' @return List with correlation matrix and p-value matrix
 #' @export
 calculate_correlation_matrix <- function(data, vars, method = "pearson") {
+  if (is_cell_expanded(data)) {
+    return(list(unavailable = TRUE, message = CELL_ROWS_NOTE))
+  }
+
   # Filter to only include specified variables that exist in data
   available_vars <- vars[vars %in% names(data)]
 
@@ -84,6 +115,9 @@ calculate_correlation_matrix <- function(data, vars, method = "pearson") {
 #' @return HTML string
 #' @export
 format_correlation_table <- function(cor_result, var_labels = NULL, show_significance = TRUE) {
+  if (isTRUE(cor_result$unavailable)) {
+    return(cell_rows_notice())
+  }
   if (is.null(cor_result)) {
     return(tags$div(
       class = "text-muted text-center p-3",
@@ -263,6 +297,10 @@ paired_comparison_test <- function(group1_values, group2_values,
 #' @return List with ANOVA results and Tukey HSD comparisons
 #' @export
 anova_with_tukey <- function(data, value_col, group_col) {
+  if (is_cell_expanded(data)) {
+    return(list(test_type = "unavailable", p_value = NA, message = CELL_ROWS_NOTE))
+  }
+
   # Prepare data
   df <- data.frame(
     value = as.numeric(data[[value_col]]),
@@ -368,7 +406,7 @@ anova_with_tukey <- function(data, value_col, group_col) {
 #' @return HTML tags
 #' @export
 format_anova_results <- function(result, title = "Statistical Test Results") {
-  if (is.null(result) || result$test_type %in% c("insufficient_groups", "anova_failed", "kruskal_failed")) {
+  if (is.null(result) || result$test_type %in% c("insufficient_groups", "anova_failed", "kruskal_failed", "unavailable")) {
     return(tags$div(
       class = "alert alert-secondary py-2 mt-2",
       tags$small(

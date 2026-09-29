@@ -20,7 +20,9 @@ box::use(
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
   app/logic/chart_utils[create_chart_caption, map_with_caption, generate_chart_id],
-  app/logic/stat_utils[anova_with_tukey, format_anova_results, calculate_correlation_matrix, format_correlation_table]
+  app/logic/stat_utils[anova_with_tukey, format_anova_results, calculate_correlation_matrix, format_correlation_table,
+                       is_cell_expanded, cell_rows_notice],
+  app/logic/data_artifacts[withheld_note],
 )
 
 # Define indicator domains with their indicators
@@ -135,7 +137,8 @@ ui <- function(id) {
           class = "page-header mb-4",
           h2(icon("industry"), "Cross-Sector Benchmarking", class = "text-primary-teal"),
           p(class = "lead text-muted",
-            "Compare business environment indicators across economic sectors by domain")
+            "Compare business environment indicators across economic sectors by domain"),
+          uiOutput(ns("withheld_note"))
         )
       )
     ),
@@ -402,6 +405,16 @@ ui <- function(id) {
 #' @export
 server <- function(id, wbes_data, global_filters = NULL) {
   moduleServer(id, function(input, output, session) {
+
+    # Public data: the sector comparison cannot include firms whose sector was
+    # withheld (groups under 5 firms); say how many are left out.
+    output$withheld_note <- renderUI({
+      d <- filtered_data()
+      if (!is_cell_expanded(d)) return(NULL)
+      note <- withheld_note(d, "sector")
+      if (is.null(note)) return(NULL)
+      tags$p(class = "text-muted small", icon("info-circle"), " ", note)
+    })
 
     # Filtered data (EXCEPT sector filter) - uses data source with sector column
     filtered_data <- reactive({
@@ -2183,6 +2196,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
       if (is.null(data) || nrow(data) < 3) return(NULL)
       if (!indicator %in% names(data)) return(NULL)
       if (!"sector" %in% names(data)) return(NULL)
+      # Checked here: the data frame rebuilt below no longer carries the marker.
+      if (is_cell_expanded(data)) return(cell_rows_notice())
 
       # For ANOVA, we need observations grouped by sector
       df <- data.frame(

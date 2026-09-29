@@ -17,7 +17,9 @@
 #
 # Disclosure control: a cell below MIN_CELL firms is pooled with sector left
 # blank; if still too small, with size blank too; then with ownership blank
-# too; anything still below MIN_CELL is dropped.
+# too; anything still below MIN_CELL is dropped. `pooled` records the stage
+# (0 = full detail, 1 = sector withheld, 2 = + size, 3 = + ownership), so the
+# app can say how many firms a sector, size or ownership breakdown leaves out.
 #
 # Usage (from project root, needs data/processed/processed.parquet):
 #   Rscript scripts/build_public_cells.R
@@ -41,7 +43,7 @@ indicators <- setdiff(names(firms)[vapply(firms, is.numeric, logical(1))], "year
 
 collapse <- function(d) {
   d |>
-    group_by(across(all_of(keys))) |>
+    group_by(across(all_of(c(keys, "pooled")))) |>
     summarise(
       n_firms = n(),
       across(all_of(indicators),
@@ -66,7 +68,8 @@ for (i in seq_along(withhold)) {
   for (col in withhold[[i]]) rest[[col]] <- rest[[col]][NA_integer_]
   sizes <- rest |> count(across(all_of(keys)), name = "n_firms")
   rest <- rest |> left_join(sizes, by = keys)
-  kept[[i]] <- rest |> filter(n_firms >= MIN_CELL) |> select(-n_firms)
+  kept[[i]] <- rest |> filter(n_firms >= MIN_CELL) |> select(-n_firms) |>
+    mutate(pooled = i - 1L)
   rest <- rest |> filter(n_firms < MIN_CELL) |> select(-n_firms)
 }
 dropped <- rest
