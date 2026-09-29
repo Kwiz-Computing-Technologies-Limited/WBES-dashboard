@@ -6,7 +6,7 @@
 # processed.parquet holds one row per surveyed firm. That is World Bank
 # microdata and is never published or bundled into a public deploy. This script
 # collapses it into cells of at least MIN_CELL firms and writes
-# data/processed/processed_cells.parquet, which IS safe to ship.
+# data/public/processed_cells.parquet, which IS safe to ship.
 #
 # Each cell carries, for every indicator, its mean over the firms that answered
 # (`<col>`) and how many answered (`<col>__n`). data_artifacts.R expands a cell
@@ -21,6 +21,12 @@
 # (0 = full detail, 1 = sector withheld, 2 = + size, 3 = + ownership), so the
 # app can say how many firms a sector, size or ownership breakdown leaves out.
 #
+# Every other table published with the cells (latest, country_panel,
+# country_sector, ...) is rebuilt from the cells alone and written with them
+# to data/public/, so the public bundle is internally consistent: no table can
+# be differenced against the cells to recover a withheld firm. See
+# app/logic/public_data.R.
+#
 # Usage (from project root, needs data/processed/processed.parquet):
 #   Rscript scripts/build_public_cells.R
 # =============================================================================
@@ -32,7 +38,23 @@ suppressPackageStartupMessages({
 
 MIN_CELL <- as.integer(Sys.getenv("WBES_MIN_CELL", "5"))
 SRC <- "data/processed/processed.parquet"
-OUT <- "data/processed/processed_cells.parquet"
+PUBLIC_DIR <- "data/public"
+OUT <- file.path(PUBLIC_DIR, "processed_cells.parquet")
+
+# The published tables and the columns each one is grouped by (see
+# wbes_data.R). Each is rebuilt from the cells so none can be differenced
+# against them.
+PUBLIC_TABLES <- list(
+  latest = c("country", "country_code"),
+  country_panel = c("country", "year"),
+  country_sector = c("country", "country_code", "sector"),
+  country_size = c("country", "country_code", "firm_size"),
+  country_region = c("country", "country_code", "region"),
+  regional = "region"
+)
+
+options(box.path = getwd())
+box::use(app/logic/public_data[suppress_small_items, public_table])
 
 stopifnot(file.exists(SRC))
 firms <- read_parquet(SRC)
@@ -78,10 +100,29 @@ out <- collapse(bind_rows(kept)) |>
   rename_with(~ sub("__mean$", "", .x), ends_with("__mean"))
 
 stopifnot(min(out$n_firms) >= MIN_CELL)
+
+# Item-level control: a question answered by fewer than MIN_CELL firms in a
+# cell is blanked, or its mean would be those few firms' own answers.
+n_before <- sum(as.matrix(out[grep("__n$", names(out))]) > 0)
+out <- suppress_small_items(out, MIN_CELL)
+counts <- as.matrix(out[grep("__n$", names(out))])
+stopifnot(all(counts == 0 | counts >= MIN_CELL))
+n_blanked <- n_before - sum(counts > 0)
+
+dir.create(PUBLIC_DIR, showWarnings = FALSE)
 write_parquet(out, OUT)
 
+# Differencing control: every table shipped with the cells is rebuilt from them.
+for (tbl in names(PUBLIC_TABLES)) {
+  template <- read_parquet(file.path("data/processed", paste0(tbl, ".parquet")))
+  pub <- public_table(template, out, PUBLIC_TABLES[[tbl]])
+  write_parquet(pub, file.path(PUBLIC_DIR, paste0(tbl, ".parquet")))
+  cat(sprintf("  %-15s %4d of %4d rows rebuilt from cells\n", tbl, nrow(pub), nrow(template)))
+}
+
 cat(sprintf(
-  "cells: %d (min %d firms)\nfirms kept by stage (full, -sector, -size, -ownership): %s; dropped %d of %d\nwrote %s (%.1f KB)\n",
+  "cells: %d (min %d firms)\nfirms kept by stage (full, -sector, -size, -ownership): %s; dropped %d of %d\nindicator values blanked (fewer than %d respondents): %d\nwrote %s (%.1f KB)\n",
   nrow(out), min(out$n_firms), paste(vapply(kept, nrow, integer(1)), collapse = " / "),
-  nrow(dropped), sum(vapply(kept, nrow, integer(1))) + nrow(dropped), OUT, file.size(OUT) / 1024
+  nrow(dropped), sum(vapply(kept, nrow, integer(1))) + nrow(dropped), MIN_CELL, n_blanked,
+  OUT, file.size(OUT) / 1024
 ))

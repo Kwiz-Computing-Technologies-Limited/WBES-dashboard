@@ -19,6 +19,8 @@ box::use(
 )
 
 ARTIFACT_SUBDIR <- "processed"
+# Disclosure-controlled public set written by scripts/build_public_cells.R.
+PUBLIC_SUBDIR <- "public"
 
 # Small AGGREGATE tables committed to the repo and read as plain data frames.
 PARQUET_TABLES <- c(
@@ -64,6 +66,18 @@ expand_cells <- function(cells) {
   }
   rownames(out) <- NULL
   out
+}
+
+#' Strip query strings from any URL in a message before it is logged
+#'
+#' WBES_PROCESSED_URL may be a signed download link (e.g. Firebase
+#' `?alt=media&token=...`), and R's download errors quote the URL in full.
+#'
+#' @param msg A message that may contain URLs
+#' @return The message with every URL query string replaced by `?<redacted>`
+#' @export
+redact_urls <- function(msg) {
+  gsub("(https?://[^\\s'\"?]*)\\?[^\\s'\"]*", "\\1?<redacted>", msg, perl = TRUE)
 }
 
 #' Download a gs://bucket/object using the runtime service-account identity
@@ -134,7 +148,7 @@ resolve_processed_path <- function(data_path = here("data")) {
         download.file(url, dest, mode = "wb", quiet = TRUE)
         file.exists(dest)
       }, error = function(e) {
-        log_warn(sprintf("Download of processed.parquet failed: %s", e$message))
+        log_warn(sprintf("Download of processed.parquet failed: %s", redact_urls(e$message)))
         FALSE
       })
     }
@@ -241,12 +255,21 @@ load_precomputed <- function(data_path = here("data")) {
     return(NULL)
   }
 
-  log_info("Loading precomputed artifacts from data/processed/ ...")
+  # Public mode reads the disclosure-controlled set that build_public_cells.R
+  # writes to data/public/ (every table rebuilt from the published cells), so a
+  # local run shows exactly what the public deploy does. A deploy bundle ships
+  # that set as data/processed/ itself.
+  aggregated_only <- identical(Sys.getenv(DATA_MODE_ENV), "aggregated")
+  public <- file.path(data_path, PUBLIC_SUBDIR)
+  use_public <- aggregated_only && file.exists(file.path(public, "processed_cells.parquet"))
+  log_info(sprintf("Loading precomputed artifacts from data/%s/ ...",
+                   if (use_public) PUBLIC_SUBDIR else ARTIFACT_SUBDIR))
 
   result <- readRDS(file.path(dir, "meta.rds"))
 
   for (tbl in PARQUET_TABLES) {
-    path <- file.path(dir, paste0(tbl, ".parquet"))
+    path <- file.path(if (use_public) public else dir, paste0(tbl, ".parquet"))
+    if (!file.exists(path)) path <- file.path(dir, paste0(tbl, ".parquet"))
     if (file.exists(path)) {
       result[[tbl]] <- read_parquet(path, as_data_frame = TRUE)
       log_info(sprintf("  loaded %s (%d rows)", tbl, nrow(result[[tbl]])))
@@ -259,9 +282,8 @@ load_precomputed <- function(data_path = here("data")) {
   # deploy (WBES_DATA_MODE=aggregated) never reads it and uses the aggregated
   # cells instead, which are also the fallback when the microdata is unavailable.
   result$firm_data_mode <- "none"
-  aggregated_only <- identical(Sys.getenv(DATA_MODE_ENV), "aggregated")
   processed_path <- if (aggregated_only) NULL else resolve_processed_path(data_path)
-  cells_path <- file.path(dir, "processed_cells.parquet")
+  cells_path <- file.path(if (use_public) public else dir, "processed_cells.parquet")
   if (!is.null(processed_path)) {
     result$processed <- read_parquet(processed_path, as_data_frame = TRUE)
     result$firm_data_mode <- "firm"

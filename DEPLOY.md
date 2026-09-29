@@ -73,16 +73,23 @@ if `processed.parquet`, `assets.zip` or any `.dta` is present. Packages come fro
 For a public host that must not carry firm-level microdata (e.g. shinyapps.io):
 
 ```bash
-Rscript scripts/build_public_cells.R     # writes data/processed/processed_cells.parquet
+Rscript scripts/build_public_cells.R     # writes the data/public/ set
 WBES_DATA_MODE=aggregated Rscript -e "shiny::runApp('.', port = 3849)"
 ```
 
-`processed_cells.parquet` collapses the firm table into cells of at least 5 firms
-(smaller cells are pooled with sector, then size, then ownership withheld; the
-rest, ~0.2% of firms, are dropped). With `WBES_DATA_MODE=aggregated` the app never
+`scripts/build_public_cells.R` writes the public set to `data/public/`
+(git-ignored), and `WBES_DATA_MODE=aggregated` reads it:
+
+- `processed_cells.parquet` collapses the firm table into cells of at least 5
+  firms (smaller cells are pooled with sector, then size, then ownership
+  withheld; the rest, ~0.2% of firms, are dropped), and blanks any indicator
+  answered by fewer than 5 firms in a cell.
+- every other table (`latest`, `country_panel`, `country_sector`, ...) is
+  rebuilt from those cells, so none can be differenced against them to recover
+  a withheld firm (`app/logic/public_data.R`). With `WBES_DATA_MODE=aggregated` the app never
 reads `processed.parquet`; it expands the cells so country, region, sector, size
 and ownership means match the firm-level ones, and switches off the firm-level
-significance tests, which need spread the cells do not carry. The cells file is
+significance tests, which need spread the cells do not carry. The public set is
 git-ignored: bundle it from local disk, and leave `processed.parquet` out.
 
 ## Deep links

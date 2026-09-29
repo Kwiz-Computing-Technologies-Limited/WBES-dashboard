@@ -16,7 +16,7 @@ box::use(
   htmlwidgets[saveWidget],
   utils[write.csv],
   rlang[sym, `%||%`],
-  app/logic/shared_filters[apply_common_filters],
+  app/logic/shared_filters[apply_common_filters, parse_country_list],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
   app/logic/scatter_utils[create_scatter_with_trend],
@@ -571,7 +571,7 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
 
       # A deep link (?countries=Kenya,Uganda) chooses the starting comparison
       linked <- shiny::parseQueryString(session$clientData$url_search %||% "")$countries
-      linked <- intersect(strsplit(linked %||% "", ",", fixed = TRUE)[[1]], countries)
+      linked <- parse_country_list(linked, countries)
       shiny::updateSelectizeInput(
         session, "countries_compare",
         choices = setNames(countries, countries),
