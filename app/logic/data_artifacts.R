@@ -33,6 +33,32 @@ PARQUET_TABLES <- c(
 # drill-down in the few modules that use it.
 PROCESSED_URL_ENV <- "WBES_PROCESSED_URL"
 
+# "aggregated" makes the app run on processed_cells.parquet only (public deploys).
+DATA_MODE_ENV <- "WBES_DATA_MODE"
+
+#' Expand aggregated cells back into one row per firm
+#'
+#' Cells come from scripts/build_public_cells.R: `<col>` is the mean over the
+#' firms that answered and `<col>__n` how many did. Each cell becomes n_firms
+#' rows in which the first `<col>__n` hold the mean and the rest are NA, so
+#' unweighted means at cell granularity or coarser reproduce the firm-level
+#' means exactly. Firm-level spread is not recoverable from this table.
+#'
+#' @param cells Data frame read from processed_cells.parquet
+#' @return Data frame with one row per (retained) firm
+expand_cells <- function(cells) {
+  count_cols <- grep("__n$", names(cells), value = TRUE)
+  row_cell <- rep(seq_len(nrow(cells)), cells$n_firms)
+  pos <- sequence(cells$n_firms)
+  out <- cells[row_cell, setdiff(names(cells), c(count_cols, "n_firms")), drop = FALSE]
+  for (cc in count_cols) {
+    col <- sub("__n$", "", cc)
+    out[[col]][pos > cells[[cc]][row_cell]] <- NA
+  }
+  rownames(out) <- NULL
+  out
+}
+
 #' Download a gs://bucket/object using the runtime service-account identity
 #'
 #' Uses Application Default Credentials via the GCP metadata server (available on
@@ -167,11 +193,21 @@ load_precomputed <- function(data_path = here("data")) {
     }
   }
 
-  # Firm-level microdata: local file (dev) or remote download (prod), else NULL.
-  processed_path <- resolve_processed_path(data_path)
+  # Firm-level microdata: local file (dev) or remote download (prod). A public
+  # deploy (WBES_DATA_MODE=aggregated) never reads it and uses the aggregated
+  # cells instead, which are also the fallback when the microdata is unavailable.
+  result$firm_data_mode <- "none"
+  aggregated_only <- identical(Sys.getenv(DATA_MODE_ENV), "aggregated")
+  processed_path <- if (aggregated_only) NULL else resolve_processed_path(data_path)
+  cells_path <- file.path(dir, "processed_cells.parquet")
   if (!is.null(processed_path)) {
     result$processed <- read_parquet(processed_path, as_data_frame = TRUE)
+    result$firm_data_mode <- "firm"
     log_info(sprintf("  loaded processed (%d rows)", nrow(result$processed)))
+  } else if (file.exists(cells_path)) {
+    result$processed <- expand_cells(read_parquet(cells_path, as_data_frame = TRUE))
+    result$firm_data_mode <- "aggregated"
+    log_info(sprintf("  loaded processed from aggregated cells (%d rows)", nrow(result$processed)))
   } else {
     result$processed <- NULL
   }

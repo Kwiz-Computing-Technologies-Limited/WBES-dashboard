@@ -51,3 +51,27 @@ add to the `gcloud run deploy` step:
   image sits in Artifact Registry; the bucket holds ~6 MB. All minimal.
 - **Never** put `data/assets.zip` (674 MB raw `.dta`) in the image — `.gcloudignore`
   excludes it. It is only needed locally to re-run `scripts/build_data.R`.
+
+## Public (aggregated) mode
+
+For a public host that must not carry firm-level microdata (e.g. shinyapps.io):
+
+```bash
+Rscript scripts/build_public_cells.R     # writes data/processed/processed_cells.parquet
+WBES_DATA_MODE=aggregated Rscript -e "shiny::runApp('.', port = 3849)"
+```
+
+`processed_cells.parquet` collapses the firm table into cells of at least 5 firms
+(smaller cells are pooled with sector, then size, then ownership withheld; the
+rest, ~0.2% of firms, are dropped). With `WBES_DATA_MODE=aggregated` the app never
+reads `processed.parquet`; it expands the cells so country, region, sector, size
+and ownership means match the firm-level ones, and switches off the firm-level
+significance tests, which need spread the cells do not carry. The cells file is
+git-ignored: bundle it from local disk, and leave `processed.parquet` out.
+
+## Deep links
+
+`?tab=<module id>` opens a page (e.g. `?tab=country_profile`, `?tab=benchmark`,
+`?tab=infrastructure`, `?tab=custom_analysis`); `&country=Kenya` picks the
+profile's country and `&countries=Kenya,Uganda` the benchmark set. `?ui=mobile`
+forces the phone layout.

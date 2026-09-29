@@ -23,6 +23,19 @@ chart_with_caption <- function(ns, output_id, height = "350px", title = NULL) {
   )
 }
 
+# Empty chart with a message, shown instead of inventing numbers when data is missing
+no_data_plot <- function(message) {
+  plot_ly(type = "scatter", mode = "markers") |>
+    layout(
+      xaxis = list(visible = FALSE),
+      yaxis = list(visible = FALSE),
+      annotations = list(text = message, xref = "paper", yref = "paper",
+                         x = 0.5, y = 0.5, showarrow = FALSE),
+      paper_bgcolor = "rgba(0,0,0,0)"
+    ) |>
+    config(displayModeBar = FALSE)
+}
+
 #' @export
 ui <- function(id) {
   ns <- NS(id)
@@ -756,11 +769,7 @@ server <- function(id, wbes_data, global_filters = NULL) {
       }
 
       if (nrow(completeness_data) == 0) {
-        # Fallback to placeholder data
-        completeness_data <- data.frame(
-          indicator = c("Power Outages", "Credit Access", "Bribery", "Capacity Util.", "Female Ownership", "Exports"),
-          pct = c(88, 92, 78, 85, 94, 90)
-        )
+        return(no_data_plot("Indicator completeness is not available for this data"))
       }
 
       completeness_data <- arrange(completeness_data, pct)
@@ -796,14 +805,8 @@ server <- function(id, wbes_data, global_filters = NULL) {
       req(wbes_data())
       d <- wbes_data()$latest
 
-      if (!"region" %in% names(d)) {
-        # Fallback to placeholder
-        data <- data.frame(
-          region = c("SSA", "SA", "EAP", "LAC", "ECA"),
-          pct = c(82, 85, 91, 88, 94),
-          n = c(45000, 28000, 35000, 42000, 38000)
-        )
-      } else {
+      data <- NULL
+      if ("region" %in% names(d)) {
         # Calculate completeness by region
         # Key indicator columns to check
         key_cols <- c("power_outages_per_month", "firms_with_credit_line_pct",
@@ -847,14 +850,11 @@ server <- function(id, wbes_data, global_filters = NULL) {
             pct = round(regional_data$pct, 1),
             n = regional_data$n
           )
-        } else {
-          # Fallback to placeholder
-          data <- data.frame(
-            region = c("SSA", "SA", "EAP", "LAC", "ECA"),
-            pct = c(82, 85, 91, 88, 94),
-            n = c(45000, 28000, 35000, 42000, 38000)
-          )
         }
+      }
+
+      if (is.null(data) || nrow(data) == 0) {
+        return(no_data_plot("Regional completeness is not available for this data"))
       }
 
       plot_ly(data,

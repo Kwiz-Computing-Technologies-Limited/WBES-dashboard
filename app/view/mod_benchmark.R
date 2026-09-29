@@ -15,7 +15,7 @@ box::use(
   # base[droplevels],
   htmlwidgets[saveWidget],
   utils[write.csv],
-  rlang[sym],
+  rlang[sym, `%||%`],
   app/logic/shared_filters[apply_common_filters],
   app/logic/custom_regions[filter_by_region],
   app/logic/wbes_map[create_wbes_map, get_country_coordinates],
@@ -568,10 +568,13 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
         as.character() |>
         sort()
 
+      # A deep link (?countries=Kenya,Uganda) chooses the starting comparison
+      linked <- shiny::parseQueryString(session$clientData$url_search %||% "")$countries
+      linked <- intersect(strsplit(linked %||% "", ",", fixed = TRUE)[[1]], countries)
       shiny::updateSelectizeInput(
         session, "countries_compare",
         choices = setNames(countries, countries),
-        selected = countries[1:min(5, length(countries))]
+        selected = if (length(linked) > 0) linked else countries[1:min(5, length(countries))]
       )
     })
 
@@ -587,7 +590,8 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
     firm_level_data <- reactive({
       req(wbes_data(), input$countries_compare)
       firm_data <- wbes_data()$processed
-      if (is.null(firm_data)) return(NULL)
+      # Aggregated cells carry no firm-level spread, so tests would be meaningless.
+      if (is.null(firm_data) || !identical(wbes_data()$firm_data_mode, "firm")) return(NULL)
       firm_data <- filter(firm_data, country %in% input$countries_compare)
       firm_data
     })

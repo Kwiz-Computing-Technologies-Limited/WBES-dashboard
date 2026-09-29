@@ -4,7 +4,8 @@
 box::use(
   shiny[moduleServer, NS, reactive, req, tags, tagList, icon, div, h2, h3, h4, p, span, HTML,
         fluidRow, column, selectInput, renderUI, uiOutput, observeEvent, observe, renderText, textOutput,
-        downloadButton, downloadHandler, reactiveVal, bindCache],
+        downloadButton, downloadHandler, reactiveVal, bindCache, parseQueryString],
+  rlang[`%||%`],
   bslib[card, card_header, card_body, navset_card_tab, nav_panel, value_box],
   plotly[plotlyOutput, renderPlotly, plot_ly, layout, add_trace, config],
   dplyr[filter, select, arrange, mutate, left_join, group_by, summarize, ungroup, slice_max],
@@ -493,8 +494,12 @@ server <- function(id, wbes_data, global_filters = NULL, wb_prefetched_data = NU
 
       # Get current selection to preserve if still valid
       current_selection <- input$country_select
+      # A deep link (?country=Kenya) chooses the first country shown
+      linked <- parseQueryString(session$clientData$url_search %||% "")$country
       new_selection <- if (!is.null(current_selection) && current_selection %in% countries) {
         current_selection
+      } else if (!is.null(linked) && linked %in% countries) {
+        linked
       } else if (length(countries) > 0) {
         countries[1]
       } else {
